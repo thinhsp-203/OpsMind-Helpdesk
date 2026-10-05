@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Lint
+        run: python -m ruff check app tests scripts
+      - name: Run tests
+        run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml
+      - name: Evaluate RAG retrieval baseline
+        run: python -m scripts.evaluate_rag
+      - name: Build Docker image
+        run: docker build -t helpdesk-rag:${{ github.sha }} .
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml

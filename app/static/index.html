@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f3f6fb" />
+    <title>Bàn hỗ trợ CNTT | Helpdesk RAG</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20261005-6" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Helpdesk RAG trang chủ">
+          <span class="brand-mark">H</span>
+          <span><strong>Helpdesk</strong><small>IT SERVICE DESK</small></span>
+        </a>
+        <div class="topbar-right">
+          <span id="serviceStateLabel" class="service-state service-state-checking"><i></i> Đang kiểm tra dịch vụ</span>
+          <span id="userBadge" class="user-badge hidden"></span>
+          <button id="logoutBtn" class="button button-quiet hidden" type="button">Đăng xuất</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="loginView" class="login-layout">
+          <div class="welcome-copy">
+            <span class="eyebrow">CỔNG HỖ TRỢ NỘI BỘ</span>
+            <h1>Sự cố CNTT?<br /><span>Để chúng tôi hỗ trợ.</span></h1>
+            <p>Tra cứu hướng dẫn nội bộ, theo dõi yêu cầu và kết nối với đội ngũ IT tại một nơi.</p>
+            <div class="welcome-points">
+              <span><b>01</b> Hướng dẫn có nguồn tham khảo</span>
+              <span><b>02</b> Theo dõi trạng thái minh bạch</span>
+              <span><b>03</b> Bàn giao cho IT khi cần</span>
+            </div>
+          </div>
+          <form id="loginForm" class="login-card">
+            <div class="card-icon">↗</div>
+            <h2>Chào mừng trở lại</h2>
+            <p>Đăng nhập để tiếp tục đến Helpdesk.</p>
+            <label for="username">Tên đăng nhập</label>
+            <input id="username" name="username" autocomplete="username" required />
+            <label for="password">Mật khẩu</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+            <button class="button button-primary button-wide" type="submit">Đăng nhập <span>→</span></button>
+            <p id="loginMessage" class="form-message" role="status"></p>
+            <div id="demoCredentials" class="demo-note hidden">
+              <strong>Tài khoản demo</strong>
+              <span>user / user · agent / agent · admin / admin</span>
+              <small>Chỉ sử dụng cho trình diễn local, không dùng dữ liệu thật.</small>
+            </div>
+          </form>
+        </section>
+
+        <section id="workspaceView" class="hidden">
+          <div class="page-heading">
+            <div>
+              <span id="roleEyebrow" class="eyebrow">WORKSPACE</span>
+              <h1 id="greeting">Xin chào</h1>
+              <p id="workspaceSubtitle">Mọi yêu cầu hỗ trợ của bạn, được theo dõi rõ ràng.</p>
+            </div>
+            <span class="date-chip" id="todayLabel"></span>
+          </div>
+
+          <nav id="workspaceNav" class="workspace-nav hidden" aria-label="Điều hướng workspace"></nav>
+
+          <div id="employeeWorkflowNote" class="workflow-note hidden workspace-panel" data-view="dashboard">
+            <strong>Khác tin nhắn Zalo:</strong>
+            <span>Mỗi yêu cầu có mã, người xử lý, hạn phản hồi và lịch sử — không trôi trong nhóm chat.</span>
+          </div>
+
+          <section id="analyticsSection" class="stats-grid hidden workspace-panel" aria-label="Tổng quan ticket" data-view="dashboard">
+            <article class="stat-card stat-primary"><span id="statTotalLabel">Ticket của bạn</span><strong id="statTotal">0</strong><small>Trong phạm vi tài khoản</small><i>▤</i></article>
+            <article class="stat-card"><span>Đang mở</span><strong id="statActive">0</strong><small>Mới, xử lý, chờ phản hồi, chuyển cấp</small><i>◷</i></article>
+            <article class="stat-card"><span>Đã giải quyết</span><strong id="statResolved">0</strong><small>Resolved và Closed</small><i>✓</i></article>
+            <article class="stat-card stat-alert"><span>Quá hạn SLA</span><strong id="statOverdue">0</strong><small>Cần ưu tiên xử lý</small><i>!</i></article>
+            <article id="statResolutionCard" class="stat-card"><span>Thời gian xử lý TB</span><strong id="statResolution">—</strong><small>Ticket đã giải quyết · giờ lịch</small><i>◷</i></article>
+            <article id="statRatingCard" class="stat-card"><span>Đánh giá hài lòng</span><strong id="statRating">—</strong><small id="ratingCount">Chưa có đánh giá</small><i>☆</i></article>
+          </section>
+
+          <div class="content-grid">
+            <div class="main-column">
+              <section id="createSection" class="panel create-panel hidden workspace-panel" data-view="submit">
+                <div class="section-heading">
+                  <div><span class="eyebrow">KHI CẦN IT CAN THIỆP</span><h2>Gửi yêu cầu có theo dõi</h2></div>
+                  <span class="step-mark">01</span>
+                </div>
+                <form id="ticketForm" class="ticket-form">
+                  <label class="field wide-field" for="ticketTitle">Tiêu đề sự cố <span>*</span>
+                    <input id="ticketTitle" name="title" minlength="5" maxlength="160" placeholder="Ví dụ: Không thể kết nối VPN từ sáng nay" required />
+                  </label>
+                  <label class="field" for="ticketCategory">Danh mục
+                    <select id="ticketCategory" name="category">
+                      <option value="network">Mạng & VPN</option>
+                      <option value="hardware">Phần cứng</option>
+                      <option value="software">Phần mềm</option>
+                      <option value="security">Tài khoản & bảo mật</option>
+                      <option value="general">Khác</option>
+                    </select>
+                  </label>
+                  <label class="field" for="ticketPriority">Mức ưu tiên
+                    <select id="ticketPriority" name="priority">
+                      <option value="low">Thấp · SLA 48 giờ</option>
+                      <option value="medium" selected>Thông thường · SLA 24 giờ</option>
+                      <option value="high">Cao · SLA 8 giờ</option>
+                      <option value="urgent">Khẩn cấp · SLA 2 giờ</option>
+                    </select>
+                  </label>
+                  <label class="field wide-field" for="ticketDescription">Mô tả chi tiết <span>*</span>
+                    <textarea id="ticketDescription" name="description" rows="4" minlength="10" maxlength="5000" placeholder="Mô tả điều đã xảy ra, thông báo lỗi và các bước bạn đã thử..." required></textarea>
+                    <small>Không nhập mật khẩu hoặc thông tin nhạy cảm.</small>
+                  </label>
+                  <div class="form-actions wide-field">
+                    <button id="draftFromRagBtn" class="button button-soft" type="button">✦ Hỏi hướng dẫn trước</button>
+                    <button class="button button-primary" type="submit">Gửi yêu cầu <span>→</span></button>
+                  </div>
+                  <p id="ticketMessage" class="form-message wide-field" role="status"></p>
+                </form>
+              </section>
+
+              <section id="ticketPanel" class="panel ticket-panel workspace-panel" data-view="dashboard tickets">
+                <div class="section-heading ticket-heading">
+                  <div><span id="ticketEyebrow" class="eyebrow">THEO DÕI</span><h2 id="ticketHeading">Yêu cầu của tôi</h2></div>
+                  <span id="ticketCount" class="count-pill">0 yêu cầu</span>
+                </div>
+                <div class="filters">
+                  <label class="search-box"><span>⌕</span><input id="ticketSearch" type="search" placeholder="Tìm yêu cầu..." aria-label="Tìm yêu cầu" /></label>
+                  <select id="statusFilter" aria-label="Lọc theo trạng thái">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="new">Mới</option>
+                    <option value="in_progress">Đang xử lý</option>
+                    <option value="pending_waiting_user">Chờ nhân viên</option>
+                    <option value="resolved">Đã giải quyết</option>
+                    <option value="closed">Đã đóng</option>
+                    <option value="escalated">Chuyển cấp</option>
+                  </select>
+                  <select id="categoryFilter" aria-label="Lọc theo danh mục">
+                    <option value="">Tất cả danh mục</option>
+                    <option value="network">Mạng & VPN</option>
+                    <option value="hardware">Phần cứng</option>
+                    <option value="software">Phần mềm</option>
+                    <option value="security">Tài khoản & bảo mật</option>
+                    <option value="general">Khác</option>
+                  </select>
+                  <input id="fromDateFilter" type="date" aria-label="Từ ngày" />
+                  <input id="toDateFilter" type="date" aria-label="Đến ngày" />
+                </div>
+                <div id="ticketList" class="ticket-list" aria-live="polite"></div>
+              </section>
+            </div>
+
+            <aside class="side-column">
+              <section id="assistantPanel" class="panel assistant-panel workspace-panel" data-view="assistant">
+                <div class="assistant-heading">
+                  <div class="assistant-icon">✦</div>
+                  <div><span class="eyebrow">TỰ PHỤC VỤ TRƯỚC</span><h2 id="assistantTitle">Tìm cách xử lý trước</h2></div>
+                </div>
+                <p id="assistantIntro" class="assistant-intro">Mô tả lỗi để tìm hướng dẫn nội bộ. Nếu chưa xử lý được, chuyển tiếp thành yêu cầu IT.</p>
+                <form id="ragForm">
+                  <label class="sr-only" for="ragQuestion">Câu hỏi về sự cố</label>
+                  <textarea id="ragQuestion" rows="4" maxlength="2000" placeholder="Ví dụ: Tôi không kết nối được Wi-Fi..."></textarea>
+                  <button class="button button-dark button-wide" type="submit">Tra cứu hướng dẫn <span>→</span></button>
+                </form>
+                <div class="chat-tools">
+                  <strong>Câu hỏi thường gặp</strong>
+                  <button id="newChatBtn" class="button button-quiet" type="button">Phiên mới</button>
+                </div>
+                <div id="popularQuestions" class="popular-questions" aria-label="Câu hỏi thường gặp">
+                  <button type="button" data-question="Tôi không kết nối được VPN FortiClient">Không kết nối được VPN</button>
+                  <button type="button" data-question="Máy in bị kẹt lệnh, tôi cần kiểm tra gì?">Máy in bị kẹt lệnh</button>
+                  <button type="button" data-question="Outlook không nhận được email">Outlook không nhận email</button>
+                  <button type="button" data-question="Không truy cập được thư mục dùng chung">Không vào được thư mục dùng chung</button>
+                  <button type="button" data-question="Tài khoản MFA không xác thực được">MFA không xác thực</button>
+                  <button type="button" data-question="Wi-Fi văn phòng không kết nối được">Wi-Fi không kết nối</button>
+                </div>
+                <details class="chat-history">
+                  <summary>Lịch sử tra cứu</summary>
+                  <div id="chatHistoryList" class="chat-history-list"><span class="muted">Chưa có hội thoại.</span></div>
+                </details>
+                <p class="disclaimer">Chỉ tra runbook nội bộ, không gửi câu hỏi tới dịch vụ LLM bên ngoài. Kiểm tra nguồn trước khi làm theo.</p>
+                <div id="ragResult" class="rag-result hidden" aria-live="polite" tabindex="-1"></div>
+              </section>
+
+              <section id="knowledgePanel" class="panel knowledge-panel hidden workspace-panel" data-view="knowledge">
+                <div class="section-heading compact-heading">
+                  <div><span class="eyebrow">THƯ VIỆN</span><h2>Chủ đề hỗ trợ</h2></div>
+                  <span id="knowledgeCount" class="count-pill">—</span>
+                </div>
+                <label class="search-box knowledge-search"><span>⌕</span><input id="knowledgeSearch" type="search" placeholder="Tìm tài liệu..." aria-label="Tìm tài liệu tri thức" /></label>
+                <div id="knowledgeList" class="knowledge-list"><span class="muted">Đang tải tài liệu...</span></div>
+                <form id="knowledgeUploadForm" class="knowledge-upload hidden">
+                  <label class="field" for="knowledgeTitle">Nạp runbook Markdown
+                    <input id="knowledgeTitle" name="title" minlength="3" maxlength="120" placeholder="Tên chủ đề tài liệu" required />
+                  </label>
+                  <label class="field" for="knowledgeFile">Tệp .md (tối đa 256 KiB)
+                    <input id="knowledgeFile" name="document" type="file" accept=".md,text/markdown,text/plain" required />
+                  </label>
+                  <button class="button button-soft" type="submit">Thêm vào Knowledge Base</button>
+                  <p id="knowledgeMessage" class="form-message" role="status"></p>
+                </form>
+                <div class="knowledge-footer"><span class="online-dot"></span> Tri thức nội bộ · Markdown</div>
+              </section>
+
+              <section id="adminUsersPanel" class="panel knowledge-panel hidden workspace-panel" data-view="users">
+                <div class="section-heading compact-heading">
+                  <div><span class="eyebrow">QUẢN TRỊ</span><h2>Tài khoản nội bộ</h2></div>
+                </div>
+                <div id="adminUserList" class="admin-user-list"></div>
+                <form id="adminUserForm" class="knowledge-upload">
+                  <label class="field" for="newUserFullName">Họ tên
+                    <input id="newUserFullName" name="full_name" maxlength="120" />
+                  </label>
+                  <label class="field" for="newUsername">Tên đăng nhập
+                    <input id="newUsername" name="username" minlength="3" maxlength="50" pattern="[a-zA-Z0-9._-]+" required />
+                  </label>
+                  <label class="field" for="newUserEmail">Email
+                    <input id="newUserEmail" name="email" type="email" maxlength="254" />
+                  </label>
+                  <label class="field" for="newUserDepartment">Phòng ban
+                    <input id="newUserDepartment" name="department" maxlength="120" />
+                  </label>
+                  <label class="field" for="newUserPhone">Điện thoại nội bộ
+                    <input id="newUserPhone" name="phone" maxlength="40" />
+                  </label>
+                  <label class="field" for="newUserPassword">Mật khẩu tạm (tối thiểu 12 ký tự)
+                    <input id="newUserPassword" name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required />
+                  </label>
+                  <label class="field" for="newUserRole">Vai trò
+                    <select id="newUserRole" name="role">
+                      <option value="user">Nhân viên</option>
+                      <option value="agent">IT Support</option>
+                      <option value="admin">Quản trị IT</option>
+                    </select>
+                  </label>
+                  <button class="button button-soft" type="submit">Tạo tài khoản</button>
+                  <p id="adminUserMessage" class="form-message" role="status"></p>
+                </form>
+              </section>
+              <section id="adminReportsPanel" class="panel knowledge-panel hidden workspace-panel" data-view="reports">
+                <div class="section-heading compact-heading">
+                  <div><span class="eyebrow">BÁO CÁO</span><h2>Hiệu suất Agent</h2></div>
+                  <button id="exportReportBtn" class="button button-soft" type="button">Tải CSV</button>
+                </div>
+                <h3 class="report-subheading">Ticket tạo trong 30 ngày gần đây</h3>
+                <div id="dailyTrend" class="daily-trend"></div>
+                <h3 class="report-subheading">Phân bố danh mục</h3>
+                <div id="categoryReport" class="category-report"></div>
+                <div id="agentReportList" class="agent-report-list"></div>
+                <div id="recentActivity" class="recent-activity"></div>
+              </section>
+              <section id="agentStatsPanel" class="panel knowledge-panel hidden workspace-panel" data-view="personal">
+                <div class="section-heading compact-heading">
+                  <div><span class="eyebrow">HIỆU SUẤT CÁ NHÂN</span><h2>Thống kê ticket của bạn</h2></div>
+                </div>
+                <div class="agent-personal-stats">
+                  <article><span>Được phân công</span><strong id="agentAssigned">—</strong></article>
+                  <article><span>Đã giải quyết</span><strong id="agentResolved">—</strong></article>
+                  <article><span>Thời gian TB</span><strong id="agentResolution">—</strong></article>
+                  <article><span>Đúng SLA</span><strong id="agentSla">—</strong></article>
+                  <article><span>Quá hạn hiện tại</span><strong id="agentOverdue">—</strong></article>
+                </div>
+                <div id="agentCategoryStats" class="agent-report-list"></div>
+                <p class="muted">Số liệu tính theo ticket đang được gán cho tài khoản hiện tại; chưa chuẩn hóa theo ca trực/ngày làm việc.</p>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </main>
+      <footer class="footer"><span>HELPDESK RAG · PROTOTYPE HỌC THUẬT</span><span>Hướng dẫn tri thức không thay thế xác nhận của IT.</span></footer>
+    </div>
+    <script src="/static/app.js?v=20261005-6"></script>
+  </body>
+</html>

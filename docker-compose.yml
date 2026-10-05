@@ -1,0 +1,17 @@
+services:
+  helpdesk:
+    build: .
+    container_name: helpdesk-rag
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      HELPDESK_DB_PATH: /app/data/helpdesk.sqlite3
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    volumes:
+      - helpdesk-data:/app/data
+
+volumes:
+  helpdesk-data:

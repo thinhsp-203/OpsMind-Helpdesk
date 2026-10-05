@@ -17,3 +17,6 @@
 Chuyển IT Messaging nếu Outlook Web cũng lỗi, nhiều người bị ảnh hưởng, mailbox đầy hoặc xuất hiện cảnh báo dịch vụ.
 
 > Không yêu cầu người dùng gửi mật khẩu, mã MFA hoặc nội dung email nhạy cảm.
+
+## Source and scope
+- Microsoft Support, [Outlook for Windows not responding, hangs, freezes, or stops working](https://support.microsoft.com/en-us/outlook/getstarted/outlook-for-windows-not-responding-hangs-freezes-or-stops-working), accessed 2026-10-05. Covers waiting for background processes, Office/Windows updates, Safe Mode for add-in diagnosis, profile checks, data-file repair, and Office repair. Profile or data-file repair should be reviewed by IT first.

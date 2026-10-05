@@ -16,7 +16,7 @@
 | FR-08 / US-02 — Truy xuất tri thức, nguồn, từ chối | `app/rag.py`: BM25, mỗi tài liệu tối đa một đoạn, nguồn và ngưỡng relevance | `test_rag_finds_vietnamese_printer_and_vpn_sources`, `test_rag_results_do_not_repeat_the_same_runbook`, `test_rag_refuses_questions_without_relevant_knowledge`, `tests/test_rag_dataset.py` | Ground truth do IT xác nhận; faithfulness/answer relevance; paraphrase và tập ngoài phạm vi lớn hơn |
 | FR-15 / US-08 — Auto-triage có xác nhận | Danh mục từ runbook đầu; ưu tiên từ marker luật cố định; form chỉ được điền khi người gửi bấm bàn giao | `test_rag_finds_vietnamese_printer_and_vpn_sources`, `test_triage_suggests_urgent_for_broad_impact_but_never_auto_confirms`, `test_rag_refuses_questions_without_relevant_knowledge` | Đánh giá precision của phân loại/priority trên ticket đã được IT gán nhãn; browser E2E xác nhận người dùng sửa được trước gửi |
 | FR-16 — RAG Assist theo ticket | Nút trên từng ticket gửi tiêu đề/mô tả sang truy xuất; Agent/Admin chủ động chèn trích đoạn có nguồn vào ô bình luận; không tự gửi | API retrieval tests; JS syntax check | Browser E2E xác nhận đúng ticket được gắn ngữ cảnh, bản nháp sửa được và không tự gửi; IT đánh giá độ hữu ích của nguồn |
-| FR-17 — Lịch sử/feedback RAG | Session/message lưu SQLite, nguồn và feedback; API truy vấn session theo chủ sở hữu | `test_rag_chat_history_and_feedback_are_scoped_to_the_user` | Browser E2E, chính sách retention và thử nghiệm usability |
+| FR-17 — Lịch sử/feedback RAG | Session/message lưu trong backend database cấu hình (SQLite/PostgreSQL), nguồn và feedback; API truy vấn session theo chủ sở hữu | `test_rag_chat_history_and_feedback_are_scoped_to_the_user` | Browser E2E, chính sách retention và thử nghiệm usability |
 | FR-18 — Attachment/rating | API lưu PNG/JPG/TXT/LOG ≤10 MiB; kiểm tra quyền trước download; ticket được đánh giá sau resolved | `test_ticket_attachment_upload_download_and_access_control`, `test_ticket_rating_requires_resolved_owned_ticket_and_updates_analytics` | Malware scan, kiểm thử browser, retention/backup được phê duyệt |
 | FR-19/20 — Quản trị user/KB | Admin chỉnh hồ sơ/role/active; khóa account chặn login; Markdown có delete/reindex | `test_admin_can_edit_profile_role_and_lock_accounts`, `test_admin_can_reindex_and_delete_knowledge_document` | Email/SSO, audit thay đổi role/account, phê duyệt IT nội dung runbook |
 | FR-21 — Dashboard/report | Tổng hợp ticket, SLA, resolution duration, feedback, daily/category, Agent; export CSV chỉ Admin | `test_analytics_and_ticket_filters`, `test_admin_can_export_ticket_report_only` | KPI thật và đối soát báo cáo; chưa tính self-service outcome hoặc export PDF/XLSX |
@@ -24,6 +24,8 @@
 | FR-11/12 / US-06 — Sửa và lưu trữ mềm | `PUT /tickets/{id}`, `DELETE /tickets/{id}` | `test_owner_can_edit_new_ticket_and_priority_recalculates_sla`, `test_ticket_edit_is_restricted_after_processing_starts`, `test_admin_archives_ticket_without_removing_audit` | E2E quyền hiển thị nút/empty-state và kiểm soát retention |
 | FR-13/14 / US-07 — Quản trị user/KB | `/admin/users`, `POST /knowledge`; validation, PBKDF2, refresh retrieval cache | `test_admin_can_create_user_without_exposing_password`, `test_admin_can_ingest_valid_markdown_and_retriever_refreshes`, `test_non_admin_cannot_ingest_knowledge_and_non_markdown_is_rejected`, `test_knowledge_upload_rejects_invalid_documents` | Kiểm thử UI browser; phê duyệt chuyên gia cho runbook; đổi/reset mật khẩu |
 | UX — Tra cứu → bàn giao | UI tự cuộn tới kết quả; nút handoff điền nội dung, category và priority gợi ý; giá trị vẫn sửa được trước khi gửi; vai trò có dashboard khác nhau | Syntax check JavaScript; API triage tests; chưa có browser automation | E2E trên trình duyệt, task timing/usability, so sánh cùng tác vụ trên kênh hiện tại |
+| FR-22 — Giao diện song ngữ | Bản dịch Việt/Anh, nút đổi ngôn ngữ và lưu lựa chọn qua trình duyệt; không dịch nội dung người dùng/runbook | `tests/test_i18n.js`; Node syntax checks; kiểm tra độ phủ text tĩnh trong `index.html` | Browser E2E với cả hai locale và kiểm thử hỗ trợ tiếp cận |
+| FR-23 / NFR-10 — PostgreSQL | `DATABASE_URL` chọn PostgreSQL; SQLite là mặc định dev/test; Compose chạy PostgreSQL 16 và các named volume | `test_postgres_schema_is_idempotent_and_ticket_lifecycle_works` trong CI service PostgreSQL; suite SQLite | Compose smoke test tại môi trường có Docker; migration/backup/restore trước production |
 | Health / migration | `/health`; migration archive, status, user profile, chat và attachment metadata; non-demo startup guard | `test_health_reports_database_unavailability`, `test_database_migration_adds_archive_timestamp_to_existing_ticket_table`, `test_non_demo_startup_refuses_unchanged_seeded_demo_credentials`, `test_initial_non_demo_startup_creates_only_provisioned_admin` | Test khôi phục backup, lỗi đĩa/permissions và nâng cấp có dữ liệu production |
 
 ## 2. Lệnh kiểm tra lặp lại
@@ -31,6 +33,8 @@
 ```powershell
 py -m ruff check app tests scripts
 node --check app/static/app.js
+node --check app/static/i18n.js
+node tests/test_i18n.js
 py -m compileall -q app tests scripts
 py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
 py -m scripts.evaluate_rag

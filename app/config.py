@@ -13,7 +13,12 @@ if TOKEN_EXPIRE_MINUTES < 1:
     raise RuntimeError("TOKEN_EXPIRE_MINUTES must be positive.")
 INITIAL_ADMIN_USERNAME = os.getenv("INITIAL_ADMIN_USERNAME", "").strip()
 INITIAL_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DATABASE_PATH = os.getenv(
     "HELPDESK_DB_PATH",
     str(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "helpdesk.sqlite3")),
+)
+STORAGE_PATH = os.getenv(
+    "HELPDESK_STORAGE_PATH",
+    str(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")),
 )

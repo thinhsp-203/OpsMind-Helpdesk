@@ -41,6 +41,8 @@ Hệ thống hỗ trợ nhân viên tra cứu hướng dẫn CNTT và gửi yêu
 | FR-19 | Admin tạo tài khoản có hồ sơ cơ bản, đổi vai trò và khóa/mở tài khoản; tài khoản bị khóa không đăng nhập hoặc nhận phân công; hệ thống không cho khóa/hạ quyền Admin cuối cùng hoặc tự khóa Admin đang đăng nhập. |
 | FR-20 | Admin tìm, nạp, xóa và làm mới chỉ mục tài liệu Markdown; hệ thống không nhận PDF/DOCX trong prototype. |
 | FR-21 | Agent xem thống kê theo ticket được giao; Admin xem tổng quan, xu hướng/danh mục, thống kê Agent, rating và xuất báo cáo CSV. Chưa có tỷ lệ tự giải quyết nếu không ghi nhận người dùng xác nhận outcome. |
+| FR-22 | Người dùng đổi giao diện giữa tiếng Việt và tiếng Anh; lựa chọn lưu trong trình duyệt. Nội dung ticket, bình luận và runbook giữ nguyên ngôn ngữ nhập. |
+| FR-23 | Ứng dụng dùng PostgreSQL khi có `DATABASE_URL`; khi không cấu hình URL, local development/test dùng SQLite. Docker Compose cung cấp PostgreSQL có persistence. |
 
 ## 4. Acceptance Criteria (Given / When / Then)
 
@@ -119,6 +121,7 @@ Các con số sau là **mục tiêu dự kiến trong kế hoạch**, không ph�
 | NFR-07 | Giao diện dùng được ở chiều rộng điện thoại và desktop | Kiểm tra thủ công ở viewport 375px và 1280px |
 | NFR-08 | Tệp tri thức tối đa 256 KiB; mật khẩu tạo mới tối thiểu 12 ký tự | Kiểm thử API biên kích thước/encoding và validation; không xem đây là hardening đủ cho Internet |
 | NFR-09 | Tệp ticket chỉ PNG/JPG/TXT/LOG, tối đa 10 MiB/tệp | Kiểm thử phần mở rộng, dung lượng, quyền upload/download; vẫn cần antivirus scan trước dùng thật |
+| NFR-10 | PostgreSQL là backend trong cấu hình Compose; SQLite vẫn dùng được cho local test | PostgreSQL integration test trong CI và smoke test Compose; chưa phải kiểm chứng HA/production |
 
 ## 6. Quy tắc nghiệp vụ
 
@@ -133,7 +136,9 @@ Các con số sau là **mục tiêu dự kiến trong kế hoạch**, không ph�
 - RAG Assist của Agent chỉ chèn các trích đoạn tìm thấy và thông tin nguồn vào bản nháp phản hồi; Agent chịu trách nhiệm xác minh, chỉnh sửa và chủ động gửi.
 - RAG chỉ trích xuất nguồn tri thức nội bộ đã nạp; không thay thế xác nhận của IT.
 - Attachment prototype giới hạn PNG/JPG/TXT/LOG đến 10 MiB, chưa có malware scanning; chỉ người dùng có quyền với ticket tải được tệp.
+- Lựa chọn ngôn ngữ chỉ áp dụng cho giao diện, không dịch nội dung người dùng hoặc runbook.
+- PostgreSQL hỗ trợ backend demo Compose; chưa có migration dữ liệu SQLite cũ hoặc quy trình upgrade production.
 
 ## 7. Ngoài phạm vi phiên bản demo
 
-Email/SSO, đổi/reset mật khẩu, thông báo push/email, tự đóng ticket sau 72 giờ, lịch làm việc/cấu hình SLA, PDF/DOCX ingestion, PostgreSQL/pgvector, LLM sinh câu trả lời, antivirus scan, PDF/XLSX report, benchmark quy mô lớn, backup/monitoring production và triển khai cloud thật.
+Email/SSO, đổi/reset mật khẩu, thông báo push/email, tự đóng ticket sau 72 giờ, lịch làm việc/cấu hình SLA, PDF/DOCX ingestion, pgvector, LLM sinh câu trả lời, antivirus scan, PDF/XLSX report, benchmark quy mô lớn, backup/monitoring production và triển khai cloud thật.

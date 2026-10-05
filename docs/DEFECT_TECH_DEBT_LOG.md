@@ -10,7 +10,7 @@
 | HD-02 | Cao | Chuyển sang `DEMO_MODE=false` trên DB còn credential demo có thể giữ nguyên user/password mẫu | Startup từ chối DB còn credential mặc định; hỗ trợ bootstrap Admin trên DB rỗng | `tests/test_store.py` |
 | HD-03 | Trung bình | Admin không có UI để tạo tài khoản/nạp tri thức; RAG phải dựa trên file có sẵn | Thêm UI/API quản trị user và upload Markdown giới hạn/kiểm tra; làm mới cache retrieval | API tests cho quyền, validation, duplicate, cache refresh |
 | HD-04 | Trung bình | Ticket thiếu thao tác sửa và lưu trữ có audit | Thêm edit có ràng buộc trạng thái; archive mềm chỉ Admin; giữ audit | API tests edit/state/ACL/archive/analytics |
-| HD-05 | Thấp | Health check trước đây chỉ phản ánh route chạy, không thử kết nối SQLite | `/health` trả 503 khi DB không sẵn sàng | `test_health_reports_database_unavailability` |
+| HD-05 | Thấp | Health check trước đây chỉ phản ánh route chạy, không thử kết nối database | `/health` trả 503 khi SQLite/PostgreSQL không sẵn sàng | `test_health_reports_database_unavailability` |
 | HD-06 | Thấp | Tên file Markdown Unicode không tạo slug có thể gây lỗi nội bộ | Trả lỗi validation 422 thay vì lỗi 500 | `test_knowledge_upload_rejects_invalid_documents` |
 | HD-07 | Trung bình | Trang đăng nhập hiển thị thông tin demo cả khi cấu hình non-demo | Ẩn thông tin demo theo cấu hình công khai; bỏ điền sẵn user/password | API test kiểm tra `/config` và nội dung HTML; chưa có browser E2E |
 | HD-08 | Trung bình | Gửi ticket thành công rồi JavaScript đọc `event.currentTarget` sau `await`, gây `Cannot read properties of null (reading 'reset')` | Lưu form element trước khi gửi request; dùng tham chiếu đã lưu để reset | Regression được rà theo luồng submit; browser E2E vẫn cần bổ sung |
@@ -28,7 +28,7 @@
 | TD-04 | P1 | Chưa có reset mật khẩu, role/account-change audit, token refresh/revocation; khóa hoặc đổi quyền được API áp dụng ở request tiếp theo nhưng chưa có UX phiên hết hạn | Thiết kế vòng đời tài khoản/token, audit thay đổi và kiểm thử UX/session invalidation |
 | TD-05 | P2 | RAG là BM25 lexical baseline; bộ synonym/tập 30 câu nhỏ, dễ thiên lệch từ khóa | Chuyên gia duyệt KB/ground truth; đánh giá paraphrase, typo, out-of-scope và câu trả lời có rubric |
 | TD-06 | P2 | SLA theo giờ lịch; đổi ưu tiên tính lại hạn từ lúc sửa, chưa có lịch làm việc/holiday | Chốt business rule với stakeholder và bổ sung lịch làm việc nếu cần |
-| TD-07 | P2 | SQLite đơn máy và tài liệu KB local; không có versioning/rollback/quy trình review nội dung | Định nghĩa quản trị nội dung, backup/version và quyền phê duyệt |
+| TD-07 | P2 | PostgreSQL Compose và SQLite local đã hỗ trợ lưu bền vững, nhưng chưa có migration dữ liệu, backup/restore, KB versioning/rollback hay quy trình review nội dung | Định nghĩa quản trị nội dung, migration/backup/version và quyền phê duyệt trước pilot |
 | TD-08 | P2 | CI chỉ cấu hình lint/test/retrieval/Docker build; chưa có workflow deploy hoặc run thành công được xác nhận | Repository/runner thật có pipeline run, artifact và staging approval |
 | TD-09 | P3 | Chưa có test tải 50 RPS; con số trong NFR vẫn là mục tiêu chưa đo | Benchmark với cấu hình/phương pháp được duyệt và báo cáo error rate/latency |
 | TD-10 | P2 | CI có static source lint nhóm `S`, chưa có dependency/image vulnerability audit | Bổ sung scanner, xử lý findings và giữ report theo run CI |

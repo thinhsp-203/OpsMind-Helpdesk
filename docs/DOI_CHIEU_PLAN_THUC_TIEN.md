@@ -25,7 +25,7 @@
 | Tuần 5 — RAG và ký cam kết | BM25 local, trích đoạn/tên file và abstain; CSV 30 câu nháp, baseline hit@3 28/28 và abstain 2/2 | **Baseline kỹ thuật nội bộ; ground truth chưa được chuyên gia độc lập duyệt; G1 chưa ký** | Người IT xác nhận bộ câu hỏi/đáp án; đánh giá retrieval và câu trả lời riêng; lưu output/phiên bản |
 | Tuần 6 — Frontend | Web UI phân biệt màn Nhân viên/Agent/Admin; tra cứu tự cuộn tới kết quả và chuyển tiếp nội dung sang ticket; Admin nạp KB/quản lý user | **Có UI demo; chưa có usability test** | Kiểm tra mobile/desktop và kịch bản với người dùng thật; xác nhận tiện ích so với kênh chat bằng tác vụ đối chứng |
 | Tuần 7 — CI/CD/staging | CI YAML có Ruff (bao gồm nhóm rule bảo mật), pytest/coverage, retrieval baseline và Docker build; chưa có deploy workflow | **Cấu hình pipeline đã có; GitHub Actions chưa được chứng minh đã chạy; chưa deploy staging** | Push vào repo, lưu workflow run thật; deploy staging an toàn và lưu URL/log |
-| Tuần 8 — test, RAG evaluation | 41 tests; backend Python coverage local **91%**; retrieval evaluation tự chạy trên tập draft | **Test tự động có; faithfulness/answer relevance/Ragas chưa đo** | Reviewer kiểm tra ground truth; thực nghiệm RAG có cấu hình và người chấm; nêu phạm vi coverage |
+| Tuần 8 — test, RAG evaluation | 41 pytest pass, 1 PostgreSQL integration test skip local; backend Python coverage **90%**; retrieval evaluation tự chạy trên tập draft | **Test tự động có; PostgreSQL integration được cấu hình chạy trên CI, chưa xác minh thực tế; faithfulness/answer relevance/Ragas chưa đo** | Reviewer kiểm tra ground truth; thực nghiệm RAG có cấu hình và người chấm; nêu phạm vi coverage |
 | Tuần 9 — 10 người, SUS ≥80, vòng cải tiến | Chưa có dữ liệu người tham gia hoặc SUS | **Chưa làm** | Tổ chức task test ≥10 người theo plan nếu khả thi, thu SUS/hoàn thành task, cải tiến rồi đo lại |
 | Tuần 10 — luận văn, plagiarism, bảo vệ | Đã có tài liệu nền; chưa có luận văn hoàn chỉnh, Turnitin/DoIT hay minh chứng hội đồng | **Chưa làm** | Hoàn thành sau khi có kết quả thật; trích nguồn, kiểm tra đạo văn theo quy định trường |
 
@@ -35,7 +35,7 @@
 
 - “RAG Helpdesk tốt hơn Jira/GLPI/ServiceNow”, “chính xác hơn” hoặc “rẻ hơn” — chưa có benchmark cùng dữ liệu/tác vụ/tổng chi phí.
 - “AI giải quyết được 60% sự cố” — hiện chưa có user study, session outcome label hoặc xác nhận ticket deflection.
-- “Đảm bảo riêng tư/production-ready” — chạy local và không gọi API LLM giúp giảm phụ thuộc ra ngoài trong demo, nhưng còn dữ liệu mẫu, SQLite và chưa có hardening/backup/SSO; tài khoản mẫu chỉ dùng khi bật demo mode.
+- “Đảm bảo riêng tư/production-ready” — không gọi API LLM giúp giảm phụ thuộc ra ngoài trong demo; PostgreSQL Compose chưa có hardening/backup/SSO hoặc bằng chứng production; tài khoản mẫu chỉ dùng khi bật demo mode.
 - “Đã đạt faithfulness 0.85, 50 RPS, uptime 99%, SUS 80” — các metric này chưa đo.
 
 ### Có thể nói, kèm giới hạn

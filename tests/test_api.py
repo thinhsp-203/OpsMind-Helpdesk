@@ -15,6 +15,7 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def clean_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(store, "_database_path", tmp_path / "test-helpdesk.sqlite3")
+    monkeypatch.setattr(store, "_database_url", "")
     store.initialize_store()
     store.reset_store()
     load_knowledge_base.cache_clear()

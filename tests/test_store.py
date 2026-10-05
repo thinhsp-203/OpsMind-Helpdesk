@@ -10,6 +10,7 @@ from app import store
 def isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     database = tmp_path / "store.sqlite3"
     monkeypatch.setattr(store, "_database_path", database)
+    monkeypatch.setattr(store, "_database_url", "")
     return database
 
 

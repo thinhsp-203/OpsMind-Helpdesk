@@ -66,7 +66,7 @@ So sánh dưới đây chỉ đối chiếu **phạm vi/định hướng đượ
 |---|---|---|---|---|
 | Định hướng xác nhận được | Dịch vụ quản lý service cho startup đến enterprise; nhà cung cấp nêu các gói Free/Standard/Premium/Enterprise và tùy chọn Data Center tự quản lý | Bộ giải pháp IT/asset; trang chính thức mô tả quản lý inventory máy tính, thông tin thiết bị, vị trí và người dùng liên quan | Được đưa vào plan làm đối chứng ITSM doanh nghiệp; trang chính thức bị chặn 403 trong lần rà soát này, nên chưa xác nhận chi tiết tính năng từ nguồn gốc | Mẫu học thuật hẹp: ticket + SLA cơ bản + truy xuất runbook Markdown |
 | Tri thức/AI | Trang sản phẩm hiện nêu tính năng AI cho alert grouping/incident response; không suy rộng thành kết luận về mọi tính năng KB/gói | Có chức năng quản lý tài sản; cần thử phiên bản/plugin cụ thể để kết luận về workflow tri thức liên quan | Chưa xác nhận phiên bản/gói và feature AI/knowledge trong lần tra cứu này | BM25 local, đoạn trích dẫn, ngưỡng từ chối; không có LLM; Admin có thể nạp Markdown giới hạn |
-| Vận hành/helpdesk | Sản phẩm thương mại có nhiều gói/tùy chọn triển khai; cần đánh giá theo gói và môi trường cụ thể | Khả năng quản lý tài sản được xác nhận; triển khai và cấu hình thực tế cần thử trên phiên bản được chọn | Cần kiểm chứng từ tài liệu chính thức/tenant demo trước khi lập luận chi tiết | SQLite, tài khoản mẫu chỉ khi bật demo mode, Admin có giao diện tạo user/nạp KB; một instance local, không SSO/backup/HA |
+| Vận hành/helpdesk | Sản phẩm thương mại có nhiều gói/tùy chọn triển khai; cần đánh giá theo gói và môi trường cụ thể | Khả năng quản lý tài sản được xác nhận; triển khai và cấu hình thực tế cần thử trên phiên bản được chọn | Cần kiểm chứng từ tài liệu chính thức/tenant demo trước khi lập luận chi tiết | PostgreSQL trong Compose hoặc SQLite khi chạy local; tài khoản mẫu chỉ khi bật demo mode; Admin tạo user/nạp KB; chưa có SSO/backup/HA |
 | Điểm phù hợp của prototype | Có thể nghiên cứu cách rút gọn một luồng cho bài tập hoặc thử nghiệm nhanh; không chứng minh thay thế JSM | Có thể nghiên cứu KB/luồng hẹp bên cạnh công cụ ITSM hiện có; GLPI có phạm vi asset mà prototype chưa có | Không cạnh tranh về độ rộng/độ trưởng thành; dùng làm hệ tham chiếu doanh nghiệp | Có thể phù hợp *nếu khảo sát xác nhận* nhóm nhỏ cần bản thử tiếng Việt, dữ liệu runbook nội bộ gọn và muốn kiểm soát mã nguồn |
 | Bằng chứng so sánh hiện có | Đọc trang tính năng/giới thiệu công khai; chưa cài và benchmark | Đọc trang tính năng chính thức; chưa cài và benchmark | Link tham chiếu trong plan; truy cập nguồn bị 403 | Bộ test/coverage local và baseline retrieval tự soạn 30 câu; chưa khảo sát triển khai |
 
@@ -106,7 +106,7 @@ Kế hoạch ban đầu đề xuất các mục tiêu như self-service ≥60%, 
 
 **Trong phạm vi prototype:** đăng nhập ba vai trò, Admin tạo tài khoản và nạp runbook Markdown, ticket create/read/update, lưu trữ mềm Admin, phân công Agent, bình luận, FSM, SLA theo giờ lịch, audit log, lọc ticket, analytics cơ bản, truy xuất Markdown và web UI.
 
-**Ngoài phạm vi/giới hạn hiện tại:** tích hợp SSO/email/AD, malware scanning và retention cho attachment, lịch làm việc/ngày nghỉ trong SLA, vector database, LLM sinh câu trả lời, quản lý nhiều tenant, HA/backup/monitoring production, triển khai staging công khai và đánh giá người dùng thực tế. Attachment hiện giới hạn PNG/JPG/TXT/LOG đến 10 MiB và được phục vụ qua API có kiểm tra quyền. KB hiện có 9 runbook, thấp hơn mục tiêu 30–50 tài liệu trong plan. SQLite cùng tài khoản demo chỉ dành cho học tập và trình diễn cục bộ.
+**Ngoài phạm vi/giới hạn hiện tại:** tích hợp SSO/email/AD, malware scanning và retention cho attachment, lịch làm việc/ngày nghỉ trong SLA, vector database, LLM sinh câu trả lời, quản lý nhiều tenant, HA/backup/monitoring production, migration SQLite→PostgreSQL, triển khai staging công khai và đánh giá người dùng thực tế. Attachment hiện giới hạn PNG/JPG/TXT/LOG đến 10 MiB và được phục vụ qua API có kiểm tra quyền. KB hiện có 9 runbook, thấp hơn mục tiêu 30–50 tài liệu trong plan. Tài khoản demo chỉ dành cho học tập và trình diễn; cấu hình PostgreSQL Compose chưa được harden cho production.
 
 ## 7. Phương pháp khảo sát nhu cầu
 
@@ -127,7 +127,7 @@ Thực hiện khảo sát ngắn với nhân viên văn phòng và IT Support. K
 
 ## 8. Đánh giá mức độ thực tiễn hiện tại
 
-**Có tính ứng dụng ở mức proof-of-concept:** các luồng ticket và runbook bám vào nhóm sự cố văn phòng; prototype chạy được, lưu ticket qua SQLite và minh họa được truy vấn có nguồn → tạo ticket → IT cập nhật.
+**Có tính ứng dụng ở mức proof-of-concept:** các luồng ticket và runbook bám vào nhóm sự cố văn phòng; prototype chạy được, lưu ticket qua PostgreSQL trong Compose hoặc SQLite local và minh họa được truy vấn có nguồn → tạo ticket → IT cập nhật.
 
 **Chưa đủ bằng chứng để kết luận hữu ích trong doanh nghiệp:** chưa có đối tác/người dùng nghiệp vụ xác nhận pain point, chưa có khảo sát nhu cầu, chưa triển khai vào quy trình thật, chưa đo tỷ lệ tự xử lý/ticket deflection, MTTR, task completion hay SUS. Baseline retrieval được tạo và chạy trong nhóm; không phải thử nghiệm người dùng.
 

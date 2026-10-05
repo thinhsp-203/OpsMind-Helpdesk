@@ -44,6 +44,7 @@ button { cursor: pointer; }
 .button-dark:hover { background: #233e6b; }
 .button-soft { border: 1px solid #dbe5ff; color: #3157c8; background: #f3f6ff; }
 .button-quiet { border: 1px solid #dfe6ef; color: #5c6b82; background: white; padding: 8px 12px; }
+.language-toggle { white-space: nowrap; }
 .button-wide { width: 100%; }
 .login-layout { min-height: calc(100vh - 130px); display: grid; grid-template-columns: 1fr 390px; align-items: center; gap: 90px; max-width: 1050px; margin: 0 auto; }
 .welcome-copy { max-width: 620px; padding-bottom: 20px; }

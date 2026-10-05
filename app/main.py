@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import io
 import re
-import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -15,7 +14,13 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.config import ALGORITHM, DATABASE_PATH, DEMO_MODE, SECRET_KEY, TOKEN_EXPIRE_MINUTES
+from app.config import (
+    ALGORITHM,
+    DEMO_MODE,
+    SECRET_KEY,
+    STORAGE_PATH,
+    TOKEN_EXPIRE_MINUTES,
+)
 from app import store
 from app.rag import (
     KNOWLEDGE_DIR,
@@ -27,7 +32,7 @@ from app.rag import (
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
-ATTACHMENTS_DIR = Path(DATABASE_PATH).resolve().parent / "attachments"
+ATTACHMENTS_DIR = Path(STORAGE_PATH).resolve() / "attachments"
 Role = Literal["user", "agent", "admin"]
 TicketStatus = Literal[
     "new", "in_progress", "pending_waiting_user", "resolved", "closed", "escalated"
@@ -244,7 +249,7 @@ async def public_config() -> dict[str, bool]:
 async def health() -> dict[str, str]:
     try:
         store.check_database()
-    except sqlite3.Error as exc:
+    except store.DatabaseError as exc:
         raise HTTPException(status_code=503, detail="Cơ sở dữ liệu hiện không sẵn sàng.") from exc
     return {"status": "ok", "service": "helpdesk-rag"}
 
@@ -522,7 +527,7 @@ async def upload_ticket_attachment(
             len(content),
             user["username"],
         )
-    except (OSError, sqlite3.Error) as exc:
+    except (OSError, *store.DatabaseError) as exc:
         target.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Không thể lưu tệp đính kèm.") from exc
     return attachment

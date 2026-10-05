@@ -6,7 +6,7 @@
 
 ## Tóm tắt quyết định
 
-Đặc tả mô tả một sản phẩm ITSM rộng với Next.js, WebSocket, vector database, embedding, email/SSO, file attachments, SLA policy editor và analytics. Prototype hiện dùng FastAPI, HTML/CSS/JavaScript, SQLite và BM25 trên runbook Markdown. Vì vậy, giữ nguyên stack và phạm vi prototype; không đổi frontend/backend chỉ để khớp bảng công nghệ tham khảo, và không giả lập những chức năng cần dịch vụ/hạ tầng chưa có.
+Đặc tả mô tả một sản phẩm ITSM rộng với Next.js, WebSocket, vector database, embedding, email/SSO, file attachments, SLA policy editor và analytics. Prototype hiện dùng FastAPI, HTML/CSS/JavaScript, PostgreSQL cho Docker Compose hoặc SQLite cho local development/test và BM25 trên runbook Markdown. Vì vậy, giữ nguyên stack và phạm vi prototype; không đổi frontend/backend chỉ để khớp bảng công nghệ tham khảo, và không giả lập những chức năng cần dịch vụ/hạ tầng chưa có.
 
 Luồng đang được ưu tiên là: nhân viên tra runbook có nguồn → bàn giao nội dung thành ticket có người xử lý/SLA/audit → Agent tra cứu ngay từ ticket và đưa trích đoạn vào bản nháp phản hồi → người có trách nhiệm kiểm tra rồi chủ động gửi. Đây là luồng demo được, chưa phải quy trình đã nghiệm thu tại doanh nghiệp.
 
@@ -15,12 +15,12 @@ Luồng đang được ưu tiên là: nhân viên tra runbook có nguồn → b�
 | Module đặc tả | Trạng thái trong prototype | Giới hạn/cần làm tiếp |
 |---|---|---|
 | A — Cổng nhân viên | Đăng nhập; tra runbook; tạo ticket; lọc ticket của mình theo từ khóa/trạng thái/danh mục/ngày; xem trao đổi, hạn SLA, audit và tệp; xác nhận/mở lại ticket; đánh giá sau xử lý. | Chưa có notification badge, comment realtime, PDF/Excel attachment hay hồ sơ self-service. |
-| B — Chatbot RAG | BM25 cục bộ trên Markdown; trích đoạn/tệp nguồn; từ chối khi không đủ liên quan; 6 câu hỏi mẫu; lịch sử phiên lưu SQLite; feedback 👍/👎; chuyển câu hỏi thành ticket. | Không streaming, không confidence probability, không sinh hướng dẫn bằng LLM. Chưa ghi nhận nhãn giải quyết self-service nên không tính tỷ lệ deflection. |
+| B — Chatbot RAG | BM25 cục bộ trên Markdown; trích đoạn/tệp nguồn; từ chối khi không đủ liên quan; 6 câu hỏi mẫu; lịch sử phiên lưu vào database cấu hình (PostgreSQL/SQLite); feedback 👍/👎; chuyển câu hỏi thành ticket. | Không streaming, không confidence probability, không sinh hướng dẫn bằng LLM. Chưa ghi nhận nhãn giải quyết self-service nên không tính tỷ lệ deflection. |
 | C — Ticket | Tạo, sửa theo quyền, comment, audit, gán IT, FSM gồm chờ nhân viên/chuyển cấp, SLA theo giờ lịch, lưu trữ mềm, tệp PNG/JPG/TXT/LOG tối đa 10 MiB và rating 1–5. | Chưa tự đóng sau 72 giờ, hỗ trợ attachment PDF/DOCX, SLA business-hours hoặc policy editor; tệp chưa được virus scan. |
 | D — Agent | Hàng đợi tìm/lọc; phân công; xử lý; RAG Assist lấy nội dung ticket và chèn trích đoạn vào bản nháp; thống kê cá nhân đã gán/đã giải quyết/thời gian/SLA. | Chưa có Kanban drag-and-drop, realtime push, nhắc SLA hay đo hiệu suất theo lịch/ca trực. |
 | E — Admin | Nạp Markdown giới hạn; tìm danh mục; xóa/re-index; tạo/sửa hồ sơ, vai trò, khóa/mở tài khoản; dashboard xu hướng/danh mục/agent; xuất CSV. | Chưa có PDF/DOCX extraction, vector indexing, antivirus, SLA editor, PDF/XLSX export hoặc KPI self-service. |
 | F — Xác thực/RBAC | JWT, ba vai trò, phân quyền API/UI; tài khoản có hồ sơ cơ bản và trạng thái active. | Chưa có Microsoft SSO, quên/reset mật khẩu, refresh/revocation chủ động, remember-me hay directory sync. Tài khoản demo không dùng cho triển khai thật. |
-| API/CSDL | REST endpoint hiện tại, SQLite cho user/ticket/comment/audit/attachment/chat session/message. Có migration cho schema cũ. | Khác cấu trúc URL/ERD đề xuất; chưa có category/SLA policy/vector-chunk tables hoặc hạ tầng production. |
+| API/CSDL | REST endpoint hiện tại, PostgreSQL trong Compose hoặc SQLite local cho user/ticket/comment/audit/attachment/chat session/message. SQLite có migration cho schema cũ; PostgreSQL chỉ khởi tạo schema hiện hành. | Khác cấu trúc URL/ERD đề xuất; chưa có category/SLA policy/vector-chunk tables, migration SQLite→PostgreSQL hoặc hạ tầng production. |
 
 ## Phần được bổ sung theo đặc tả
 

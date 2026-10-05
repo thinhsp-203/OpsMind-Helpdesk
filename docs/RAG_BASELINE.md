@@ -11,14 +11,14 @@
 |---|---:|
 | Context hit@3 trên câu in-scope | 28/28 (100%) |
 | Từ chối truy xuất trên câu out-of-scope | 2/2 |
-| Latency retrieval median | 1.00 ms |
-| Latency retrieval p95 | 1.75 ms |
+| Latency retrieval median | 0.75 ms |
+| Latency retrieval p95 | 0.80 ms |
 
 ## Diễn giải và giới hạn
 
 - Kết quả 28/28 là hit rate trên tập nhỏ tự soạn, từ khóa/ground truth hiện biết trước; **không phải đánh giá độc lập, không chứng minh tổng quát hóa và không chứng minh câu trả lời faithful**.
 - Hai câu out-of-scope quá ít để ước lượng tỷ lệ từ chối đáng tin cậy.
-- Lần chạy cập nhật 05/10/2026 trên Windows/Python 3.14.7: latency đo trực tiếp hàm retrieval trong tiến trình local; số đo biến thiên theo lần chạy và chưa ổn định. Không tính HTTP, render, tải tài liệu đầu tiên, concurrency hay thời gian người dùng; không dùng để cam kết p95 API hoặc 50 RPS.
+- Lần chạy cập nhật 05/10/2026 sau khi thêm liên kết nguồn cho 6 runbook trên Windows/Python 3.14.7: latency đo trực tiếp hàm retrieval trong tiến trình local (median 0.75 ms, p95 0.80 ms); số đo biến thiên theo lần chạy và chưa ổn định. Không tính HTTP, render, tải tài liệu đầu tiên, concurrency hay thời gian người dùng; không dùng để cam kết p95 API hoặc 50 RPS.
 - Giao diện người dùng trình bày nguồn tốt nhất trước và thu gọn nguồn phụ, không hiển thị điểm BM25 cho nhân viên; điểm vẫn có trong API phục vụ kiểm thử/đánh giá nội bộ.
 - Với truy vấn tự nhiên “Team đang cần kết nối VPN để làm việc tại nhà”, bộ test xác nhận runbook VPN đứng đầu sau khi loại từ nối và tăng trọng số tiêu đề; đây là kiểm tra truy vấn đơn, không thay cho đánh giá độc lập trên mẫu đa dạng.
 - Triage category/priority là rule-based suggestion chạy sau truy xuất; chưa được chấm precision/recall trên ticket có nhãn IT và không nằm trong chỉ số hit@3/refusal.

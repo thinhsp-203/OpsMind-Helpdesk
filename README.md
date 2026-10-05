@@ -1,6 +1,6 @@
 # Helpdesk RAG
 
-Prototype Helpdesk nội bộ bằng tiếng Việt: quản lý ticket, SLA, trao đổi và truy xuất hướng dẫn CNTT có dẫn nguồn.
+Prototype Helpdesk nội bộ với giao diện tiếng Việt/Anh: quản lý ticket, SLA, trao đổi và truy xuất hướng dẫn CNTT có dẫn nguồn.
 
 ## Chạy local trên Windows
 
@@ -30,12 +30,12 @@ Tài khoản mẫu chỉ dùng trình diễn local; thay secret và thay cơ ch�
 docker compose up --build
 ```
 
-Compose bind `127.0.0.1:8000`, lưu SQLite và Knowledge Base trong volume `helpdesk-data`, chạy container bằng user không đặc quyền và có health check. Nếu không đặt `SECRET_KEY`, demo tự tạo secret ngẫu nhiên khi khởi động. Đây vẫn là cấu hình demo; không mở cổng này ra Internet.
+Compose khởi chạy PostgreSQL 16 cùng ứng dụng, bind web/API vào `127.0.0.1:8000` và lưu database, tệp runtime, Knowledge Base trong các named volume riêng. Mật khẩu database mặc định chỉ dành cho demo local; đặt `POSTGRES_PASSWORD` và `SECRET_KEY` riêng trước khi dùng môi trường chia sẻ. Có thể trỏ `DATABASE_URL` tới PostgreSQL đã quản lý bên ngoài. Không mở cổng này ra Internet.
 
 ## Chức năng hiện có
 
 - Đăng nhập JWT; mật khẩu demo băm PBKDF2; vai trò End-user, Agent, Admin.
-- SQLite lưu ticket, bình luận, audit, attachment metadata, tài khoản và lịch sử chat qua các lần khởi động.
+- PostgreSQL được dùng trong Docker Compose; local development và test mặc định dùng SQLite. Cấu hình `DATABASE_URL` để chọn PostgreSQL; cả hai backend lưu ticket, bình luận, audit, attachment metadata, tài khoản và lịch sử chat.
 - End-user chỉ xem ticket của mình; IT có hàng đợi, tìm kiếm/lọc theo trạng thái, danh mục, từ khóa và ngày, phân công và analytics.
 - End-user sửa ticket khi còn mới; IT sửa ticket chưa đóng; Admin lưu trữ mềm và audit được giữ lại.
 - Admin tạo tài khoản với mật khẩu băm và nạp runbook Markdown UTF-8 (tối đa 256 KiB, cần H1); tài liệu được đưa vào retrieval sau khi cache làm mới.
@@ -48,7 +48,7 @@ Compose bind `127.0.0.1:8000`, lưu SQLite và Knowledge Base trong volume `help
 - Tệp ticket giới hạn PNG/JPG/TXT/LOG đến 10 MiB, được phục vụ qua API có kiểm tra quyền; prototype chưa quét virus.
 - RAG baseline bằng BM25 trên Markdown, có truy vấn tiếng Việt cơ bản, trích tên tài liệu và từ chối khi không tìm thấy đoạn phù hợp.
 - Lịch sử RAG theo tài khoản, nguồn trích dẫn và feedback 👍/👎 được lưu cục bộ; không có streaming hay LLM-generated answer.
-- Giao diện responsive tiếng Việt, tạo ticket, hỏi tri thức, cập nhật và trao đổi.
+- Giao diện responsive song ngữ Việt/Anh với lựa chọn ngôn ngữ được lưu trong trình duyệt; nội dung ticket/runbook giữ nguyên ngôn ngữ nhập.
 - 9+ runbook demo về VPN, Wi-Fi, máy in, Windows Update, Outlook, chứng thư số, quyền thư mục, ERP và MFA.
 
 ## Kiểm thử và đánh giá retrieval
@@ -59,7 +59,7 @@ py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
 py -m scripts.evaluate_rag
 ```
 
-CI cấu hình Ruff với rule bảo mật, pytest/coverage, tập baseline RAG và build Docker image; coverage được lưu thành artifact. Coverage là tín hiệu kiểm thử, không chứng minh hệ thống đạt yêu cầu chất lượng khác.
+CI cấu hình Ruff với rule bảo mật, pytest/coverage, Node syntax/i18n test, PostgreSQL integration test, tập baseline RAG và build Docker image; coverage được lưu thành artifact. Coverage là tín hiệu kiểm thử, không chứng minh hệ thống đạt yêu cầu chất lượng khác.
 
 ## Tài liệu đồ án
 
@@ -69,6 +69,10 @@ CI cấu hình Ruff với rule bảo mật, pytest/coverage, tập baseline RAG 
 - [Đối chiếu đặc tả chức năng & UI](docs/DOI_CHIEU_FEATURES_AND_UI.md): phân biệt phần đặc tả đã có, phần prototype hỗ trợ một phần và các hạng mục cần thêm hạ tầng/kiểm chứng.
 - [SDD](docs/SDD.md): kiến trúc, context, sequence, FSM, deployment, ERD và API.
 - [Ma trận truy vết kiểm thử](docs/TEST_TRACEABILITY.md): liên kết yêu cầu/AC với test tự động và bằng chứng còn thiếu.
+- [Hướng dẫn sử dụng](docs/USER_GUIDE.md): thao tác theo vai trò Nhân viên, Agent và Admin.
+- [Hướng dẫn triển khai demo](docs/DEPLOYMENT.md): cài local/Docker, cấu hình, dữ liệu và giới hạn vận hành.
+- [Hướng dẫn đóng góp](CONTRIBUTING.md): thiết lập môi trường, kiểm tra trước PR và quy tắc dữ liệu.
+- [Rà soát tài liệu bổ sung](docs/DOI_CHIEU_SUPPLEMENT_GUIDE.md): đề xuất nào phù hợp, phần nào cần bằng chứng hoặc không khớp prototype.
 - [Sổ lỗi và nợ kỹ thuật](docs/DEFECT_TECH_DEBT_LOG.md): lỗi đã sửa trong nhánh hoàn thiện và giới hạn còn mở.
 - [Kế hoạch thực nghiệm](docs/KE_HOACH_THUC_NGHIEM.md): bộ câu hỏi RAG, định nghĩa metric, kịch bản usability và SUS.
 - [Metric charter G1](docs/G1_METRIC_CHARTER_TEMPLATE.md): mẫu dự thảo để nhóm/GVHD chốt và ký; hiện chưa được phê duyệt.
@@ -77,7 +81,7 @@ CI cấu hình Ruff với rule bảo mật, pytest/coverage, tập baseline RAG 
 
 ## Giới hạn cần nêu khi bảo vệ
 
-Đây là prototype học thuật, không phải hệ thống production. Chỉ có lexical retrieval BM25 trên runbook cục bộ, chưa có bước LLM generation; điểm BM25 không phải xác suất độ đúng. Baseline trên 30 câu là dữ liệu tự soạn, chưa được IT độc lập duyệt. SQLite, dữ liệu demo, SLA giờ lịch và bộ runbook nhỏ không phù hợp triển khai Internet. Chế độ non-demo yêu cầu secret và bootstrap Admin; ứng dụng từ chối khởi động nếu phát hiện mật khẩu demo mặc định trong DB. Vẫn cần hardening, backup/restore, staging, tải 50 RPS, uptime đo thực tế, SUS với người tham gia và benchmark RAG được chuyên gia xác nhận; không báo cáo các mục tiêu này như kết quả đã đạt.
+Đây là prototype học thuật, không phải hệ thống production. Chỉ có lexical retrieval BM25 trên runbook Markdown, chưa có bước LLM generation; điểm BM25 không phải xác suất độ đúng. Baseline trên 30 câu là dữ liệu tự soạn, chưa được IT độc lập duyệt. PostgreSQL trong Compose cải thiện độ phù hợp cho môi trường nhiều tiến trình so với SQLite local, nhưng không đồng nghĩa đã có HA, backup/restore, hardening hoặc được kiểm thử production. Dữ liệu demo, SLA giờ lịch và bộ runbook nhỏ không phù hợp triển khai Internet. Chế độ non-demo yêu cầu secret và bootstrap Admin; ứng dụng từ chối khởi động nếu phát hiện mật khẩu demo mặc định trong DB. Vẫn cần hardening, backup/restore, staging, tải 50 RPS, uptime đo thực tế, SUS với người tham gia và benchmark RAG được chuyên gia xác nhận; không báo cáo các mục tiêu này như kết quả đã đạt.
 
 So với nhắn Zalo, tiện ích kỳ vọng là ticket có mã/trạng thái/người nhận/SLA/lịch sử, nội dung không trôi trong chat và hướng dẫn có nguồn có thể chuyển thành ticket. Hệ thống chưa thay thế kênh khẩn cấp hoặc Zalo/Teams mà doanh nghiệp đang dùng; chưa có push/email notification hay tích hợp ITSM/nhân sự. Muốn kết luận có giảm thời gian/bỏ sót, cần so sánh cùng tác vụ trên kênh chat hiện tại với người dùng thật.
 

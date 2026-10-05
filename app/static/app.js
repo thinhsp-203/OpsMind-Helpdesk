@@ -9,10 +9,11 @@ const state = {
 };
 
 const byId = (id) => document.getElementById(id);
+const alertUser = (message) => window.alert(window.helpdeskI18n.translate(message));
 const statusLabels = {
   new: "Mới",
   in_progress: "Đang xử lý",
-  pending_waiting_user: "Chờ nhân viên",
+  pending_waiting_user: "Chờ người gửi",
   resolved: "Đã giải quyết",
   closed: "Đã đóng",
   escalated: "Chuyển cấp",
@@ -38,13 +39,13 @@ const transitions = {
 function node(tag, className = "", text = "") {
   const element = document.createElement(tag);
   if (className) element.className = className;
-  if (text) element.textContent = text;
+  if (text) element.textContent = window.helpdeskI18n.translate(text);
   return element;
 }
 
 function setMessage(id, message, isError = true) {
   const target = byId(id);
-  target.textContent = message;
+  target.textContent = window.helpdeskI18n.translate(message);
   target.classList.toggle("success-message", !isError && Boolean(message));
 }
 
@@ -86,7 +87,7 @@ function setSignedIn(user) {
   badge.classList.remove("hidden");
   byId("greeting").textContent = `Xin chào, ${user.username}`;
   byId("roleEyebrow").textContent = roleLabels[user.role].toUpperCase();
-  byId("todayLabel").textContent = new Intl.DateTimeFormat("vi-VN", {
+  byId("todayLabel").textContent = new Intl.DateTimeFormat(window.helpdeskI18n.locale(), {
     weekday: "long",
     day: "2-digit",
     month: "2-digit",
@@ -264,7 +265,7 @@ function createTicketCard(ticket) {
   const top = node("div", "ticket-card-top");
   const titleWrap = node("div");
   titleWrap.append(
-    node("span", "ticket-id", `HD-${String(ticket.id).padStart(4, "0")} · ${new Date(ticket.created_at).toLocaleDateString("vi-VN")}`),
+    node("span", "ticket-id", `HD-${String(ticket.id).padStart(4, "0")} · ${new Date(ticket.created_at).toLocaleDateString(window.helpdeskI18n.locale())}`),
     node("h3", "", ticket.title),
   );
   const status = node("span", `tag tag-status-${ticket.status}`, statusLabels[ticket.status] || ticket.status);
@@ -280,7 +281,7 @@ function createTicketCard(ticket) {
   meta.append(node("span", "tag", `IT: ${ticket.assignee || "Chưa phân công"}`));
   const sla = new Date(ticket.sla_deadline);
   if (["resolved", "closed"].includes(ticket.status)) {
-    meta.append(node("span", "tag", `Đã xử lý · ${new Date(ticket.resolved_at || ticket.updated_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}`));
+    meta.append(node("span", "tag", `Đã xử lý · ${new Date(ticket.resolved_at || ticket.updated_at).toLocaleString(window.helpdeskI18n.locale(), { dateStyle: "short", timeStyle: "short" })}`));
   } else {
     const remaining = sla.getTime() - Date.now();
     const isOverdue = remaining < 0;
@@ -297,7 +298,7 @@ function createTicketCard(ticket) {
         ? "tag-warning"
         : "";
     const slaTag = node("span", `tag ${urgency}`, `SLA · ${countdown}`);
-    slaTag.title = `Hạn: ${sla.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}`;
+    slaTag.title = `Hạn: ${sla.toLocaleString(window.helpdeskI18n.locale(), { dateStyle: "short", timeStyle: "short" })}`;
     meta.append(slaTag);
   }
 
@@ -306,8 +307,8 @@ function createTicketCard(ticket) {
   const detailsBody = node("div", "ticket-details-body");
   const info = node("div", "ticket-info");
   info.append(
-    node("span", "", `Tạo lúc: ${new Date(ticket.created_at).toLocaleString("vi-VN")}`),
-    node("span", "", `Cập nhật: ${new Date(ticket.updated_at).toLocaleString("vi-VN")}`),
+    node("span", "", `Tạo lúc: ${new Date(ticket.created_at).toLocaleString(window.helpdeskI18n.locale())}`),
+    node("span", "", `Cập nhật: ${new Date(ticket.updated_at).toLocaleString(window.helpdeskI18n.locale())}`),
   );
 
   if (state.user.role !== "user") detailsBody.append(createStaffActions(ticket));
@@ -318,7 +319,7 @@ function createTicketCard(ticket) {
   ticket.comments.forEach((comment) => {
     const item = node("div", "comment-item");
     item.append(
-      node("strong", "", `${comment.author} · ${new Date(comment.timestamp).toLocaleString("vi-VN")}`),
+      node("strong", "", `${comment.author} · ${new Date(comment.timestamp).toLocaleString(window.helpdeskI18n.locale())}`),
       document.createTextNode(comment.comment),
     );
     commentList.append(item);
@@ -371,12 +372,12 @@ function createTicketCard(ticket) {
     const archiveButton = node("button", "button button-quiet", "Lưu trữ ticket");
     archiveButton.type = "button";
     archiveButton.addEventListener("click", async () => {
-      if (!window.confirm("Lưu trữ ticket này? Ticket sẽ ẩn khỏi hàng đợi nhưng audit được giữ lại.")) return;
+      if (!window.confirm(window.helpdeskI18n.translate("Lưu trữ ticket này? Ticket sẽ ẩn khỏi hàng đợi nhưng audit được giữ lại."))) return;
       try {
         await api(`/tickets/${ticket.id}`, { method: "DELETE" });
         await refreshWorkspace();
       } catch (error) {
-        window.alert(error.message);
+        alertUser(error.message);
       }
     });
     detailsBody.append(archiveButton);
@@ -486,7 +487,7 @@ async function submitTicketEdit(event) {
     });
     await refreshWorkspace();
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -519,7 +520,7 @@ function createStaffActions(ticket) {
       });
       await refreshWorkspace();
     } catch (error) {
-      window.alert(error.message);
+      alertUser(error.message);
     }
   });
 
@@ -549,7 +550,7 @@ function createStaffActions(ticket) {
       });
       await refreshWorkspace();
     } catch (error) {
-      window.alert(error.message);
+      alertUser(error.message);
     }
   });
   actions.append(suggestButton, statusSelect, statusButton, assigneeSelect, assignButton);
@@ -572,13 +573,21 @@ async function loadAudit(ticketId, container) {
               : entry.event === "archived"
                 ? "Lưu trữ ticket"
                 : "Tạo ticket";
-      history.append(node("div", "comment-item", `${new Date(entry.timestamp).toLocaleString("vi-VN")} · ${entry.actor} · ${label}`));
+      const eventLabels = {
+        status_changed: "Thay đổi trạng thái",
+        assigned: "Phân công",
+        comment_added: "Thêm phản hồi",
+        ticket_updated: "Cập nhật ticket",
+        archived: "Lưu trữ ticket",
+        created: "Tạo ticket",
+      };
+      history.append(node("div", "comment-item", `${new Date(entry.timestamp).toLocaleString(window.helpdeskI18n.locale())} · ${entry.actor} · ${label} · ${eventLabels[entry.event] || entry.event}`));
     });
     const previous = container.querySelector(".audit-list");
     if (previous) previous.remove();
     container.append(history);
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -593,7 +602,7 @@ async function submitComment(event) {
     });
     await refreshWorkspace();
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -603,7 +612,7 @@ async function changeTicketStatus(ticketId, status) {
     : status === "closed"
       ? "Xác nhận ticket đã giải quyết?"
       : `Chuyển ticket sang trạng thái ${statusLabels[status]}?`;
-  if (!window.confirm(prompt)) return;
+  if (!window.confirm(window.helpdeskI18n.translate(prompt))) return;
   try {
     await api(`/tickets/${ticketId}`, {
       method: "PATCH",
@@ -611,7 +620,7 @@ async function changeTicketStatus(ticketId, status) {
     });
     await refreshWorkspace();
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -622,7 +631,7 @@ async function uploadAttachment(event) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) {
-    window.alert("Tệp vượt quá giới hạn 10 MiB.");
+    alertUser("Tệp vượt quá giới hạn 10 MiB.");
     return;
   }
   const payload = new FormData();
@@ -634,7 +643,7 @@ async function uploadAttachment(event) {
     });
     await refreshWorkspace();
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -657,7 +666,7 @@ async function downloadAttachment(event) {
     download.click();
     URL.revokeObjectURL(url);
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -675,7 +684,7 @@ async function submitRating(event) {
     });
     await refreshWorkspace();
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
@@ -761,7 +770,7 @@ async function askKnowledge(event, options = {}) {
           });
           feedback.replaceChildren(node("span", "success-message", "Đã ghi nhận phản hồi."));
         } catch (error) {
-          window.alert(error.message);
+          alertUser(error.message);
         }
       });
       feedback.append(button);
@@ -851,7 +860,7 @@ function showRagResult(message) {
 async function loadKnowledge() {
   try {
     const documents = await api("/knowledge");
-    byId("knowledgeCount").textContent = `${documents.length} tài liệu`;
+    byId("knowledgeCount").textContent = window.helpdeskI18n.translate(`${documents.length} tài liệu`);
     const list = byId("knowledgeList");
     list.replaceChildren();
     documents.forEach((document) => {
@@ -867,18 +876,18 @@ async function loadKnowledge() {
             await api(`/knowledge/${encodeURIComponent(document.source)}/reindex`, { method: "POST" });
             await loadKnowledge();
           } catch (error) {
-            window.alert(error.message);
+            alertUser(error.message);
           }
         });
         const remove = node("button", "button button-quiet", "Xóa");
         remove.type = "button";
         remove.addEventListener("click", async () => {
-          if (!window.confirm(`Xóa tài liệu ${document.source} khỏi thư viện?`)) return;
+          if (!window.confirm(window.helpdeskI18n.translate(`Xóa tài liệu ${document.source} khỏi thư viện?`))) return;
           try {
             await api(`/knowledge/${encodeURIComponent(document.source)}`, { method: "DELETE" });
             await loadKnowledge();
           } catch (error) {
-            window.alert(error.message);
+            alertUser(error.message);
           }
         });
         row.append(reindex, remove);
@@ -962,7 +971,7 @@ async function loadAdminUsers() {
           });
           await loadAdminUsers();
         } catch (error) {
-          window.alert(error.message);
+          alertUser(error.message);
         }
       });
       profileDetails.append(profileForm);
@@ -985,7 +994,7 @@ async function loadAdminUsers() {
           await loadAdminUsers();
           state.staff = await api("/staff");
         } catch (error) {
-          window.alert(error.message);
+          alertUser(error.message);
         }
       });
       const activeButton = node(
@@ -1003,7 +1012,7 @@ async function loadAdminUsers() {
           await loadAdminUsers();
           state.staff = await api("/staff");
         } catch (error) {
-          window.alert(error.message);
+          alertUser(error.message);
         }
       });
       actions.append(roleSelect, saveRole, activeButton);
@@ -1081,7 +1090,7 @@ async function loadAnalytics() {
       activity.append(node(
         "div",
         "comment-item",
-        `${new Date(entry.timestamp).toLocaleString("vi-VN")} · ${entry.actor} · HD-${String(entry.ticket_id).padStart(4, "0")} · ${entry.event}`,
+        `${new Date(entry.timestamp).toLocaleString(window.helpdeskI18n.locale())} · ${entry.actor} · HD-${String(entry.ticket_id).padStart(4, "0")} · ${entry.event}`,
       ));
     });
   } catch (error) {
@@ -1161,7 +1170,7 @@ async function loadRagSessions() {
       const button = node(
         "button",
         "chat-history-item",
-        `${session.first_question || "Tra cứu"} · ${new Date(session.last_message_at).toLocaleString("vi-VN")}`,
+        `${session.first_question || "Tra cứu"} · ${new Date(session.last_message_at).toLocaleString(window.helpdeskI18n.locale())}`,
       );
       button.type = "button";
       button.addEventListener("click", async () => {
@@ -1187,7 +1196,7 @@ async function loadRagSessions() {
           });
           byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (error) {
-          window.alert(error.message);
+          alertUser(error.message);
         }
       });
       list.append(button);
@@ -1214,11 +1223,24 @@ async function exportReport() {
     link.click();
     URL.revokeObjectURL(url);
   } catch (error) {
-    window.alert(error.message);
+    alertUser(error.message);
   }
 }
 
 let searchTimer;
+window.addEventListener("helpdesk-language-changed", () => {
+  if (state.user) {
+    byId("todayLabel").textContent = new Intl.DateTimeFormat(window.helpdeskI18n.locale(), {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date());
+    refreshWorkspace().catch((error) => {
+      console.error("Không thể làm mới workspace sau khi đổi ngôn ngữ:", error);
+    });
+  }
+});
 loadPublicConfig();
 byId("loginForm").addEventListener("submit", login);
 byId("logoutBtn").addEventListener("click", signOut);

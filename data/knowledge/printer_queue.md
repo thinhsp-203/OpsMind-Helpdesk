@@ -7,14 +7,13 @@
 
 ## Checks
 1. Verify the printer has power and is connected to the local network or USB port.
-2. Confirm the Windows print spooler service is running.
-3. Clear the print queue if there are stale jobs.
-4. Reinstall the network printer driver from the standard driver package.
+2. Confirm the selected printer and whether printing fails from more than one application.
+3. Record whether the issue affects one user or a shared printer.
+4. Have IT check the Print Spooler service, driver package, and relevant policy.
 
 ## Resolution
-- Restart the "Print Spooler" service.
-- Clear the queue and resubmit the document after checking the selected printer.
-- If the error is related to the driver, update or reinstall the printer driver.
+- If a job is stuck, IT can clear the print queue or restart the Print Spooler service with administrator permission.
+- If the error is related to the driver, IT can update or reinstall the approved printer driver.
 - For multifunction devices, ensure the correct tray and paper size are selected.
 
 ## Escalation
@@ -25,3 +24,6 @@ Escalate to the local IT technician if multiple users on the same shared printer
 2. Xác nhận đã chọn đúng máy in và khổ giấy.
 3. Nếu lệnh in bị treo, mở hàng đợi in; IT có thể khởi động lại dịch vụ Print Spooler và xóa lệnh lỗi.
 4. Nếu nhiều người cùng bị hoặc máy in không truy cập được, báo kỹ thuật viên tại chỗ; không tự cài driver từ nguồn lạ.
+
+## Source and scope
+- Microsoft Learn, [Printing issues caused by Print Spooler service not running](https://learn.microsoft.com/en-us/troubleshoot/windows-server/printing/print-spooler-service-not-running), accessed 2026-10-05. Covers stuck jobs, service restart, system-resource checks, Group Policy, drivers, and antivirus conflicts. Service and policy changes require IT administrator review.

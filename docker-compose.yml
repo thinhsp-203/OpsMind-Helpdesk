@@ -1,17 +1,39 @@
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: helpdesk
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk-local-demo-password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   helpdesk:
     build: .
     container_name: helpdesk-rag
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     environment:
       SECRET_KEY: ${SECRET_KEY:-}
       DEMO_MODE: ${DEMO_MODE:-true}
-      HELPDESK_DB_PATH: /app/data/helpdesk.sqlite3
+      DATABASE_URL: ${DATABASE_URL:-postgresql://helpdesk:${POSTGRES_PASSWORD:-helpdesk-local-demo-password}@postgres:5432/helpdesk}
+      HELPDESK_DB_PATH: /app/runtime/helpdesk.sqlite3
+      HELPDESK_STORAGE_PATH: /app/runtime
       INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
     volumes:
-      - helpdesk-data:/app/data
+      - helpdesk-runtime:/app/runtime
+      - helpdesk-knowledge:/app/data/knowledge
 
 volumes:
-  helpdesk-data:
+  postgres-data:
+  helpdesk-runtime:
+  helpdesk-knowledge:

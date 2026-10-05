@@ -1,7 +1,7 @@
 # Thiết kế phần mềm (SDD)
 
 **Phiên bản:** 1.0 — khớp prototype hiện tại\
-**Stack:** FastAPI, SQLite, HTML/CSS/JavaScript tĩnh, bộ truy xuất BM25 tối giản.
+**Stack:** FastAPI, PostgreSQL cho Docker Compose hoặc SQLite cho local development/test, HTML/CSS/JavaScript tĩnh, bộ truy xuất BM25 tối giản.
 
 ## 1. Kiến trúc thành phần
 
@@ -11,13 +11,13 @@ flowchart LR
   API --> Auth[Auth + RBAC]
   API --> Tickets[Ticket / SLA / Audit]
   API --> RAG[RAG retrieval]
-  Tickets --> SQLite[(SQLite)]
+  Tickets --> DB[(PostgreSQL / SQLite)]
   Files[Local attachment storage] --> API
   RAG --> Markdown[Markdown Knowledge Base]
   RAG -->|trích đoạn + file nguồn| API
 ```
 
-Trong demo, ứng dụng web và API chạy cùng FastAPI. SQLite lưu người dùng, ticket, bình luận và audit log. Mô-đun truy xuất đọc Markdown, chia đoạn, chuẩn hóa truy vấn tiếng Việt và xếp hạng bằng BM25 có tăng trọng số token xuất hiện trong tiêu đề; mỗi nguồn chỉ xuất hiện một lần trong top-k. Không có dịch vụ LLM bên ngoài.
+Trong demo, ứng dụng web và API chạy cùng FastAPI. `DATABASE_URL` chọn PostgreSQL; nếu không đặt, ứng dụng dùng SQLite. Hai backend lưu người dùng, ticket, bình luận, audit log, attachment metadata và lịch sử RAG. Docker Compose khởi chạy PostgreSQL 16 có named volume; SQLite vẫn là mặc định local và test. Mô-đun truy xuất đọc Markdown, chia đoạn, chuẩn hóa truy vấn tiếng Việt và xếp hạng bằng BM25 có tăng trọng số token xuất hiện trong tiêu đề; mỗi nguồn chỉ xuất hiện một lần trong top-k. Không có dịch vụ LLM bên ngoài. UI có lựa chọn Việt/Anh lưu trong browser; nội dung do người dùng/tác giả nhập không tự dịch.
 
 ## 2. Sơ đồ ngữ cảnh
 
@@ -75,7 +75,7 @@ sequenceDiagram
   actor Agent
   participant UI as Web UI
   participant API as FastAPI
-  participant DB as SQLite
+  participant DB as PostgreSQL / SQLite
   Agent->>UI: Đăng nhập
   UI->>API: POST /auth/login
   API-->>UI: JWT có hạn
@@ -111,7 +111,7 @@ sequenceDiagram
   actor Admin
   participant UI as Web UI
   participant API as FastAPI
-  participant DB as SQLite
+  participant DB as PostgreSQL / SQLite
   participant KB as Markdown KB
   Admin->>UI: Nạp runbook hoặc tạo tài khoản
   UI->>API: POST /knowledge hoặc POST /admin/users
@@ -131,13 +131,14 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-  Browser[Browser] -->|localhost:8000| Container[FastAPI container]
-  Container --> Static[Static UI]
-  Container --> SQLite[(data/helpdesk.sqlite3)]
-  Container --> KB[data/knowledge/*.md]
+  Browser[Browser] -->|localhost:8000| App[FastAPI container]
+  App --> Static[Static UI]
+  App -->|DATABASE_URL| DB[(PostgreSQL 16 container or external PostgreSQL)]
+  App --> Runtime[Attachment volume]
+  App --> KB[Knowledge Base volume]
 ```
 
-Docker Compose chỉ chạy một service ứng dụng, bind host loopback `127.0.0.1:8000`, dùng named volume cho SQLite/runbook và chạy process container bằng UID không đặc quyền; healthcheck gọi `/health`. Chưa có Nginx, worker, vector database, TLS hoặc cấu hình production.
+Docker Compose chạy service PostgreSQL 16 và ứng dụng, bind web/API vào loopback `127.0.0.1:8000`; database, attachment và Knowledge Base có named volume riêng. App container chạy bằng UID không đặc quyền; healthcheck gọi `/health`. `DATABASE_URL` có thể trỏ PostgreSQL bên ngoài, nhưng Compose hiện vẫn khởi chạy service PostgreSQL cục bộ. Không có công cụ migration dữ liệu SQLite cũ sang PostgreSQL hoặc migration tổng quát cho PostgreSQL production sẵn có. Chưa có Nginx, worker, vector database, TLS, backup/restore tự động, HA hoặc cấu hình production.
 
 ## 8. Mô hình dữ liệu (ERD)
 
@@ -233,7 +234,7 @@ erDiagram
 | `tickets` | `id` | Khóa chính tăng tự động |
 | `tickets` | `requester`, `assignee` | Khóa ngoại tới `users`; assignee để trống hoặc Agent/Admin |
 | `tickets` | `title`, `description`, `category` | Tiêu đề 5–160, mô tả 10–5000, loại 2–50 ký tự qua API |
-| `tickets` | `priority`, `status` | Enum được ràng buộc ở SQLite và API |
+| `tickets` | `priority`, `status` | Enum được ràng buộc ở schema SQLite và API; PostgreSQL cần được tạo từ schema hiện hành |
 | `tickets` | `resolved_at`, `closed_at`, `rating`, `rating_comment` | Mốc hoàn tất và đánh giá 1–5 của chủ ticket |
 | `tickets` | `sla_deadline` | Thời gian UTC; mục tiêu tính bằng giờ lịch theo ưu tiên |
 | `tickets` | `created_at`, `updated_at`, `archived_at` | Mốc UTC ISO-8601; `archived_at` null khi còn hoạt động |
@@ -242,7 +243,7 @@ erDiagram
 | `ticket_attachments` | `stored_name`, `content_type`, `size_bytes` | Tệp PNG/JPG/TXT/LOG tối đa 10 MiB; tên lưu trữ sinh ngẫu nhiên, download qua API có xác thực |
 | `chat_sessions`, `chat_messages` | `user_id`, `session_id`, `sources`, `feedback` | Lịch sử tra cứu được giới hạn theo chủ phiên; feedback gắn câu trả lời |
 
-Migration idempotent khi khởi động thêm hồ sơ user, metadata kết quả/đánh giá và các bảng phụ; bảng `tickets` được thay cấu trúc để thêm trạng thái chờ/chuyển cấp mà vẫn giữ dữ liệu cũ.
+SQLite migration idempotent khi khởi động thêm hồ sơ user, metadata kết quả/đánh giá và các bảng phụ; bảng `tickets` được thay cấu trúc để thêm trạng thái chờ/chuyển cấp mà vẫn giữ dữ liệu SQLite cũ. PostgreSQL được khởi tạo từ schema hiện hành và thêm các cột thiếu, nhưng chưa thay thế constraints cũ hoặc chuyển đổi dữ liệu/backend.
 
 ## 9. API chính
 
@@ -286,4 +287,4 @@ Migration idempotent khi khởi động thêm hồ sơ user, metadata kết qu�
 - SQL động cho bộ lọc/cập nhật chỉ ghép tên trường nội bộ từ danh sách cho phép; mọi giá trị truy vấn vẫn bind parameter.
 - BM25 và synonym map chỉ là baseline; điểm relevance không phải xác suất độ đúng.
 - Response `/rag/ask` kèm `triage`: danh mục theo source đứng đầu và ưu tiên heuristic theo các cụm từ tác động rõ ràng. Web hiển thị lý do và chỉ điền vào form khi người dùng chọn chuyển tiếp; mọi giá trị còn sửa được trước submit. Đây không phải dự đoán ML/chẩn đoán hay SLA được đơn vị nghiệp vụ phê duyệt.
-- SQLite phù hợp demo đơn máy, không phải mục tiêu tải cao/HA.
+- SQLite phù hợp development/test đơn máy; Docker Compose dùng PostgreSQL persistent. Chưa có kết quả thử tải/HA hoặc bằng chứng vận hành production.

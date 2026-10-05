@@ -9,7 +9,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import psycopg
+from psycopg.rows import dict_row
+
 from app.config import (
+    DATABASE_URL,
     DATABASE_PATH,
     DEMO_MODE,
     INITIAL_ADMIN_PASSWORD,
@@ -27,13 +31,49 @@ TRANSITIONS = {
 }
 PASSWORD_ITERATIONS = 180_000
 _database_path = Path(DATABASE_PATH)
+_database_url = DATABASE_URL
+DatabaseError = (sqlite3.Error, psycopg.Error)
+DatabaseIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError)
+
+
+class _PostgresConnection:
+    def __init__(self, connection: psycopg.Connection) -> None:
+        self._connection = connection
+
+    def __enter__(self) -> "_PostgresConnection":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        try:
+            if exc_type is None:
+                self._connection.commit()
+            else:
+                self._connection.rollback()
+        finally:
+            self._connection.close()
+
+    def execute(self, query: str, parameters: tuple[Any, ...] = ()) -> psycopg.Cursor:
+        return self._connection.execute(query.replace("?", "%s"), parameters)
+
+    def executemany(
+        self, query: str, parameters: list[tuple[Any, ...]]
+    ) -> psycopg.Cursor:
+        return self._connection.cursor().executemany(query.replace("?", "%s"), parameters)
+
+    def executescript(self, script: str) -> None:
+        for statement in script.split(";"):
+            if statement.strip():
+                self.execute(statement)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _connect() -> sqlite3.Connection:
+def _connect() -> sqlite3.Connection | _PostgresConnection:
+    if _database_url:
+        url = _database_url.replace("postgres://", "postgresql://", 1)
+        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row))
     _database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(_database_path, timeout=15)
     connection.row_factory = sqlite3.Row
@@ -65,8 +105,7 @@ def verify_password(password: str, encoded: str) -> bool:
 
 def initialize_store() -> None:
     with _connect() as connection:
-        connection.executescript(
-            """
+        schema = """
             CREATE TABLE IF NOT EXISTS users (
                 username TEXT PRIMARY KEY,
                 password_hash TEXT NOT NULL,
@@ -143,39 +182,62 @@ def initialize_store() -> None:
             CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, last_message_at);
             CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
             """
-        )
-        ticket_columns = {
-            row["name"] for row in connection.execute("PRAGMA table_info(tickets)").fetchall()
-        }
-        if "archived_at" not in ticket_columns:
-            connection.execute("ALTER TABLE tickets ADD COLUMN archived_at TEXT")
-        user_columns = {
-            row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
-        }
-        for column, definition in (
-            ("full_name", "TEXT NOT NULL DEFAULT ''"),
-            ("email", "TEXT NOT NULL DEFAULT ''"),
-            ("department", "TEXT NOT NULL DEFAULT ''"),
-            ("phone", "TEXT NOT NULL DEFAULT ''"),
-            ("is_active", "INTEGER NOT NULL DEFAULT 1"),
-        ):
-            if column not in user_columns:
-                connection.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")  # noqa: S608
-        for column, definition in (
-            ("resolved_at", "TEXT"),
-            ("closed_at", "TEXT"),
-            ("rating", "INTEGER"),
-            ("rating_comment", "TEXT"),
-        ):
-            if column not in ticket_columns:
-                connection.execute(f"ALTER TABLE tickets ADD COLUMN {column} {definition}")  # noqa: S608
-        ticket_schema = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tickets'"
-        ).fetchone()[0]
-        if "pending_waiting_user" not in ticket_schema:
-            connection.execute("PRAGMA foreign_keys = OFF")
-            connection.executescript(
-                """
+        if _database_url:
+            schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        connection.executescript(schema)
+        if _database_url:
+            for table, column, definition in (
+                ("tickets", "archived_at", "TEXT"),
+                ("tickets", "resolved_at", "TEXT"),
+                ("tickets", "closed_at", "TEXT"),
+                ("tickets", "rating", "INTEGER"),
+                ("tickets", "rating_comment", "TEXT"),
+                ("users", "full_name", "TEXT NOT NULL DEFAULT ''"),
+                ("users", "email", "TEXT NOT NULL DEFAULT ''"),
+                ("users", "department", "TEXT NOT NULL DEFAULT ''"),
+                ("users", "phone", "TEXT NOT NULL DEFAULT ''"),
+                ("users", "is_active", "INTEGER NOT NULL DEFAULT 1"),
+            ):
+                connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}"
+                )
+        else:
+            ticket_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(tickets)").fetchall()
+            }
+            if "archived_at" not in ticket_columns:
+                connection.execute("ALTER TABLE tickets ADD COLUMN archived_at TEXT")
+            user_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
+            }
+            for column, definition in (
+                ("full_name", "TEXT NOT NULL DEFAULT ''"),
+                ("email", "TEXT NOT NULL DEFAULT ''"),
+                ("department", "TEXT NOT NULL DEFAULT ''"),
+                ("phone", "TEXT NOT NULL DEFAULT ''"),
+                ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+            ):
+                if column not in user_columns:
+                    connection.execute(
+                        f"ALTER TABLE users ADD COLUMN {column} {definition}"  # noqa: S608
+                    )
+            for column, definition in (
+                ("resolved_at", "TEXT"),
+                ("closed_at", "TEXT"),
+                ("rating", "INTEGER"),
+                ("rating_comment", "TEXT"),
+            ):
+                if column not in ticket_columns:
+                    connection.execute(
+                        f"ALTER TABLE tickets ADD COLUMN {column} {definition}"  # noqa: S608
+                    )
+            ticket_schema = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tickets'"
+            ).fetchone()[0]
+            if "pending_waiting_user" not in ticket_schema:
+                connection.execute("PRAGMA foreign_keys = OFF")
+                connection.executescript(
+                    """
                 CREATE TABLE tickets_replacement (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
@@ -208,9 +270,9 @@ def initialize_store() -> None:
                 ALTER TABLE tickets_replacement RENAME TO tickets;
                 CREATE INDEX IF NOT EXISTS idx_tickets_requester ON tickets(requester);
                 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
-                """
-            )
-            connection.execute("PRAGMA foreign_keys = ON")
+                    """
+                )
+                connection.execute("PRAGMA foreign_keys = ON")
         if not DEMO_MODE:
             demo_credentials = {"user": "user", "agent": "agent", "admin": "admin"}
             existing_demo_users = connection.execute(
@@ -225,7 +287,7 @@ def initialize_store() -> None:
                     "Demo credentials are present in this database. Use a fresh non-demo "
                     "database or change the demo passwords before startup."
                 )
-        if connection.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+        if connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
             if DEMO_MODE:
                 demo_users = (
                     ("user", "user", "user"),
@@ -254,12 +316,30 @@ def initialize_store() -> None:
 
 def reset_store() -> None:
     with _connect() as connection:
+        if _database_url:
+            connection.execute(
+                "TRUNCATE TABLE audit_logs, comments, tickets, chat_messages, chat_sessions, "
+                "ticket_attachments, users RESTART IDENTITY CASCADE"
+            )
+            if DEMO_MODE:
+                demo_users = (
+                    ("user", "user", "user"),
+                    ("agent", "agent", "agent"),
+                    ("admin", "admin", "admin"),
+                )
+                connection.executemany(
+                    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                    [(name, _password_hash(password), role) for name, password, role in demo_users],
+                )
+            return
         connection.execute("DELETE FROM audit_logs")
         connection.execute("DELETE FROM comments")
         connection.execute("DELETE FROM tickets")
         connection.execute("DELETE FROM chat_sessions")
         connection.execute("DELETE FROM users")
-        connection.execute("DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'comments', 'audit_logs')")
+        connection.execute(
+            "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'comments', 'audit_logs')"
+        )
     initialize_store()
 
 
@@ -277,8 +357,8 @@ def count_active_admins() -> int:
     with _connect() as connection:
         return int(
             connection.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
-            ).fetchone()[0]
+                "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1"
+            ).fetchone()["count"]
         )
 
 
@@ -317,7 +397,7 @@ def create_user(
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (username, _password_hash(password), role, full_name, email, department, phone),
             )
-        except sqlite3.IntegrityError as exc:
+        except DatabaseIntegrityError as exc:
             raise ValueError("Username already exists.") from exc
     return {"username": username, "role": role}
 
@@ -342,8 +422,8 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
         )
         if leaving_active_admin:
             active_admins = connection.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
-            ).fetchone()[0]
+                "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1"
+            ).fetchone()["count"]
             if active_admins <= 1:
                 raise ValueError("Cannot disable the last active administrator")
         fields = ", ".join(f"{field} = ?" for field in normalized)
@@ -405,15 +485,24 @@ def create_ticket(
     now = datetime.now(timezone.utc)
     deadline = now + timedelta(hours=PRIORITY_HOURS[priority])
     with _connect() as connection:
-        cursor = connection.execute(
-            """
+        insert_sql = """
             INSERT INTO tickets
                 (title, description, category, priority, requester, status, created_at, updated_at, sla_deadline)
             VALUES (?, ?, ?, ?, ?, 'new', ?, ?, ?)
-            """,
-            (title, description, category, priority, requester, now.isoformat(), now.isoformat(), deadline.isoformat()),
+        """
+        parameters = (
+            title, description, category, priority, requester,
+            now.isoformat(), now.isoformat(), deadline.isoformat(),
         )
-        ticket_id = int(cursor.lastrowid)
+        if _database_url:
+            ticket_id = int(
+                connection.execute(insert_sql + " RETURNING id", parameters).fetchone()["id"]
+            )
+        else:
+            cursor = connection.execute(
+                insert_sql, parameters
+            )
+            ticket_id = int(cursor.lastrowid)
         _record_audit(connection, ticket_id, requester, "created", None, "new")
         row = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
         return _ticket_dict(connection, row)
@@ -774,8 +863,8 @@ def get_analytics() -> dict[str, Any]:
     now = _now()
     with _connect() as connection:
         total = connection.execute(
-            "SELECT COUNT(*) FROM tickets WHERE archived_at IS NULL"
-        ).fetchone()[0]
+            "SELECT COUNT(*) AS count FROM tickets WHERE archived_at IS NULL"
+        ).fetchone()["count"]
         statuses = {
             row["status"]: row["count"]
             for row in connection.execute(
@@ -791,10 +880,10 @@ def get_analytics() -> dict[str, Any]:
             )
         }
         overdue = connection.execute(
-            "SELECT COUNT(*) FROM tickets WHERE archived_at IS NULL "
+            "SELECT COUNT(*) AS count FROM tickets WHERE archived_at IS NULL "
             "AND status NOT IN ('resolved', 'closed') AND sla_deadline < ?",
             (now,),
-        ).fetchone()[0]
+        ).fetchone()["count"]
         recent = [
             dict(row)
             for row in connection.execute(

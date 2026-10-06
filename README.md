@@ -5,7 +5,7 @@
 ## Trạng thái dự án
 
 - Các luồng chính có thể trình diễn gồm tra cứu runbook, tạo/theo dõi ticket, xử lý ticket theo vai trò và quản trị tài khoản/tri thức.
-- GitHub Actions có workflow kiểm tra lint, giao diện, test, PostgreSQL, baseline truy xuất và build Docker. **Lần chạy CI mới nhất trên `main` mà nhóm kiểm tra (06/10/2026) thất bại ở PostgreSQL integration test** `test_postgres_schema_is_idempotent_and_ticket_lifecycle_works`: test không thể chuyển ticket từ `new` sang `pending_waiting_user`. Vì vậy không xem CI hiện tại là đạt; kết quả của lần chạy khác có thể thay đổi theo thời gian.
+- GitHub Actions có workflow kiểm tra lint, giao diện, test, PostgreSQL, baseline truy xuất và build Docker. **Lần chạy CI mới nhất trên `main` mà nhóm kiểm tra (06/10/2026) thất bại ở bước PostgreSQL integration test.** Không xem CI hiện tại là đạt; kết quả của lần chạy khác có thể thay đổi theo thời gian.
 - Tài liệu yêu cầu, thiết kế và kế hoạch đánh giá là đầu vào/đặc tả của đồ án, không phải bằng chứng rằng các mục tiêu production hay usability đã được nghiệm thu.
 
 ## Chạy thử nhanh trên Windows

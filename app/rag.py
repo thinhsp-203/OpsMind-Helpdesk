@@ -8,6 +8,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import httpx
+
+from app import config
+
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
 STOP_WORDS = {
@@ -297,6 +301,63 @@ def suggest_ticket_triage(
     }
 
 
+def synthesize_answer_with_llm(
+    question: str,
+    matches: list[dict[str, Any]],
+) -> str | None:
+    """Tổng hợp câu trả lời tự nhiên từ ngữ cảnh Runbook bằng LLM (nếu được kích hoạt).
+
+    Nguyên tắc an toàn (Zero-Hallucination & Fallback):
+    - Nếu ENABLE_LLM_GENERATION=false hoặc thiếu API key -> trả về None.
+    - System prompt ràng buộc chặt chẽ: chỉ dùng dữ liệu từ các đoạn Runbook được trích xuất.
+    - Timeout ngắn (mặc định 5s) và bọc try/except an toàn -> fallback về template tĩnh nếu lỗi.
+    """
+    if not config.ENABLE_LLM_GENERATION or not config.LLM_API_KEY or not matches:
+        return None
+
+    context_blocks: list[str] = []
+    for idx, match in enumerate(matches[:3], start=1):
+        context_blocks.append(
+            f"--- Runbook [{idx}]: {match['title']} ({match['source']}) ---\n{match['content']}"
+        )
+    context_text = "\n\n".join(context_blocks)
+
+    system_prompt = (
+        "Bạn là trợ lý IT Helpdesk nội bộ. Hãy dựa CHỈ vào các đoạn Runbook bên dưới để "
+        "hướng dẫn người dùng giải quyết sự cố CNTT ngắn gọn, rõ ràng theo từng bước.\n"
+        "Nếu tài liệu không đủ thông tin, hãy nêu rõ và khuyên người dùng tạo ticket hỗ trợ.\n"
+        "Tuyệt đối không tự suy đoán thông tin ngoài Runbook."
+    )
+    user_prompt = f"Runbook tham khảo:\n{context_text}\n\nSự cố của người dùng: {question}"
+
+    try:
+        url = f"{config.LLM_BASE_URL}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {config.LLM_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": config.LLM_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 512,
+        }
+        response = httpx.post(url, headers=headers, json=payload, timeout=config.LLM_TIMEOUT_SECONDS)
+        if response.status_code == 200:
+            data = response.json()
+            choices = data.get("choices")
+            if choices and isinstance(choices, list):
+                content = choices[0].get("message", {}).get("content", "").strip()
+                if content:
+                    return content
+    except Exception:
+        return None
+    return None
+
+
 def generate_answer(question: str) -> dict[str, Any]:
     matches = retrieve_relevant_context(question)
     triage = suggest_ticket_triage(question, matches)
@@ -310,6 +371,7 @@ def generate_answer(question: str) -> dict[str, Any]:
             "matches": [],
             "grounded": False,
             "triage": triage,
+            "llm_generated": False,
         }
 
     sources = [
@@ -320,15 +382,24 @@ def generate_answer(question: str) -> dict[str, Any]:
         }
         for match in matches
     ]
-    answer = (
-        "Mình tìm thấy hướng dẫn liên quan trong Knowledge Base. "
-        "Hãy thử các bước được trích dẫn bên dưới; nếu chưa khắc phục được, hãy tạo ticket "
-        "và chuyển cho IT Support."
-    )
+
+    llm_synthesized = synthesize_answer_with_llm(question, matches)
+    if llm_synthesized:
+        answer = llm_synthesized
+        llm_generated = True
+    else:
+        answer = (
+            "Mình tìm thấy hướng dẫn liên quan trong Knowledge Base. "
+            "Hãy thử các bước được trích dẫn bên dưới; nếu chưa khắc phục được, hãy tạo ticket "
+            "và chuyển cho IT Support."
+        )
+        llm_generated = False
+
     return {
         "answer": answer,
         "sources": sources,
         "matches": matches,
         "grounded": True,
         "triage": triage,
+        "llm_generated": llm_generated,
     }

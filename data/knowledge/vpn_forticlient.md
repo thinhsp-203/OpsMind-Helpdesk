@@ -1,4 +1,6 @@
-# FortiClient VPN Troubleshooting
+# VPN FortiClient Remote Access Troubleshooting
+
+**Từ khóa:** VPN, kết nối VPN, làm việc tại nhà, remote access, FortiClient, VPN gateway, gateway down, mất kết nối VPN.
 
 ## Symptoms
 - User cannot connect to VPN after upgrade.

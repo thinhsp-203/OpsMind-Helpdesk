@@ -18,5 +18,6 @@ Nhật ký ghi các phần có hỗ trợ AI và việc nhóm cần tự rà so�
 4. Giao diện trước đây đưa nội dung ticket không tin cậy vào `innerHTML`. **Sửa:** dựng phần ticket, bình luận và trích đoạn bằng DOM/textContent.
 5. Bản kế hoạch có metric mục tiêu nhưng chưa có số liệu thực nghiệm. **Sửa:** tài liệu mới đánh dấu rõ mục tiêu chưa đo và cung cấp biểu mẫu để nhóm thu thập dữ liệu thật.
 6. RAG nguyên bản chỉ dừng ở trích đoạn BM25 mà thiếu bước LLM generation tự nhiên theo định nghĩa đầy đủ của RAG. **Sửa:** bổ sung hàm tổng hợp `synthesize_answer_with_llm` hỗ trợ OpenAI/Groq API kèm system prompt ràng buộc chặt vào Runbook; thiết kế fallback 100% về template tĩnh khi không có API key hoặc sự cố mạng; bổ sung 3 test tự động bao quát cả ca thành công và ca lỗi.
+7. Pipeline CI trên GitHub Actions gặp lỗi tại bước kiểm thử PostgreSQL do cấu hình `localhost` khiến `psycopg` trên Linux runner tìm Unix domain socket thay vì TCP port 5432 của service container. **Sửa:** chuẩn hóa hostname sang `127.0.0.1` trong workflow CI và tự động chuyển đổi `localhost` sang `127.0.0.1` trong hàm `_connect()` của `store.py`.
 
 Các mục “sửa” ở trên là thay đổi trong prototype; nhóm cần đối chiếu lịch sử source control và kiểm tra lại thủ công trước khi nộp.

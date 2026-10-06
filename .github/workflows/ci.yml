@@ -42,7 +42,7 @@ jobs:
         run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml
       - name: Test PostgreSQL backend
         env:
-          DATABASE_URL: postgresql://helpdesk:test_password@localhost:5432/helpdesk_test
+          DATABASE_URL: postgresql://helpdesk:test_password@127.0.0.1:5432/helpdesk_test
         run: python -m pytest tests/test_postgres.py -q
       - name: Evaluate RAG retrieval baseline
         run: python -m scripts.evaluate_rag

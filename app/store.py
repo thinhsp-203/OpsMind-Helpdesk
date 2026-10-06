@@ -73,6 +73,8 @@ def _now() -> str:
 def _connect() -> sqlite3.Connection | _PostgresConnection:
     if _database_url:
         url = _database_url.replace("postgres://", "postgresql://", 1)
+        if "@localhost:" in url:
+            url = url.replace("@localhost:", "@127.0.0.1:")
         return _PostgresConnection(psycopg.connect(url, row_factory=dict_row))
     _database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(_database_path, timeout=15)

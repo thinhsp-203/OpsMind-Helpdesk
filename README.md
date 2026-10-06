@@ -49,7 +49,7 @@ Compose khởi chạy PostgreSQL 16 cùng ứng dụng, bind web/API vào `127.0
 - RAG baseline bằng BM25 trên Markdown, có truy vấn tiếng Việt cơ bản, trích tên tài liệu và từ chối khi không tìm thấy đoạn phù hợp.
 - Lịch sử RAG theo tài khoản, nguồn trích dẫn và feedback 👍/👎 được lưu cục bộ; không có streaming hay LLM-generated answer.
 - Giao diện responsive song ngữ Việt/Anh với lựa chọn ngôn ngữ được lưu trong trình duyệt; nội dung ticket/runbook giữ nguyên ngôn ngữ nhập.
-- 9+ runbook demo về VPN, Wi-Fi, máy in, Windows Update, Outlook, chứng thư số, quyền thư mục, ERP và MFA.
+- 30 runbook sự cố CNTT thực tế chuẩn doanh nghiệp về VPN, Wi-Fi, DHCP/DNS, máy in, Scan SMB, USB Token, Windows Update, BSOD, hiệu năng 100% Disk, Outlook, lỗi gửi nhận mail, chứng thư số, Active Directory, quyền thư mục, BitLocker và ERP.
 
 ## Kiểm thử và đánh giá retrieval
 

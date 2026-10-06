@@ -1,86 +1,89 @@
-# Helpdesk RAG
+# OpsMind Helpdesk
 
-Prototype Helpdesk nội bộ với giao diện tiếng Việt/Anh: quản lý ticket, SLA, trao đổi và truy xuất hướng dẫn CNTT có dẫn nguồn.
+**OpsMind Helpdesk** là prototype học thuật cho bài toán hỗ trợ CNTT nội bộ. Ứng dụng kết hợp quản lý ticket theo vai trò, SLA và lịch sử xử lý với chức năng tìm hướng dẫn trong Knowledge Base Markdown. README này tóm tắt những gì đã có trong mã nguồn và cách chạy demo; đây chưa phải sản phẩm sẵn sàng cho vận hành production.
 
-## Chạy local trên Windows
+## Trạng thái dự án
+
+- Các luồng chính có thể trình diễn gồm tra cứu runbook, tạo/theo dõi ticket, xử lý ticket theo vai trò và quản trị tài khoản/tri thức.
+- GitHub Actions có workflow kiểm tra lint, giao diện, test, PostgreSQL, baseline truy xuất và build Docker. **Lần chạy CI mới nhất trên `main` mà nhóm kiểm tra (06/10/2026) thất bại ở PostgreSQL integration test** `test_postgres_schema_is_idempotent_and_ticket_lifecycle_works`: test không thể chuyển ticket từ `new` sang `pending_waiting_user`. Vì vậy không xem CI hiện tại là đạt; kết quả của lần chạy khác có thể thay đổi theo thời gian.
+- Tài liệu yêu cầu, thiết kế và kế hoạch đánh giá là đầu vào/đặc tả của đồ án, không phải bằng chứng rằng các mục tiêu production hay usability đã được nghiệm thu.
+
+## Chạy thử nhanh trên Windows
+
+Yêu cầu Python 3.11 trở lên. Từ thư mục repository, chạy:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 py -m pip install -r requirements.txt
-$env:SECRET_KEY = "thay-bang-gia-tri-ngau-nhien-dai-cho-may-local"
 py -m uvicorn app.main:app --reload
 ```
 
-Mở `http://127.0.0.1:8000`. Tài liệu API tại `/docs`.
-
-### Tài khoản demo
+Mở `http://127.0.0.1:8000`; API docs tại `/docs`, health check tại `/health`. Chế độ demo mặc định bật và tạo tài khoản mẫu trên database mới:
 
 | Vai trò | Tên đăng nhập | Mật khẩu |
 |---|---|---|
 | Nhân viên | `user` | `user` |
-| IT Support | `agent` | `agent` |
-| Quản trị IT | `admin` | `admin` |
+| IT Support (Agent) | `agent` | `agent` |
+| Quản trị IT (Admin) | `admin` | `admin` |
 
-Tài khoản mẫu chỉ dùng trình diễn local; thay secret và thay cơ chế nạp tài khoản trước khi đưa hệ thống ra môi trường có người dùng thật.
+Chỉ dùng tài khoản và dữ liệu giả trên máy local. Không tái sử dụng mật khẩu mẫu hoặc mở ứng dụng ra Internet. Hướng dẫn cấu hình non-demo và lưu ý dữ liệu có trong [hướng dẫn triển khai demo](docs/DEPLOYMENT.md).
 
-## Chạy bằng Docker
+## Chạy với Docker Compose
+
+Yêu cầu Docker Engine/Desktop và Docker Compose:
 
 ```powershell
-docker compose up --build
+docker compose up --build -d
+docker compose logs -f helpdesk
 ```
 
-Compose khởi chạy PostgreSQL 16 cùng ứng dụng, bind web/API vào `127.0.0.1:8000` và lưu database, tệp runtime, Knowledge Base trong các named volume riêng. Mật khẩu database mặc định chỉ dành cho demo local; đặt `POSTGRES_PASSWORD` và `SECRET_KEY` riêng trước khi dùng môi trường chia sẻ. Có thể trỏ `DATABASE_URL` tới PostgreSQL đã quản lý bên ngoài. Không mở cổng này ra Internet.
+Compose khởi chạy ứng dụng cùng PostgreSQL 16; web/API chỉ bind vào `127.0.0.1:8000`. Database, tệp runtime và Knowledge Base dùng các named volume riêng. Mặc định Compose vẫn ở demo mode và có mật khẩu PostgreSQL chỉ dành cho demo local; thay `POSTGRES_PASSWORD` và `SECRET_KEY` trước khi chạy trên máy dùng chung. Không mở cổng dịch vụ ra Internet. `docker compose down` giữ dữ liệu; tránh `docker compose down -v` nếu cần giữ volume.
 
-## Chức năng hiện có
+Local development/test mặc định dùng SQLite (`HELPDESK_DB_PATH`); Compose cấu hình `DATABASE_URL` để dùng PostgreSQL. Có thể đặt `DATABASE_URL` để kết nối PostgreSQL khác, nhưng Compose vẫn khởi chạy service PostgreSQL cục bộ. Chưa có quy trình chuyển dữ liệu SQLite cũ sang PostgreSQL hay migration production tổng quát.
 
-- Đăng nhập JWT; mật khẩu demo băm PBKDF2; vai trò End-user, Agent, Admin.
-- PostgreSQL được dùng trong Docker Compose; local development và test mặc định dùng SQLite. Cấu hình `DATABASE_URL` để chọn PostgreSQL; cả hai backend lưu ticket, bình luận, audit, attachment metadata, tài khoản và lịch sử chat.
-- End-user chỉ xem ticket của mình; IT có hàng đợi, tìm kiếm/lọc theo trạng thái, danh mục, từ khóa và ngày, phân công và analytics.
-- End-user sửa ticket khi còn mới; IT sửa ticket chưa đóng; Admin lưu trữ mềm và audit được giữ lại.
-- Admin tạo tài khoản với mật khẩu băm và nạp runbook Markdown UTF-8 (tối đa 256 KiB, cần H1); tài liệu được đưa vào retrieval sau khi cache làm mới.
-- Admin cập nhật hồ sơ cơ bản/vai trò, khóa/mở tài khoản (không thể khóa Admin cuối), xóa hoặc re-index runbook, xem báo cáo Agent và tải CSV.
-- Luồng nhân viên: tra runbook → xem một nguồn rõ ràng (các nguồn phụ thu gọn) → nếu chưa xử lý được thì chuyển câu hỏi sang ticket (không gõ lại) → theo dõi mã, người IT và hạn SLA. Nút tra cứu tự cuộn tới kết quả; Agent/Admin chỉ thấy hàng đợi và thao tác phù hợp vai trò.
-- Khi chuyển tiếp, hệ thống gợi ý category theo runbook đứng đầu và priority theo rule tác động; luôn hiện lý do, không tự gửi và cho người gửi xác nhận/chỉnh. Đây là heuristic demo, không phải mô hình AI phân loại đã nghiệm thu.
-- Agent/Admin có thể tra cứu runbook trực tiếp từ ticket; trích đoạn và tên nguồn được chèn vào ô phản hồi dưới dạng bản nháp để IT rà soát/chỉnh sửa rồi tự gửi.
-- FSM trạng thái có kiểm tra chuyển tiếp; SLA theo ưu tiên (giờ lịch): thấp 48h, thường 24h, cao 8h, khẩn cấp 2h.
-- Ticket hỗ trợ trao đổi; trạng thái chờ bổ sung thông tin/chuyển cấp; nhân viên xác nhận hoặc yêu cầu xử lý lại; đánh giá 1–5 sao khi đã giải quyết.
-- Tệp ticket giới hạn PNG/JPG/TXT/LOG đến 10 MiB, được phục vụ qua API có kiểm tra quyền; prototype chưa quét virus.
-- RAG baseline bằng BM25 trên Markdown, có truy vấn tiếng Việt cơ bản, trích tên tài liệu và từ chối khi không tìm thấy đoạn phù hợp.
-- Lịch sử RAG theo tài khoản, nguồn trích dẫn và feedback 👍/👎 được lưu cục bộ; không có streaming hay LLM-generated answer.
-- Giao diện responsive song ngữ Việt/Anh với lựa chọn ngôn ngữ được lưu trong trình duyệt; nội dung ticket/runbook giữ nguyên ngôn ngữ nhập.
-- 9+ runbook demo về VPN, Wi-Fi, máy in, Windows Update, Outlook, chứng thư số, quyền thư mục, ERP và MFA.
+## Phạm vi prototype
 
-## Kiểm thử và đánh giá retrieval
+- **Vai trò và luồng:** Nhân viên chỉ xem ticket của mình, tra cứu hướng dẫn và gửi ticket; Agent xem hàng đợi, lọc/phân công ticket, trao đổi và cập nhật trạng thái; Admin có quyền Agent cùng quản trị tài khoản, runbook và báo cáo.
+- **Ticket:** trạng thái có kiểm tra chuyển tiếp, bình luận, audit, attachment, xác nhận/mở lại và đánh giá sau giải quyết. SLA demo tính theo giờ lịch: low 48 giờ, medium 24 giờ, high 8 giờ, urgent 2 giờ; chưa tính lịch làm việc/ngày nghỉ.
+- **Triage:** category được gợi ý từ runbook đứng đầu; priority được gợi ý bằng luật từ khóa. Giao diện nêu lý do, cho phép chỉnh sửa và yêu cầu người dùng chủ động xác nhận/gửi. Đây là heuristic, không phải mô hình phân loại đã được đánh giá nghiệp vụ.
+- **Knowledge Base:** Admin có thể quản lý runbook Markdown UTF-8 (tối đa 256 KiB, cần H1). Prototype có 9 runbook demo về VPN, Wi-Fi, máy in, Windows Update, Outlook, chứng thư số, quyền thư mục, ERP và MFA.
+- **Tra cứu:** truy xuất từ khóa BM25 trên đoạn Markdown, có chuẩn hóa tiếng Việt/synonym cơ bản, trích nguồn và từ chối khi không tìm thấy đoạn đủ liên quan. Điểm relevance không phải xác suất câu trả lời đúng. Agent/Admin có thể chèn đoạn trích và nguồn vào bản nháp phản hồi để tự kiểm tra, chỉnh sửa và gửi.
+- **LLM bên ngoài (tùy chọn):** tắt mặc định (`ENABLE_LLM_GENERATION=false`). Chỉ khi bật và cấu hình API key, hệ thống mới gửi câu hỏi của người dùng cùng tối đa ba đoạn runbook được truy xuất tới endpoint tương thích Chat Completions đã cấu hình (`LLM_BASE_URL`, mặc định URL OpenAI). Hãy bảo đảm dữ liệu được phép chia sẻ với nhà cung cấp đó trước khi bật. Nếu thiếu cấu hình, không có kết quả phù hợp hoặc lời gọi lỗi, ứng dụng dùng phản hồi tĩnh; prompt hướng dẫn mô hình bám nguồn không bảo đảm loại bỏ hoàn toàn câu trả lời sai.
+- **Giao diện và lưu trữ:** giao diện Việt/Anh, lựa chọn ngôn ngữ lưu trong trình duyệt; nội dung ticket/runbook không tự dịch. Lịch sử hỏi đáp và feedback được lưu theo tài khoản trong database ứng dụng.
+
+## Kiểm thử và đánh giá
+
+Các lệnh kiểm tra cục bộ theo cấu hình repository:
 
 ```powershell
-py -m pytest -q
-py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
+py -m ruff check app tests scripts
+node --check app/static/app.js
+node --check app/static/i18n.js
+node tests/test_i18n.js
+py -m pytest --cov=app --cov-report=term-missing
 py -m scripts.evaluate_rag
 ```
 
-CI cấu hình Ruff với rule bảo mật, pytest/coverage, Node syntax/i18n test, PostgreSQL integration test, tập baseline RAG và build Docker image; coverage được lưu thành artifact. Coverage là tín hiệu kiểm thử, không chứng minh hệ thống đạt yêu cầu chất lượng khác.
+Workflow CI còn chạy kiểm thử backend với PostgreSQL và build Docker image. Trạng thái CI nêu ở đầu README là lần chạy mới nhất nhóm kiểm tra, không phải kết quả của các lệnh cục bộ trên.
+
+Baseline retrieval được ghi trong [báo cáo RAG](docs/RAG_BASELINE.md): lần chạy local trên tập 30 câu nháp tự soạn cho kết quả context hit@3 28/28 câu in-scope, từ chối 2/2 câu out-of-scope; latency median 0,75 ms và p95 0,80 ms đo trực tiếp hàm retrieval trong tiến trình. Tập nhỏ chưa được chuyên gia IT duyệt; số đo không bao gồm HTTP/UI, tải lần đầu hay tải đồng thời và không chứng minh độ faithful của câu trả lời. Chưa có bằng chứng load test, uptime, usability/SUS, triển khai staging hay đánh giá độc lập. Coverage và kết quả retrieval không tự thân chứng minh chất lượng hoặc mức sẵn sàng production.
+
+## Giá trị dự kiến và giới hạn so sánh
+
+So với việc chỉ trao đổi yêu cầu trong nhóm chat, prototype hướng tới việc giữ mã ticket, trạng thái, người xử lý, hạn SLA và lịch sử cùng một nơi; hướng dẫn có nguồn cũng có thể chuyển thành ticket mà không nhập lại. Đây là lợi ích thiết kế dự kiến, **chưa có thử nghiệm người dùng đối chứng để kết luận giảm thời gian, giảm bỏ sót hay vượt trội** Jira, GLPI, ServiceNow hoặc quy trình hiện hữu. Ứng dụng chưa thay thế kênh khẩn cấp, chat doanh nghiệp hay nền tảng ITSM; chưa có thông báo email/push hoặc tích hợp nhân sự/ITSM.
+
+Đây là prototype, không phải hệ thống production. Tài khoản demo dùng mật khẩu yếu; cần dữ liệu giả. Chưa có đầy đủ các biện pháp vận hành như HTTPS/reverse proxy, rate limiting, backup/restore, monitoring/HA, kiểm thử tải và quy trình nâng cấp production. Attachment chưa được quét virus; chưa có luồng đổi/reset mật khẩu. Không dùng để lưu dữ liệu nhạy cảm hoặc triển khai Internet.
 
 ## Tài liệu đồ án
 
-- [Báo cáo bối cảnh đề tài](docs/BAO_CAO_BOI_CANH.md): bài toán, stakeholder, giải pháp, tham chiếu Jira/GLPI/ServiceNow và khảo sát nhu cầu.
-- [SRS](docs/SRS.md): yêu cầu, user stories/acceptance criteria, NFR và giới hạn.
-- [SDD](docs/SDD.md): kiến trúc, context, sequence, FSM, deployment, ERD và API.
-- [Ma trận truy vết kiểm thử](docs/TEST_TRACEABILITY.md): liên kết yêu cầu/AC với test tự động và bằng chứng còn thiếu.
-- [Hướng dẫn sử dụng](docs/USER_GUIDE.md): thao tác theo vai trò Nhân viên, Agent và Admin.
-- [Hướng dẫn triển khai demo](docs/DEPLOYMENT.md): cài local/Docker, cấu hình, dữ liệu và giới hạn vận hành.
-- [Hướng dẫn đóng góp](CONTRIBUTING.md): thiết lập môi trường, kiểm tra trước PR và quy tắc dữ liệu.
-- [Sổ lỗi và nợ kỹ thuật](docs/DEFECT_TECH_DEBT_LOG.md): lỗi đã sửa trong nhánh hoàn thiện và giới hạn còn mở.
-- [Kế hoạch thực nghiệm](docs/KE_HOACH_THUC_NGHIEM.md): bộ câu hỏi RAG, định nghĩa metric, kịch bản usability và SUS.
-- [Metric charter G1](docs/G1_METRIC_CHARTER_TEMPLATE.md): mẫu dự thảo để nhóm/GVHD chốt và ký; hiện chưa được phê duyệt.
-- [Baseline RAG](docs/RAG_BASELINE.md): kết quả truy xuất lần chạy local mới nhất trên bộ 30 câu nháp cùng giới hạn diễn giải.
-- [AI usage log](docs/AI_USAGE_LOG.md): hỗ trợ AI, kết quả rà soát và lỗi thiết kế đã sửa.
-- [Tài liệu đối chiếu nội bộ](docs/internal/): phân tích khoảng cách tính năng, kế hoạch thực tiễn và hướng dẫn bổ sung.
-
-## Giới hạn cần nêu khi bảo vệ
-
-Đây là prototype học thuật, không phải hệ thống production. Hệ thống mặc định sử dụng lexical retrieval BM25 trên runbook Markdown để trích dẫn nguồn có thể kiểm chứng; có cơ chế tùy chọn tổng hợp câu trả lời qua LLM (nếu cấu hình API key) kèm fallback an toàn; điểm BM25 không phải xác suất độ đúng. Baseline trên 30 câu là dữ liệu tự soạn, chưa được IT độc lập duyệt. PostgreSQL trong Compose cải thiện độ phù hợp cho môi trường nhiều tiến trình so với SQLite local, nhưng không đồng nghĩa đã có HA, backup/restore, hardening hoặc được kiểm thử production. Dữ liệu demo, SLA giờ lịch và bộ runbook nhỏ không phù hợp triển khai Internet. Chế độ non-demo yêu cầu secret và bootstrap Admin; ứng dụng từ chối khởi động nếu phát hiện mật khẩu demo mặc định trong DB. Vẫn cần hardening, backup/restore, staging, tải 50 RPS, uptime đo thực tế, SUS với người tham gia và benchmark RAG được chuyên gia xác nhận; không báo cáo các mục tiêu này như kết quả đã đạt.
-
-So với nhắn Zalo, tiện ích kỳ vọng là ticket có mã/trạng thái/người nhận/SLA/lịch sử, nội dung không trôi trong chat và hướng dẫn có nguồn có thể chuyển thành ticket. Hệ thống chưa thay thế kênh khẩn cấp hoặc Zalo/Teams mà doanh nghiệp đang dùng; chưa có push/email notification hay tích hợp ITSM/nhân sự. Muốn kết luận có giảm thời gian/bỏ sót, cần so sánh cùng tác vụ trên kênh chat hiện tại với người dùng thật.
-
-Chạy kiểm tra RAG baseline bằng `py -m scripts.evaluate_rag`. Trước demo, chạy test, đặt `SECRET_KEY` riêng và dùng dữ liệu giả. Trước bảo vệ, nhóm cần chốt metric với GVHD, thu khảo survey/experiment thật, lưu minh chứng và rà lại nội dung SRS/SDD theo mã nguồn thực tế.
+- [Báo cáo bối cảnh đề tài](docs/BAO_CAO_BOI_CANH.md): bài toán, stakeholder, giải pháp và tham chiếu sản phẩm.
+- [SRS](docs/SRS.md): yêu cầu, tác nhân, acceptance criteria và mục tiêu cần kiểm chứng.
+- [SDD](docs/SDD.md): kiến trúc, luồng xử lý, FSM, dữ liệu và API.
+- [Ma trận truy vết kiểm thử](docs/TEST_TRACEABILITY.md): đối chiếu yêu cầu với test hiện có và bằng chứng còn thiếu.
+- [Hướng dẫn sử dụng](docs/USER_GUIDE.md): thao tác theo vai trò.
+- [Hướng dẫn triển khai demo](docs/DEPLOYMENT.md): cài đặt, cấu hình và giới hạn vận hành.
+- [Kế hoạch thực nghiệm](docs/KE_HOACH_THUC_NGHIEM.md) và [metric charter G1](docs/G1_METRIC_CHARTER_TEMPLATE.md): kế hoạch/mẫu cần được nhóm và GVHD chốt, chưa phải kết quả nghiệm thu.
+- [Baseline RAG](docs/RAG_BASELINE.md): kết quả retrieval local và giới hạn diễn giải.
+- [Sổ lỗi và nợ kỹ thuật](docs/DEFECT_TECH_DEBT_LOG.md): vấn đề đã ghi nhận và giới hạn còn mở.
+- [Hướng dẫn đóng góp](CONTRIBUTING.md) và [tài liệu đối chiếu nội bộ](docs/internal/).

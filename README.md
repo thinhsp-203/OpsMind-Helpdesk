@@ -1,16 +1,21 @@
 # OpsMind Helpdesk
 
-**OpsMind Helpdesk** là prototype học thuật cho bài toán hỗ trợ CNTT nội bộ. Ứng dụng kết hợp quản lý ticket theo vai trò, SLA và lịch sử xử lý với chức năng tìm hướng dẫn trong Knowledge Base Markdown. README này tóm tắt những gì đã có trong mã nguồn và cách chạy demo; đây chưa phải sản phẩm sẵn sàng cho vận hành production.
+OpsMind Helpdesk là prototype học thuật hỗ trợ quy trình xử lý yêu cầu CNTT nội bộ. Nhân viên có thể tra cứu runbook, chuyển vấn đề thành ticket kèm nội dung đã nhập và theo dõi tiến độ; IT Support tiếp nhận trong hàng đợi có phân công, trạng thái, trao đổi và SLA; Admin quản lý tài khoản, tài liệu tri thức và báo cáo. Các bước này gom thông tin xử lý vào hồ sơ ticket thay vì để yêu cầu và hướng dẫn rời rạc trong các cuộc trò chuyện.
 
-## Trạng thái dự án
+## Trải nghiệm quy trình
 
-- Các luồng chính có thể trình diễn gồm tra cứu runbook, tạo/theo dõi ticket, xử lý ticket theo vai trò và quản trị tài khoản/tri thức.
-- GitHub Actions có workflow kiểm tra lint, giao diện, test, PostgreSQL, baseline truy xuất và build Docker. **Lần chạy CI mới nhất trên `main` mà nhóm kiểm tra (06/10/2026) thất bại ở bước PostgreSQL integration test.** Không xem CI hiện tại là đạt; kết quả của lần chạy khác có thể thay đổi theo thời gian.
-- Tài liệu yêu cầu, thiết kế và kế hoạch đánh giá là đầu vào/đặc tả của đồ án, không phải bằng chứng rằng các mục tiêu production hay usability đã được nghiệm thu.
+1. **Nhân viên tra cứu:** nhập câu hỏi để tìm các đoạn liên quan trong Knowledge Base và xem nguồn runbook.
+2. **Chuyển thành ticket:** nếu cần hỗ trợ, chuyển câu hỏi và ngữ cảnh sang biểu mẫu ticket; kiểm tra, chỉnh nội dung cùng danh mục/mức ưu tiên được gợi ý rồi chủ động gửi.
+3. **IT Support xử lý:** Agent xem hàng đợi, tìm/lọc và phân công ticket, cập nhật trạng thái, trao đổi với người gửi và theo dõi hạn SLA. Có thể tra cứu runbook từ ticket, chèn đoạn trích có nguồn vào bản nháp phản hồi, rà soát rồi tự gửi.
+4. **Admin quản trị:** quản lý người dùng và runbook Markdown, xem báo cáo ticket/Agent và xuất CSV.
 
-## Chạy thử nhanh trên Windows
+Các vai trò có giao diện tiếng Việt/Anh; quyền xem và thao tác được phân theo vai trò và chủ sở hữu ticket. Ticket có lịch sử/audit, bình luận, tệp đính kèm, quy trình chờ thông tin/giải quyết/xác nhận và đánh giá sau giải quyết.
 
-Yêu cầu Python 3.11 trở lên. Từ thư mục repository, chạy:
+## Chạy thử
+
+### Local trên Windows
+
+Yêu cầu Python 3.11 trở lên. Từ thư mục repository:
 
 ```powershell
 py -m venv .venv
@@ -19,7 +24,7 @@ py -m pip install -r requirements.txt
 py -m uvicorn app.main:app --reload
 ```
 
-Mở `http://127.0.0.1:8000`; API docs tại `/docs`, health check tại `/health`. Chế độ demo mặc định bật và tạo tài khoản mẫu trên database mới:
+Mở `http://127.0.0.1:8000`; API docs tại `/docs`, health check tại `/health`. Trên database mới, demo mode mặc định tạo các tài khoản mẫu:
 
 | Vai trò | Tên đăng nhập | Mật khẩu |
 |---|---|---|
@@ -27,9 +32,7 @@ Mở `http://127.0.0.1:8000`; API docs tại `/docs`, health check tại `/healt
 | IT Support (Agent) | `agent` | `agent` |
 | Quản trị IT (Admin) | `admin` | `admin` |
 
-Chỉ dùng tài khoản và dữ liệu giả trên máy local. Không tái sử dụng mật khẩu mẫu hoặc mở ứng dụng ra Internet. Hướng dẫn cấu hình non-demo và lưu ý dữ liệu có trong [hướng dẫn triển khai demo](docs/DEPLOYMENT.md).
-
-## Chạy với Docker Compose
+### Docker Compose
 
 Yêu cầu Docker Engine/Desktop và Docker Compose:
 
@@ -38,23 +41,22 @@ docker compose up --build -d
 docker compose logs -f helpdesk
 ```
 
-Compose khởi chạy ứng dụng cùng PostgreSQL 16; web/API chỉ bind vào `127.0.0.1:8000`. Database, tệp runtime và Knowledge Base dùng các named volume riêng. Mặc định Compose vẫn ở demo mode và có mật khẩu PostgreSQL chỉ dành cho demo local; thay `POSTGRES_PASSWORD` và `SECRET_KEY` trước khi chạy trên máy dùng chung. Không mở cổng dịch vụ ra Internet. `docker compose down` giữ dữ liệu; tránh `docker compose down -v` nếu cần giữ volume.
+Compose chạy ứng dụng với PostgreSQL 16; web/API chỉ bind vào `127.0.0.1:8000`. Database PostgreSQL, tệp runtime và Knowledge Base được lưu trong các named volume riêng. `docker compose down` giữ dữ liệu; tránh `docker compose down -v` nếu muốn giữ volume.
 
-Local development/test mặc định dùng SQLite (`HELPDESK_DB_PATH`); Compose cấu hình `DATABASE_URL` để dùng PostgreSQL. Có thể đặt `DATABASE_URL` để kết nối PostgreSQL khác, nhưng Compose vẫn khởi chạy service PostgreSQL cục bộ. Chưa có quy trình chuyển dữ liệu SQLite cũ sang PostgreSQL hay migration production tổng quát.
+Local development/test mặc định dùng SQLite tại `HELPDESK_DB_PATH`. Compose đặt `DATABASE_URL` để chạy PostgreSQL; có thể cấu hình biến này để ứng dụng kết nối PostgreSQL khác, nhưng Compose vẫn khởi chạy PostgreSQL cục bộ.
 
-## Phạm vi prototype
+## Tính năng và cách hoạt động
 
-- **Vai trò và luồng:** Nhân viên chỉ xem ticket của mình, tra cứu hướng dẫn và gửi ticket; Agent xem hàng đợi, lọc/phân công ticket, trao đổi và cập nhật trạng thái; Admin có quyền Agent cùng quản trị tài khoản, runbook và báo cáo.
-- **Ticket:** trạng thái có kiểm tra chuyển tiếp, bình luận, audit, attachment, xác nhận/mở lại và đánh giá sau giải quyết. SLA demo tính theo giờ lịch: low 48 giờ, medium 24 giờ, high 8 giờ, urgent 2 giờ; chưa tính lịch làm việc/ngày nghỉ.
-- **Triage:** category được gợi ý từ runbook đứng đầu; priority được gợi ý bằng luật từ khóa. Giao diện nêu lý do, cho phép chỉnh sửa và yêu cầu người dùng chủ động xác nhận/gửi. Đây là heuristic, không phải mô hình phân loại đã được đánh giá nghiệp vụ.
-- **Knowledge Base:** Admin có thể quản lý runbook Markdown UTF-8 (tối đa 256 KiB, cần H1). Prototype có 9 runbook demo về VPN, Wi-Fi, máy in, Windows Update, Outlook, chứng thư số, quyền thư mục, ERP và MFA.
-- **Tra cứu:** truy xuất từ khóa BM25 trên đoạn Markdown, có chuẩn hóa tiếng Việt/synonym cơ bản, trích nguồn và từ chối khi không tìm thấy đoạn đủ liên quan. Điểm relevance không phải xác suất câu trả lời đúng. Agent/Admin có thể chèn đoạn trích và nguồn vào bản nháp phản hồi để tự kiểm tra, chỉnh sửa và gửi.
-- **LLM bên ngoài (tùy chọn):** tắt mặc định (`ENABLE_LLM_GENERATION=false`). Chỉ khi bật và cấu hình API key, hệ thống mới gửi câu hỏi của người dùng cùng tối đa ba đoạn runbook được truy xuất tới endpoint tương thích Chat Completions đã cấu hình (`LLM_BASE_URL`, mặc định URL OpenAI). Hãy bảo đảm dữ liệu được phép chia sẻ với nhà cung cấp đó trước khi bật. Nếu thiếu cấu hình, không có kết quả phù hợp hoặc lời gọi lỗi, ứng dụng dùng phản hồi tĩnh; prompt hướng dẫn mô hình bám nguồn không bảo đảm loại bỏ hoàn toàn câu trả lời sai.
-- **Giao diện và lưu trữ:** giao diện Việt/Anh, lựa chọn ngôn ngữ lưu trong trình duyệt; nội dung ticket/runbook không tự dịch. Lịch sử hỏi đáp và feedback được lưu theo tài khoản trong database ứng dụng.
+- **Ticket và SLA:** trạng thái được kiểm tra theo luồng; có phân công, bình luận, audit, attachment, xác nhận/mở lại và đánh giá sau giải quyết. Mục tiêu SLA demo là giờ lịch: low 48 giờ, medium 24 giờ, high 8 giờ, urgent 2 giờ.
+- **Knowledge Base:** Admin có thể nạp, xóa và re-index runbook Markdown UTF-8 (tối đa 256 KiB, cần H1). Repository có 9 runbook mẫu về VPN, Wi-Fi, máy in, Windows Update, Outlook, chứng thư số, quyền thư mục, ERP và MFA.
+- **Tìm kiếm có dẫn nguồn:** baseline retrieval dùng BM25 trên các đoạn Markdown, kèm chuẩn hóa tiếng Việt/synonym cơ bản, nguồn tài liệu và cơ chế không trả lời khi không tìm thấy đoạn đủ liên quan. Agent/Admin cũng có thể tra cứu từ nội dung ticket và đưa trích đoạn vào bản nháp phản hồi.
+- **Gợi ý phân loại:** category dựa trên runbook đứng đầu; priority dùng luật từ khóa. Giao diện giải thích gợi ý và cho phép người gửi chỉnh sửa trước khi xác nhận ticket.
+- **LLM tùy chọn:** sinh câu trả lời qua LLM tắt mặc định (`ENABLE_LLM_GENERATION=false`). Khi bật và cấu hình API key, ứng dụng gửi câu hỏi cùng tối đa ba đoạn runbook được truy xuất đến endpoint tương thích Chat Completions cấu hình bằng `LLM_BASE_URL` (mặc định endpoint OpenAI). Chỉ bật nếu được phép chia sẻ nội dung đó với nhà cung cấp. Nếu không bật hoặc lời gọi không thành công, ứng dụng dùng phản hồi tĩnh.
+- **Lưu trữ và giao diện:** lịch sử hỏi đáp/feedback được lưu theo tài khoản trong database ứng dụng; lựa chọn ngôn ngữ giao diện lưu ở trình duyệt, không tự dịch nội dung ticket hoặc runbook.
 
-## Kiểm thử và đánh giá
+## Kiểm tra và đánh giá
 
-Các lệnh kiểm tra cục bộ theo cấu hình repository:
+Các lệnh kiểm tra cục bộ:
 
 ```powershell
 py -m ruff check app tests scripts
@@ -65,25 +67,23 @@ py -m pytest --cov=app --cov-report=term-missing
 py -m scripts.evaluate_rag
 ```
 
-Workflow CI còn chạy kiểm thử backend với PostgreSQL và build Docker image. Trạng thái CI nêu ở đầu README là lần chạy mới nhất nhóm kiểm tra, không phải kết quả của các lệnh cục bộ trên.
-
-Baseline retrieval được ghi trong [báo cáo RAG](docs/RAG_BASELINE.md): lần chạy local trên tập 30 câu nháp tự soạn cho kết quả context hit@3 28/28 câu in-scope, từ chối 2/2 câu out-of-scope; latency median 0,75 ms và p95 0,80 ms đo trực tiếp hàm retrieval trong tiến trình. Tập nhỏ chưa được chuyên gia IT duyệt; số đo không bao gồm HTTP/UI, tải lần đầu hay tải đồng thời và không chứng minh độ faithful của câu trả lời. Chưa có bằng chứng load test, uptime, usability/SUS, triển khai staging hay đánh giá độc lập. Coverage và kết quả retrieval không tự thân chứng minh chất lượng hoặc mức sẵn sàng production.
-
-## Giá trị dự kiến và giới hạn so sánh
-
-So với việc chỉ trao đổi yêu cầu trong nhóm chat, prototype hướng tới việc giữ mã ticket, trạng thái, người xử lý, hạn SLA và lịch sử cùng một nơi; hướng dẫn có nguồn cũng có thể chuyển thành ticket mà không nhập lại. Đây là lợi ích thiết kế dự kiến, **chưa có thử nghiệm người dùng đối chứng để kết luận giảm thời gian, giảm bỏ sót hay vượt trội** Jira, GLPI, ServiceNow hoặc quy trình hiện hữu. Ứng dụng chưa thay thế kênh khẩn cấp, chat doanh nghiệp hay nền tảng ITSM; chưa có thông báo email/push hoặc tích hợp nhân sự/ITSM.
-
-Đây là prototype, không phải hệ thống production. Tài khoản demo dùng mật khẩu yếu; cần dữ liệu giả. Chưa có đầy đủ các biện pháp vận hành như HTTPS/reverse proxy, rate limiting, backup/restore, monitoring/HA, kiểm thử tải và quy trình nâng cấp production. Attachment chưa được quét virus; chưa có luồng đổi/reset mật khẩu. Không dùng để lưu dữ liệu nhạy cảm hoặc triển khai Internet.
+Workflow CI trong `.github/workflows/ci.yml` còn có PostgreSQL integration test và build Docker image. Báo cáo [baseline RAG](docs/RAG_BASELINE.md) ghi nhận lần chạy local trên 30 câu hỏi nháp tự soạn: context hit@3 đạt 28/28 câu in-scope, từ chối 2/2 câu out-of-scope; latency median 0,75 ms và p95 0,80 ms đo trực tiếp hàm retrieval. Đây là kết quả trên tập nhỏ chưa được IT độc lập duyệt, không đo độ faithful của câu trả lời hay hiệu năng toàn ứng dụng.
 
 ## Tài liệu đồ án
 
-- [Báo cáo bối cảnh đề tài](docs/BAO_CAO_BOI_CANH.md): bài toán, stakeholder, giải pháp và tham chiếu sản phẩm.
+- [Báo cáo bối cảnh đề tài](docs/BAO_CAO_BOI_CANH.md): bài toán, stakeholder, giải pháp và tham chiếu.
 - [SRS](docs/SRS.md): yêu cầu, tác nhân, acceptance criteria và mục tiêu cần kiểm chứng.
 - [SDD](docs/SDD.md): kiến trúc, luồng xử lý, FSM, dữ liệu và API.
-- [Ma trận truy vết kiểm thử](docs/TEST_TRACEABILITY.md): đối chiếu yêu cầu với test hiện có và bằng chứng còn thiếu.
+- [Ma trận truy vết kiểm thử](docs/TEST_TRACEABILITY.md): đối chiếu yêu cầu với test và bằng chứng còn thiếu.
 - [Hướng dẫn sử dụng](docs/USER_GUIDE.md): thao tác theo vai trò.
-- [Hướng dẫn triển khai demo](docs/DEPLOYMENT.md): cài đặt, cấu hình và giới hạn vận hành.
-- [Kế hoạch thực nghiệm](docs/KE_HOACH_THUC_NGHIEM.md) và [metric charter G1](docs/G1_METRIC_CHARTER_TEMPLATE.md): kế hoạch/mẫu cần được nhóm và GVHD chốt, chưa phải kết quả nghiệm thu.
-- [Baseline RAG](docs/RAG_BASELINE.md): kết quả retrieval local và giới hạn diễn giải.
-- [Sổ lỗi và nợ kỹ thuật](docs/DEFECT_TECH_DEBT_LOG.md): vấn đề đã ghi nhận và giới hạn còn mở.
+- [Hướng dẫn triển khai demo](docs/DEPLOYMENT.md): cài đặt, cấu hình và vận hành demo.
+- [Kế hoạch thực nghiệm](docs/KE_HOACH_THUC_NGHIEM.md) và [metric charter G1](docs/G1_METRIC_CHARTER_TEMPLATE.md): kế hoạch/mẫu để nhóm và GVHD chốt.
+- [Baseline RAG](docs/RAG_BASELINE.md): kết quả truy xuất và giới hạn diễn giải.
+- [Sổ lỗi và nợ kỹ thuật](docs/DEFECT_TECH_DEBT_LOG.md): vấn đề đã ghi nhận.
 - [Hướng dẫn đóng góp](CONTRIBUTING.md) và [tài liệu đối chiếu nội bộ](docs/internal/).
+
+## Phạm vi và bước tiếp theo
+
+Đây là prototype học thuật, chưa được kiểm chứng vận hành production hoặc qua thử nghiệm người dùng đối chứng; lợi ích so với trao đổi chat được thể hiện ở quy trình và dữ liệu tập trung, không phải kết quả định lượng hay tuyên bố vượt trội sản phẩm khác. Triage là heuristic, SLA dùng giờ lịch, và tập đánh giá RAG nhỏ/tự soạn. Chưa có thông báo email/push, tích hợp ITSM/nhân sự, backup/restore, HA hoặc quy trình đầy đủ để nâng cấp production.
+
+Tài khoản mẫu dùng mật khẩu yếu: chỉ dùng dữ liệu giả ở môi trường demo local, thay cấu hình demo/secret trước khi chạy trên máy dùng chung và không mở dịch vụ trực tiếp ra Internet. Attachment chưa được quét virus và prototype chưa có luồng đổi/reset mật khẩu. LLM bên ngoài mặc định tắt; khi bật, câu hỏi và ngữ cảnh truy xuất được gửi đến endpoint đã cấu hình. Trước khi mở rộng thử nghiệm, cần rà soát các giới hạn bảo mật, xác nhận runbook/metric với người có chuyên môn và đánh giá bằng người dùng cùng môi trường đã xác định.

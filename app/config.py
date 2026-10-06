@@ -22,3 +22,10 @@ STORAGE_PATH = os.getenv(
     "HELPDESK_STORAGE_PATH",
     str(os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")),
 )
+
+# LLM Generation settings for RAG (optional, with safe fallback)
+ENABLE_LLM_GENERATION = os.getenv("ENABLE_LLM_GENERATION", "false").lower() in {"1", "true", "yes"}
+LLM_API_KEY = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", os.getenv("GROQ_API_KEY", ""))).strip()
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "5.0"))

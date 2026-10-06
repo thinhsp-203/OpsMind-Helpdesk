@@ -739,3 +739,55 @@ def test_knowledge_endpoint_lists_documents_and_requires_auth() -> None:
     documents = client.get("/knowledge", headers=auth()).json()
     assert len(documents) >= 9
     assert any(document["source"] == "folder_access.md" for document in documents)
+
+
+def test_rag_llm_synthesis_disabled_by_default() -> None:
+    response = generate_answer("Tôi không kết nối được VPN FortiClient")
+    assert response["grounded"] is True
+    assert response["llm_generated"] is False
+    assert "Mình tìm thấy hướng dẫn liên quan trong Knowledge Base" in response["answer"]
+
+
+def test_rag_llm_synthesis_success_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    import httpx
+
+    monkeypatch.setattr(config, "ENABLE_LLM_GENERATION", True)
+    monkeypatch.setattr(config, "LLM_API_KEY", "test-key-mock")
+
+    class MockResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Bước 1: Khởi động lại FortiClient. Bước 2: Kiểm tra chứng thư số."
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: MockResponse())
+    response = generate_answer("Tôi không kết nối được VPN FortiClient")
+    assert response["grounded"] is True
+    assert response["llm_generated"] is True
+    assert "Bước 1: Khởi động lại FortiClient" in response["answer"]
+
+
+def test_rag_llm_synthesis_falls_back_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    import httpx
+
+    monkeypatch.setattr(config, "ENABLE_LLM_GENERATION", True)
+    monkeypatch.setattr(config, "LLM_API_KEY", "test-key-mock")
+
+    def mock_fail(*args, **kwargs):
+        raise httpx.RequestError("Network error timeout")
+
+    monkeypatch.setattr(httpx, "post", mock_fail)
+    response = generate_answer("Tôi không kết nối được VPN FortiClient")
+    assert response["grounded"] is True
+    assert response["llm_generated"] is False
+    assert "Mình tìm thấy hướng dẫn liên quan trong Knowledge Base" in response["answer"]

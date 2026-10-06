@@ -64,24 +64,22 @@ CI cấu hình Ruff với rule bảo mật, pytest/coverage, Node syntax/i18n te
 ## Tài liệu đồ án
 
 - [Báo cáo bối cảnh đề tài](docs/BAO_CAO_BOI_CANH.md): bài toán, stakeholder, giải pháp, tham chiếu Jira/GLPI/ServiceNow và khảo sát nhu cầu.
-- [Đối chiếu plan và tính thực tiễn](docs/DOI_CHIEU_PLAN_THUC_TIEN.md): bằng chứng hiện có, phần chưa đạt/chưa đo, so sánh có giới hạn và kế hoạch pilot.
 - [SRS](docs/SRS.md): yêu cầu, user stories/acceptance criteria, NFR và giới hạn.
-- [Đối chiếu đặc tả chức năng & UI](docs/DOI_CHIEU_FEATURES_AND_UI.md): phân biệt phần đặc tả đã có, phần prototype hỗ trợ một phần và các hạng mục cần thêm hạ tầng/kiểm chứng.
 - [SDD](docs/SDD.md): kiến trúc, context, sequence, FSM, deployment, ERD và API.
 - [Ma trận truy vết kiểm thử](docs/TEST_TRACEABILITY.md): liên kết yêu cầu/AC với test tự động và bằng chứng còn thiếu.
 - [Hướng dẫn sử dụng](docs/USER_GUIDE.md): thao tác theo vai trò Nhân viên, Agent và Admin.
 - [Hướng dẫn triển khai demo](docs/DEPLOYMENT.md): cài local/Docker, cấu hình, dữ liệu và giới hạn vận hành.
 - [Hướng dẫn đóng góp](CONTRIBUTING.md): thiết lập môi trường, kiểm tra trước PR và quy tắc dữ liệu.
-- [Rà soát tài liệu bổ sung](docs/DOI_CHIEU_SUPPLEMENT_GUIDE.md): đề xuất nào phù hợp, phần nào cần bằng chứng hoặc không khớp prototype.
 - [Sổ lỗi và nợ kỹ thuật](docs/DEFECT_TECH_DEBT_LOG.md): lỗi đã sửa trong nhánh hoàn thiện và giới hạn còn mở.
 - [Kế hoạch thực nghiệm](docs/KE_HOACH_THUC_NGHIEM.md): bộ câu hỏi RAG, định nghĩa metric, kịch bản usability và SUS.
 - [Metric charter G1](docs/G1_METRIC_CHARTER_TEMPLATE.md): mẫu dự thảo để nhóm/GVHD chốt và ký; hiện chưa được phê duyệt.
 - [Baseline RAG](docs/RAG_BASELINE.md): kết quả truy xuất lần chạy local mới nhất trên bộ 30 câu nháp cùng giới hạn diễn giải.
 - [AI usage log](docs/AI_USAGE_LOG.md): hỗ trợ AI, kết quả rà soát và lỗi thiết kế đã sửa.
+- [Tài liệu đối chiếu nội bộ](docs/internal/): phân tích khoảng cách tính năng, kế hoạch thực tiễn và hướng dẫn bổ sung.
 
 ## Giới hạn cần nêu khi bảo vệ
 
-Đây là prototype học thuật, không phải hệ thống production. Chỉ có lexical retrieval BM25 trên runbook Markdown, chưa có bước LLM generation; điểm BM25 không phải xác suất độ đúng. Baseline trên 30 câu là dữ liệu tự soạn, chưa được IT độc lập duyệt. PostgreSQL trong Compose cải thiện độ phù hợp cho môi trường nhiều tiến trình so với SQLite local, nhưng không đồng nghĩa đã có HA, backup/restore, hardening hoặc được kiểm thử production. Dữ liệu demo, SLA giờ lịch và bộ runbook nhỏ không phù hợp triển khai Internet. Chế độ non-demo yêu cầu secret và bootstrap Admin; ứng dụng từ chối khởi động nếu phát hiện mật khẩu demo mặc định trong DB. Vẫn cần hardening, backup/restore, staging, tải 50 RPS, uptime đo thực tế, SUS với người tham gia và benchmark RAG được chuyên gia xác nhận; không báo cáo các mục tiêu này như kết quả đã đạt.
+Đây là prototype học thuật, không phải hệ thống production. Hệ thống mặc định sử dụng lexical retrieval BM25 trên runbook Markdown để trích dẫn nguồn có thể kiểm chứng; có cơ chế tùy chọn tổng hợp câu trả lời qua LLM (nếu cấu hình API key) kèm fallback an toàn; điểm BM25 không phải xác suất độ đúng. Baseline trên 30 câu là dữ liệu tự soạn, chưa được IT độc lập duyệt. PostgreSQL trong Compose cải thiện độ phù hợp cho môi trường nhiều tiến trình so với SQLite local, nhưng không đồng nghĩa đã có HA, backup/restore, hardening hoặc được kiểm thử production. Dữ liệu demo, SLA giờ lịch và bộ runbook nhỏ không phù hợp triển khai Internet. Chế độ non-demo yêu cầu secret và bootstrap Admin; ứng dụng từ chối khởi động nếu phát hiện mật khẩu demo mặc định trong DB. Vẫn cần hardening, backup/restore, staging, tải 50 RPS, uptime đo thực tế, SUS với người tham gia và benchmark RAG được chuyên gia xác nhận; không báo cáo các mục tiêu này như kết quả đã đạt.
 
 So với nhắn Zalo, tiện ích kỳ vọng là ticket có mã/trạng thái/người nhận/SLA/lịch sử, nội dung không trôi trong chat và hướng dẫn có nguồn có thể chuyển thành ticket. Hệ thống chưa thay thế kênh khẩn cấp hoặc Zalo/Teams mà doanh nghiệp đang dùng; chưa có push/email notification hay tích hợp ITSM/nhân sự. Muốn kết luận có giảm thời gian/bỏ sót, cần so sánh cùng tác vụ trên kênh chat hiện tại với người dùng thật.
 

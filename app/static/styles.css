@@ -295,3 +295,12 @@ h1, h2, h3, h4, p { margin-top: 0; }
   .knowledge-document { grid-template-columns: 1fr auto auto; }
   .customer-confirmation { grid-template-columns: 1fr; }
 }
+.content-grid:has(#adminReportsPanel:not(.hidden)) { grid-template-columns: minmax(0, 1fr);
+}
+.content-grid:has(#adminReportsPanel:not(.hidden)) > .main-column { display: none;
+}
+.content-grid:has(#adminReportsPanel:not(.hidden)) > .side-column { grid-column: 1 / -1;
+  min-width: 0;
+}
+#adminReportsPanel { width: 100%;
+}

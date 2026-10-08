@@ -32,6 +32,8 @@ def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works(
     store.assign_ticket(ticket["id"], "agent", "admin")
     store.add_comment(ticket["id"], "agent", "Please confirm whether the app is still failing.")
     store.update_ticket_status(ticket["id"], "pending_waiting_user", "agent")
+    store.update_ticket_status(ticket["id"], "in_progress", "agent")
+    store.update_ticket_status(ticket["id"], "pending_waiting_user", "agent")
     waiting = store.add_comment(ticket["id"], "user", "It is still failing.")
     assert waiting["status"] == "in_progress"
     store.update_ticket_fields(

@@ -5,14 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f3f6fb" />
     <title>Bàn hỗ trợ CNTT | Helpdesk RAG</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20261005-7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20261009-workspace-1" />
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
+    <aside id="workspaceSidebar" class="workspace-sidebar hidden" aria-label="Menu chính">
+  <a class="brand sidebar-brand" href="/"><span class="brand-mark">O</span><span><strong>OpsMind</strong><small>IT WORKSPACE</small></span></a>
+  <div class="sidebar-context"><span class="eyebrow">KHÔNG GIAN LÀM VIỆC</span><strong>Hỗ trợ CNTT nội bộ</strong><span>Tri thức · Yêu cầu · Cộng tác</span></div>
+  <span class="nav-caption">ĐIỀU HƯỚNG</span>
+  <nav id="workspaceNav" class="workspace-nav hidden" aria-label="Điều hướng workspace"></nav>
+  <div class="sidebar-bottom"><span class="sidebar-avatar">IT</span><div><strong id="sidebarUsername">Tài khoản</strong><small id="sidebarRole"></small></div></div>
+</aside>
+<div class="app-shell">
+      <header class="topbar"><span id="workspacePageLabel" class="workspace-page-label hidden">Tổng quan</span>
         <a class="brand" href="/" aria-label="Helpdesk RAG trang chủ">
-          <span class="brand-mark">H</span>
-          <span><strong>Helpdesk</strong><small>IT SERVICE DESK</small></span>
+          <span class="brand-mark">O</span>
+          <span><strong>OpsMind</strong><small>IT SERVICE DESK</small></span>
         </a>
         <div class="topbar-right">
           <span id="serviceStateLabel" class="service-state service-state-checking"><i></i> Đang kiểm tra dịch vụ</span>
@@ -62,7 +69,7 @@
             <span class="date-chip" id="todayLabel"></span>
           </div>
 
-          <nav id="workspaceNav" class="workspace-nav hidden" aria-label="Điều hướng workspace"></nav>
+          
 
           <div id="employeeWorkflowNote" class="workflow-note hidden workspace-panel" data-view="dashboard">
             <strong>Khác tin nhắn Zalo:</strong>
@@ -72,7 +79,7 @@
           <section id="analyticsSection" class="stats-grid hidden workspace-panel" aria-label="Tổng quan ticket" data-view="dashboard">
             <article class="stat-card stat-primary"><span id="statTotalLabel">Ticket của bạn</span><strong id="statTotal">0</strong><small>Trong phạm vi tài khoản</small><i>▤</i></article>
             <article class="stat-card"><span>Đang mở</span><strong id="statActive">0</strong><small>Mới, xử lý, chờ phản hồi, chuyển cấp</small><i>◷</i></article>
-            <article class="stat-card"><span>Đã giải quyết</span><strong id="statResolved">0</strong><small>Resolved và Closed</small><i>✓</i></article>
+            <article class="stat-card"><span>Đã giải quyết</span><strong id="statResolved">0</strong><small>Đã giải quyết và đã đóng</small><i>✓</i></article>
             <article class="stat-card stat-alert"><span>Quá hạn SLA</span><strong id="statOverdue">0</strong><small>Cần ưu tiên xử lý</small><i>!</i></article>
             <article id="statResolutionCard" class="stat-card"><span>Thời gian xử lý TB</span><strong id="statResolution">—</strong><small>Ticket đã giải quyết · giờ lịch</small><i>◷</i></article>
             <article id="statRatingCard" class="stat-card"><span>Đánh giá hài lòng</span><strong id="statRating">—</strong><small id="ratingCount">Chưa có đánh giá</small><i>☆</i></article>
@@ -177,7 +184,7 @@
                   <summary>Lịch sử tra cứu</summary>
                   <div id="chatHistoryList" class="chat-history-list"><span class="muted">Chưa có hội thoại.</span></div>
                 </details>
-                <p class="disclaimer">Chỉ tra runbook nội bộ, không gửi câu hỏi tới dịch vụ LLM bên ngoài. Kiểm tra nguồn trước khi làm theo.</p>
+                <p class="disclaimer">Câu trả lời dựa trên tài liệu nội bộ. Kiểm tra nguồn trước khi làm theo; không nhập thông tin nhạy cảm.</p>
                 <div id="ragResult" class="rag-result hidden" aria-live="polite" tabindex="-1"></div>
               </section>
 
@@ -263,12 +270,16 @@
                 <p class="muted">Số liệu tính theo ticket đang được gán cho tài khoản hiện tại; chưa chuẩn hóa theo ca trực/ngày làm việc.</p>
               </section>
             </aside>
+            <aside id="assistantContext" class="assistant-context hidden" aria-label="Ticket gần đây">
+              <section class="panel"><div class="section-heading"><div><span class="eyebrow">THEO DÕI TIẾN ĐỘ</span><h2>Ticket gần đây</h2></div></div><div id="assistantRecentTickets" class="recent-ticket-list"></div><button id="openTicketsBtn" type="button" class="button button-soft button-wide">Xem tất cả ticket</button></section>
+              <section class="panel help-note"><span class="eyebrow">CÁCH SỬ DỤNG</span><h2>Mô tả rõ, hỗ trợ nhanh</h2><ol><li>Nêu thiết bị và thông báo lỗi.</li><li>Cho biết các bước bạn đã thử.</li><li>Kiểm tra nguồn trước khi làm theo.</li></ol><p>Không nhập mật khẩu hoặc mã xác thực vào hội thoại.</p></section>
+            </aside>
           </div>
         </section>
       </main>
       <footer class="footer"><span>HELPDESK RAG · PROTOTYPE HỌC THUẬT</span><span>Hướng dẫn tri thức không thay thế xác nhận của IT.</span></footer>
     </div>
-    <script src="/static/i18n.js?v=20261005-7"></script>
-    <script src="/static/app.js?v=20261005-7"></script>
+    <script src="/static/i18n.js?v=20261009-workspace-1"></script>
+    <script src="/static/app.js?v=20261009-workspace-1"></script>
   </body>
 </html>

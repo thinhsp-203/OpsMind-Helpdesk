@@ -295,12 +295,106 @@ h1, h2, h3, h4, p { margin-top: 0; }
   .knowledge-document { grid-template-columns: 1fr auto auto; }
   .customer-confirmation { grid-template-columns: 1fr; }
 }
-.content-grid:has(#adminReportsPanel:not(.hidden)) { grid-template-columns: minmax(0, 1fr);
-}
-.content-grid:has(#adminReportsPanel:not(.hidden)) > .main-column { display: none;
-}
-.content-grid:has(#adminReportsPanel:not(.hidden)) > .side-column { grid-column: 1 / -1;
-  min-width: 0;
-}
-#adminReportsPanel { width: 100%;
-}
+
+/* OpsMind workspace — replaces the old per-panel width patches. */
+:root { --ink:#192b43; --ink-soft:#475a73; --muted:#6b7b91; --canvas:#f4f6fb; --blue:#3b5ce8; --line:#e4eaf3; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+body { font-size:14px; }
+.workspace-sidebar { position:fixed; inset:0 auto 0 0; width:244px; z-index:20; display:flex; flex-direction:column; padding:28px 18px 18px; background:#fff; border-right:1px solid var(--line); }
+.sidebar-brand { padding:0 10px; }
+.sidebar-brand .brand-mark { width:42px; height:42px; }
+.sidebar-context { display:grid; gap:9px; margin:30px 0; padding:16px 12px; background:#f7f9fd; border:1px solid var(--line); border-radius:12px; }
+.sidebar-context strong { font-size:13px; }
+.sidebar-context > span:last-child { font-size:11px; color:var(--muted); }
+.nav-caption { font-size:10px; color:#8591a3; font-weight:700; letter-spacing:1.5px; padding:0 12px 12px; }
+.workspace-nav { display:flex; flex-direction:column; border:0; padding:0; margin:0; gap:7px; overflow-y:auto; border-radius:0; }
+.workspace-nav-button { display:flex; align-items:center; gap:12px; min-height:45px; width:100%; padding:11px 13px; text-align:left; font-size:13px; border-radius:10px; white-space:nowrap; }
+.workspace-nav-button.active { color:#fff; background:#192b43; }
+.workspace-nav-button:hover:not(.active) { background:#edf2ff; }
+.nav-icon { display:inline-grid; place-items:center; width:21px; font-size:20px; font-weight:400; }
+.sidebar-bottom { display:flex; align-items:center; gap:12px; margin-top:auto; padding:20px 9px 0; border-top:1px solid var(--line); }
+.sidebar-avatar { display:grid; place-items:center; width:38px; height:38px; border-radius:50%; color:#fff; background:var(--blue); font-weight:700; }
+.sidebar-bottom strong,.sidebar-bottom small { display:block; }
+.sidebar-bottom small { color:var(--muted); margin-top:4px; }
+.signed-in .app-shell { width:auto; max-width:1600px; margin-left:244px; padding:0 32px; }
+.signed-in .topbar > .brand { display:none; }
+.workspace-page-label { font-size:14px; font-weight:700; }
+.topbar { height:78px; }
+.page-heading { margin:30px 0 24px; }
+.page-heading h1 { font-size:30px; }
+.page-heading p { font-size:14px; line-height:1.6; }
+.eyebrow { font-size:10px; }
+#workspaceView[data-role] .content-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+#workspaceView[data-role] .main-column,#workspaceView[data-role] .side-column { min-width:0; width:100%; }
+#workspaceView:not([data-view="assistant"]):not([data-view="knowledge"]):not([data-view="users"]):not([data-view="reports"]):not([data-view="personal"]) .side-column { display:none; }
+#workspaceView:is([data-view="assistant"],[data-view="knowledge"],[data-view="users"],[data-view="reports"],[data-view="personal"]) .main-column { display:none; }
+#workspaceView[data-role][data-view="assistant"] .content-grid { grid-template-columns:minmax(0,1.55fr) minmax(275px,1fr); }
+#workspaceView[data-role] .side-column { order:0; grid-row:auto; }
+.assistant-context { display:grid; gap:20px; min-width:0; }
+.panel { border:1px solid var(--line); border-radius:18px; padding:24px; box-shadow:0 6px 24px #1d345006; }
+.section-heading h2,.assistant-heading h2 { font-size:18px; }
+.assistant-panel { background:#fff; min-height:550px; }
+.assistant-icon { width:42px; height:42px; border-radius:13px; font-size:23px; }
+.assistant-intro { font-size:13px; line-height:1.7; margin:18px 0; }
+#workspaceView[data-role] #ragQuestion { min-height:120px; padding:16px; font-size:14px; background:#f8faff; }
+#ragForm .button { font-size:13px; min-height:44px; }
+.chat-tools { margin-top:24px; font-size:12px; }
+.chat-tools .button { font-size:11px; }
+.popular-questions { gap:9px; }
+.popular-questions button { font-size:12px; padding:12px; min-height:44px; }
+.chat-history > summary { font-size:12px; padding:8px 0; }
+.chat-history-item { font-size:12px; }
+.disclaimer { font-size:11px; line-height:1.6; }
+.rag-result { gap:16px; margin-top:20px; padding-top:20px; }
+.question-bubble { justify-self:end; max-width:90%; border-radius:14px 14px 3px 14px; padding:13px 16px; background:#edf2ff; color:#294b9b; font-size:14px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.rag-answer { font-size:14px; line-height:1.8; margin:0; }
+.rag-source { padding:17px; border-radius:12px; }
+.rag-source > strong { font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
+.runbook-content { color:var(--ink-soft); font-size:13px; line-height:1.8; overflow-wrap:anywhere; }
+.runbook-content h3 { font-size:14px; color:var(--ink); margin:18px 0 8px; }
+.runbook-content p { font-size:13px; line-height:1.8; white-space:normal; margin:9px 0; }
+.runbook-content strong { display:inline; font-size:inherit; color:inherit; }
+.runbook-content ol,.runbook-content ul { padding-left:22px; margin:10px 0; }
+.runbook-content li { margin:6px 0; }
+.runbook-content code { background:#eef2f7; border-radius:4px; padding:2px 4px; }
+.additional-sources summary { font-size:12px; }
+.triage-card { gap:8px; padding:15px; }
+.triage-card strong,.triage-values { font-size:13px; }
+.triage-card small,.handoff-note { font-size:12px; }
+.recent-ticket-list { display:grid; gap:14px; margin-bottom:18px; }
+.recent-ticket { border-bottom:1px solid var(--line); padding-bottom:14px; }
+.recent-ticket h3 { font-size:14px; line-height:1.6; margin:7px 0 10px; }
+.recent-ticket .muted { margin:10px 0 0; }
+.help-note { background:#eef3ff; border-color:#e0e8fc; }
+.help-note h2 { font-size:17px; margin:10px 0; }
+.help-note ol { padding-left:20px; color:var(--ink-soft); line-height:1.9; font-size:13px; }
+.help-note p { font-size:12px; line-height:1.7; color:#60708a; margin-bottom:0; }
+.stats-grid { gap:16px; margin-bottom:24px; }
+.stat-card { padding:20px; min-height:130px; border-radius:15px; }
+.stat-card > span,.stat-card small { font-size:11px; line-height:1.6; }
+.stat-card strong { font-size:30px; }
+.ticket-card h3 { font-size:16px; }
+.ticket-card-summary { font-size:13px; }
+.ticket-card-top { padding:18px 18px 10px; }
+.ticket-id,.tag { font-size:11px; }
+.ticket-details summary { font-size:12px; }
+.ticket-info,.comment-item,.ticket-actions select,.comment-form input { font-size:12px; }
+.ticket-info { line-height:1.7; }
+.field,.login-card label { font-size:12px; }
+.field input,.field select,.field textarea,.login-card input { font-size:14px; padding:12px; }
+.search-box input,.filters select,.filters input[type="date"] { font-size:12px; }
+.filters select { min-height:38px; }
+.muted { font-size:12px; line-height:1.7; }
+.knowledge-document-label strong { font-size:14px; }
+.knowledge-document-label span,.knowledge-document .button { font-size:12px; }
+.knowledge-document { padding:16px 0; }
+.admin-user-row { font-size:12px; gap:14px; flex-wrap:wrap; align-items:center; padding:18px 0; }
+.admin-user-identity span,.admin-user-actions .button,.admin-user-actions select,.admin-profile-details { font-size:11px; }
+#adminUserForm { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding-top:24px; }
+#adminUserForm .form-message { grid-column:1 / -1; }
+.report-subheading { font-size:14px; margin-top:24px; }
+.agent-report-row,.category-report-row { font-size:12px; }
+.footer { line-height:1.7; margin:28px 0; }
+@media (max-width:1150px) { .workspace-sidebar { width:210px; padding:24px 12px 16px; } .signed-in .app-shell { margin-left:210px; padding:0 22px; } #workspaceView[data-role][data-view="assistant"] .content-grid { grid-template-columns:minmax(0,1fr); } .assistant-context { grid-template-columns:1fr 1fr; } }
+@media (max-width:760px) { .workspace-sidebar { position:static; width:100%; padding:16px; border-right:0; border-bottom:1px solid var(--line); } .sidebar-brand { padding:0; } .sidebar-context,.nav-caption,.sidebar-bottom { display:none; } .workspace-nav { flex-direction:row; margin-top:16px; overflow-x:auto; padding-bottom:3px; } .workspace-nav-button { width:auto; min-height:42px; font-size:12px; } .nav-icon { font-size:17px; width:18px; } .signed-in .app-shell { margin-left:0; padding:0 16px; } .topbar { height:auto; min-height:65px; gap:10px; flex-wrap:wrap; padding:12px 0; } .topbar-right { gap:8px; flex-wrap:wrap; } .service-state { display:none; } .user-badge { font-size:10px; } .page-heading { margin:22px 0; } .page-heading h1 { font-size:25px; } .date-chip { display:none; } .panel { padding:18px; } .assistant-context { grid-template-columns:1fr; } #adminUserForm { grid-template-columns:1fr; } .popular-questions { grid-template-columns:1fr; } .admin-user-actions { justify-content:start; } .ticket-info { grid-template-columns:1fr; } }
+
+button:disabled { cursor:wait; opacity:.65; transform:none; }

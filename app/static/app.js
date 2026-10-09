@@ -77,6 +77,11 @@ async function api(path, options = {}) {
 }
 
 function setSignedIn(user) {
+  document.body.classList.add("signed-in");
+  byId("workspaceSidebar").classList.remove("hidden");
+  byId("workspacePageLabel").classList.remove("hidden");
+  byId("sidebarUsername").textContent = user.username;
+  byId("sidebarRole").textContent = roleLabels[user.role] || user.role;
   state.user = user;
   byId("workspaceView").dataset.role = user.role;
   byId("loginView").classList.add("hidden");
@@ -140,6 +145,12 @@ async function login(event) {
 }
 
 function signOut() {
+  document.body.classList.remove("signed-in");
+  byId("workspaceSidebar").classList.add("hidden");
+  byId("workspacePageLabel").classList.add("hidden");
+  byId("ragResult").replaceChildren();
+  byId("ragResult").classList.add("hidden");
+  byId("ragQuestion").value = "";
   state.token = "";
   state.user = null;
   state.tickets = [];
@@ -178,6 +189,11 @@ function configureWorkspaceNavigation(role) {
     const button = node("button", "workspace-nav-button", label);
     button.type = "button";
     button.dataset.view = view;
+    button.dataset.label = label;
+    const icons = { dashboard: "▦", assistant: "✦", tickets: "▤", submit: "+", knowledge: "▧", users: "♙", reports: "▥", personal: "◷" };
+    const icon = node("span", "nav-icon", icons[view] || "•");
+    icon.setAttribute("aria-hidden", "true");
+    button.prepend(icon);
     button.addEventListener("click", () => setWorkspaceView(view));
     nav.append(button);
   });
@@ -186,6 +202,11 @@ function configureWorkspaceNavigation(role) {
 
 function setWorkspaceView(view) {
   state.activeView = view;
+  byId("workspaceView").dataset.view = view;
+  byId("assistantContext").classList.toggle("hidden", view !== "assistant");
+  const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
+  byId("workspacePageLabel").textContent = window.helpdeskI18n.translate(activeButton?.dataset.label || "OpsMind");
+  if (view === "assistant") loadAssistantTickets();
   document.querySelectorAll("#workspaceView .workspace-panel").forEach((panel) => {
     const views = panel.dataset.view.split(/\s+/);
     const roleHidden = panel.id === "employeeWorkflowNote" && state.user.role !== "user";
@@ -652,7 +673,7 @@ async function downloadAttachment(event) {
   const link = event.currentTarget;
   try {
     const response = await fetch(link.href, {
-      headers: { Authorization: `******` },
+      headers: { Authorization: `Bearer ${state.token}` },
     });
     const data = await response.blob();
     if (!response.ok) {
@@ -719,6 +740,12 @@ async function askKnowledge(event, options = {}) {
     byId("ragQuestion").focus();
     return;
   }
+  setWorkspaceView("assistant");
+  if (state.ragBusy) return;
+  state.ragBusy = true;
+  const sendButton = byId("ragForm").querySelector('button[type="submit"]');
+  sendButton.disabled = true;
+  byId("ragForm").setAttribute("aria-busy", "true");
   byId("ragQuestion").value = question;
   byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   const result = byId("ragResult");
@@ -733,12 +760,12 @@ async function askKnowledge(event, options = {}) {
       }),
     });
     state.chatSessionId = data.session_id;
-    result.replaceChildren(node("p", "rag-answer", data.answer));
+    result.replaceChildren(node("div", "question-bubble", question), node("p", "rag-answer", data.answer));
     if (data.sources.length) {
       const sourceCard = (match, source, index) => {
         const card = node("div", "rag-source");
         const heading = node("strong", "", `${index + 1}. ${source.title} · ${source.source}`);
-        card.append(heading, node("p", "", match.content));
+        card.append(heading, renderRunbook(match.content));
         return card;
       };
       result.append(sourceCard(data.matches[0], data.sources[0], 0));
@@ -781,6 +808,10 @@ async function askKnowledge(event, options = {}) {
     result.scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (error) {
     showRagResult(error.message);
+  } finally {
+    state.ragBusy = false;
+    sendButton.disabled = false;
+    byId("ragForm").removeAttribute("aria-busy");
   }
 }
 
@@ -814,6 +845,7 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
           .map((match) => `${match.content}\nNguồn: ${match.title} (${match.source})`)
           .join("\n\n");
         commentInput.value = `Gợi ý tham khảo từ runbook (cần IT kiểm tra trước khi gửi):\n\n${excerpts}`;
+        setWorkspaceView("tickets");
         card.scrollIntoView({ behavior: "smooth", block: "center" });
         commentInput.focus({ preventScroll: true });
       });
@@ -1209,7 +1241,7 @@ async function loadRagSessions() {
 async function exportReport() {
   try {
     const response = await fetch("/analytics/export", {
-      headers: { Authorization: `******` },
+      headers: { Authorization: `Bearer ${state.token}` },
     });
     if (!response.ok) {
       const data = await response.json();
@@ -1273,6 +1305,7 @@ byId("draftFromRagBtn").addEventListener("click", () => {
   const ticketTitle = byId("ticketTitle").value.trim();
   const question = ticketDescription || ticketTitle;
   if (question) byId("ragQuestion").value = question;
+  setWorkspaceView("assistant");
   byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   byId("ragQuestion").focus({ preventScroll: true });
   if (question) {
@@ -1314,3 +1347,72 @@ async function refreshServiceState() {
 
 refreshServiceState();
 window.setInterval(refreshServiceState, 30000);
+
+
+// Render a small Markdown subset using text nodes only: never execute document HTML.
+function renderRunbook(text) {
+  const container = document.createElement("div");
+  container.className = "runbook-content";
+  let list = null;
+  function inline(element, value) {
+    value.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).forEach((part) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        const bold = document.createElement("strong");
+        bold.textContent = part.slice(2, -2);
+        element.append(bold);
+      } else if (part.startsWith("`") && part.endsWith("`")) {
+        const code = document.createElement("code");
+        code.textContent = part.slice(1, -1);
+        element.append(code);
+      } else element.append(document.createTextNode(part));
+    });
+  }
+  String(text || "").split(/\r?\n/).forEach((line) => {
+    if (!line.trim()) { list = null; return; }
+    const heading = line.match(/^#{1,6}\s+(.+)$/);
+    const item = line.match(/^\s*(?:(\d+)\.\s+|[-*]\s+)(.+)$/);
+    if (heading) {
+      list = null;
+      const title = document.createElement("h3");
+      inline(title, heading[1]); container.append(title);
+    } else if (item) {
+      const type = item[1] ? "OL" : "UL";
+      if (!list || list.tagName !== type) {
+        list = document.createElement(type.toLowerCase());
+        if (item[1]) list.start = Number(item[1]);
+        container.append(list);
+      }
+      const entry = document.createElement("li");
+      inline(entry, item[2]); list.append(entry);
+    } else {
+      list = null;
+      const paragraph = document.createElement("p");
+      inline(paragraph, line); container.append(paragraph);
+    }
+  });
+  return container;
+}
+
+async function loadAssistantTickets() {
+  const list = byId("assistantRecentTickets");
+  const username = state.user?.username;
+  list.replaceChildren(node("p", "muted", "Đang tải yêu cầu..."));
+  try {
+    const tickets = await api("/tickets");
+    if (state.user?.username !== username) return;
+    list.replaceChildren();
+    if (!tickets.length) {
+      const empty = node("div", "empty-state");
+      empty.append(node("strong", "", "Chưa có yêu cầu nào"), node("span", "", "Ticket của bạn sẽ xuất hiện tại đây."));
+      list.append(empty);
+    }
+    tickets.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 3).forEach((ticket) => {
+      const card = node("article", "recent-ticket");
+      card.append(node("span", "ticket-id", `HD-${String(ticket.id).padStart(4, "0")}`), node("h3", "", ticket.title), node("span", `tag tag-status-${ticket.status}`, statusLabels[ticket.status] || ticket.status), node("p", "muted", `IT: ${ticket.assignee || "Chưa phân công"}`));
+      list.append(card);
+    });
+  } catch {
+    list.replaceChildren(node("p", "muted", "Không tải được ticket. Mở hàng đợi để thử lại."));
+  }
+}
+byId("openTicketsBtn").addEventListener("click", () => setWorkspaceView("tickets"));

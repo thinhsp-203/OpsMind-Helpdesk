@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 import jwt
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -22,6 +22,7 @@ from app.config import (
     TOKEN_EXPIRE_MINUTES,
 )
 from app import store
+from app.telegram_notify import notify_ticket_created
 from app.rag import (
     KNOWLEDGE_DIR,
     build_retrieval_index,
@@ -374,7 +375,7 @@ async def get_tickets(
 
 
 @app.post("/tickets", tags=["tickets"], status_code=status.HTTP_201_CREATED)
-async def create_new_ticket(request: Request, payload: TicketCreate) -> dict:
+async def create_new_ticket(request: Request, payload: TicketCreate, background_tasks: BackgroundTasks) -> dict:
     user = await current_user(request)
     ticket = store.create_ticket(
         title=payload.title.strip(),
@@ -383,6 +384,7 @@ async def create_new_ticket(request: Request, payload: TicketCreate) -> dict:
         priority=payload.priority,
         requester=user["username"],
     )
+    background_tasks.add_task(notify_ticket_created, dict(ticket))
     return {"message": "Đã tạo ticket.", "ticket": ticket}
 
 

@@ -33,7 +33,7 @@ def notify_ticket_created(ticket: dict) -> None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=8) as response:  # noqa: S310 -- Fixed HTTPS Telegram API URL.
             result = json.load(response)
         if not result.get("ok"):
             logger.warning("Telegram: notification rejected; ticket remains saved.")

@@ -12,7 +12,7 @@ try:
         data=b'{"timeout":0}',
         headers={"Content-Type": "application/json"},
     )
-    with urlopen(request, timeout=10) as response:
+    with urlopen(request, timeout=10) as response:  # noqa: S310 -- Fixed HTTPS Telegram API URL.
         result = json.load(response)
     groups = {}
     for update in result.get("result", []):

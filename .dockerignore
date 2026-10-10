@@ -11,3 +11,9 @@ htmlcov
 data/helpdesk.sqlite3
 data/*.sqlite3-*
 data/attachments
+.env
+.env.*
+!.env.example
+.DS_Store
+**/.DS_Store
+.github

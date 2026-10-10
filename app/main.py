@@ -610,7 +610,7 @@ async def delete_knowledge_document(request: Request, source: str) -> dict[str, 
     user = await current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}\.md", source):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
     target = (KNOWLEDGE_DIR / source).resolve()
     if target.parent != KNOWLEDGE_DIR.resolve() or not target.is_file():
@@ -629,7 +629,7 @@ async def reindex_knowledge_document(request: Request, source: str) -> dict[str,
     user = await current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}\.md", source):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
     if not (KNOWLEDGE_DIR / source).is_file():
         raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")

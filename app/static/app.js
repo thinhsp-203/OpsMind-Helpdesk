@@ -84,6 +84,7 @@ function setSignedIn(user) {
   byId("sidebarUsername").textContent = user.username;
   byId("sidebarRole").textContent = roleLabels[user.role] || user.role;
   state.user = user;
+  clearTicketFilters();
   byId("workspaceView").dataset.role = user.role;
   byId("loginView").classList.add("hidden");
   byId("workspaceView").classList.remove("hidden");
@@ -146,6 +147,7 @@ async function login(event) {
 }
 
 function signOut() {
+  state.ticketRequestId = (state.ticketRequestId || 0) + 1;
   document.body.classList.remove("signed-in");
   byId("workspaceSidebar").classList.add("hidden");
   byId("workspacePageLabel").classList.add("hidden");
@@ -238,13 +240,29 @@ const auditEventLabels = {
   archived: "Lưu trữ ticket", attachment_added: "Thêm tệp đính kèm",
 };
 
+function hasTicketFilters() {
+  return ["ticketSearch", "statusFilter", "categoryFilter", "fromDateFilter", "toDateFilter", "queueFilter"]
+    .some((id) => (id !== "queueFilter" || state.user?.role !== "user") && byId(id).value.trim());
+}
+
+function clearTicketFilters() {
+  ["ticketSearch", "statusFilter", "categoryFilter", "fromDateFilter", "toDateFilter", "queueFilter"]
+    .forEach((id) => { byId(id).value = ""; });
+}
+
 async function loadTickets() {
+  const requestId = state.ticketRequestId = (state.ticketRequestId || 0) + 1;
   const params = new URLSearchParams();
   const search = byId("ticketSearch").value.trim();
   const status = byId("statusFilter").value;
   const category = byId("categoryFilter").value;
   const fromDate = byId("fromDateFilter").value;
   const toDate = byId("toDateFilter").value;
+  if (fromDate && toDate && fromDate > toDate) {
+    byId("ticketCount").textContent = "—";
+    showEmpty("Khoảng ngày chưa hợp lệ", "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.");
+    return;
+  }
   if (search) params.set("q", search);
   if (status) params.set("status", status);
   if (category) params.set("category", category);
@@ -252,11 +270,14 @@ async function loadTickets() {
   if (toDate) params.set("to", toDate);
   byId("ticketList").replaceChildren(node("div", "empty-state", "Đang tải yêu cầu..."));
   try {
-    state.tickets = await api(`/tickets?${params.toString()}`);
+    const loadedTickets = await api(`/tickets?${params.toString()}`);
+    if (requestId !== state.ticketRequestId || !state.user) return;
+    state.tickets = loadedTickets;
     if (state.user.role === "user") {
       const tickets = search || status || category || fromDate || toDate
         ? await api("/tickets")
         : state.tickets;
+      if (requestId !== state.ticketRequestId || !state.user) return;
       byId("statTotal").textContent = tickets.length;
       byId("statActive").textContent = tickets.filter((ticket) =>
         ["new", "in_progress", "pending_waiting_user", "escalated"].includes(ticket.status),
@@ -276,6 +297,8 @@ async function loadTickets() {
     renderTickets(filterQueueTickets(state.tickets,
       state.user.role === "user" ? "" : byId("queueFilter").value, state.user.username));
   } catch (error) {
+    if (requestId !== state.ticketRequestId || !state.user) return;
+    byId("ticketCount").textContent = "—";
     showEmpty("Không thể tải danh sách", error.message);
   }
 }
@@ -289,6 +312,10 @@ function showEmpty(title, message) {
 function renderTickets(tickets) {
   byId("ticketCount").textContent = `${tickets.length} yêu cầu`;
   if (!tickets.length) {
+    if (hasTicketFilters()) {
+      showEmpty("Không có yêu cầu khớp bộ lọc", "Thử thay đổi điều kiện hoặc bấm Bỏ bộ lọc để xem lại danh sách.");
+      return;
+    }
     showEmpty(
       state.user.role === "user" ? "Chưa có yêu cầu nào" : "Hàng đợi hiện trống",
       state.user.role === "user"
@@ -1356,6 +1383,11 @@ byId("draftFromRagBtn").addEventListener("click", () => {
   } else {
     setMessage("ticketMessage", "Nhập sự cố ở ô tra cứu phía trên; nếu chưa xử lý được, chuyển nội dung sang yêu cầu IT.", false);
   }
+});
+byId("clearFiltersBtn").addEventListener("click", () => {
+  window.clearTimeout(searchTimer);
+  clearTicketFilters();
+  loadTickets();
 });
 byId("queueFilter").addEventListener("change", loadTickets);
 byId("statusFilter").addEventListener("change", loadTickets);

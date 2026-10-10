@@ -1,5 +1,11 @@
 (() => {
   const translations = {
+    "Bỏ bộ lọc": "Clear filters",
+    "Không có yêu cầu khớp bộ lọc": "No requests match these filters",
+    "Thử thay đổi điều kiện hoặc bấm Bỏ bộ lọc để xem lại danh sách.": "Change the criteria or select Clear filters to view the list again.",
+    "Khoảng ngày chưa hợp lệ": "Invalid date range",
+    "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.": "The start date must be on or before the end date.",
+
     "Đã tạo yêu cầu": "Request created",
     "Bạn có thể theo dõi tiến độ trong danh sách bên dưới.": "Track progress in the list below.",
     "Tài liệu đã được gợi ý (chưa xác nhận đã thực hiện):": "Suggested documents (steps not confirmed as attempted):",

@@ -398,3 +398,11 @@ body { font-size:14px; }
 @media (max-width:760px) { .workspace-sidebar { position:static; width:100%; padding:16px; border-right:0; border-bottom:1px solid var(--line); } .sidebar-brand { padding:0; } .sidebar-context,.nav-caption,.sidebar-bottom { display:none; } .workspace-nav { flex-direction:row; margin-top:16px; overflow-x:auto; padding-bottom:3px; } .workspace-nav-button { width:auto; min-height:42px; font-size:12px; } .nav-icon { font-size:17px; width:18px; } .signed-in .app-shell { margin-left:0; padding:0 16px; } .topbar { height:auto; min-height:65px; gap:10px; flex-wrap:wrap; padding:12px 0; } .topbar-right { gap:8px; flex-wrap:wrap; } .service-state { display:none; } .user-badge { font-size:10px; } .page-heading { margin:22px 0; } .page-heading h1 { font-size:25px; } .date-chip { display:none; } .panel { padding:18px; } .assistant-context { grid-template-columns:1fr; } #adminUserForm { grid-template-columns:1fr; } .popular-questions { grid-template-columns:1fr; } .admin-user-actions { justify-content:start; } .ticket-info { grid-template-columns:1fr; } }
 
 button:disabled { cursor:wait; opacity:.65; transform:none; }
+
+/* Workload filters wrap on smaller workspaces. */
+.filters { flex-wrap: wrap; }
+#queueFilter { max-width: 240px; }
+
+.ticket-receipt, .rag-evidence { padding: 12px 16px; border-radius: 12px; background: #edf7f1; color: #175333; line-height: 1.6; }
+.rag-evidence-empty { background: #fff5e3; color: #71480b; }
+button:disabled { cursor: wait; opacity: .65; }

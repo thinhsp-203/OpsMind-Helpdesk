@@ -38,6 +38,8 @@ jobs:
           node --check app/static/app.js
           node --check app/static/i18n.js
           node tests/test_i18n.js
+          node tests/test_queue.js
+          node tests/test_handoff.js
       - name: Run tests
         run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml
       - name: Test PostgreSQL backend

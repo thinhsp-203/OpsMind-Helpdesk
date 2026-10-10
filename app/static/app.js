@@ -77,6 +77,7 @@ async function api(path, options = {}) {
 }
 
 function setSignedIn(user) {
+  byId("ticketReceipt").classList.add("hidden");
   document.body.classList.add("signed-in");
   byId("workspaceSidebar").classList.remove("hidden");
   byId("workspacePageLabel").classList.remove("hidden");
@@ -182,7 +183,7 @@ function configureWorkspaceNavigation(role) {
     ? [["dashboard", "Tổng quan"], ["assistant", "Trợ lý IT"], ["tickets", "Ticket của tôi"], ["submit", "Tạo yêu cầu"]]
     : role === "agent"
       ? [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["personal", "Thống kê của tôi"], ["assistant", "Tra cứu tri thức"]]
-      : [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Knowledge Base"], ["users", "Người dùng"], ["reports", "Báo cáo"]];
+      : [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"], ["users", "Người dùng"], ["reports", "Báo cáo"]];
   const nav = byId("workspaceNav");
   nav.replaceChildren();
   items.forEach(([view, label]) => {
@@ -219,6 +220,24 @@ function setWorkspaceView(view) {
   });
 }
 
+function filterQueueTickets(tickets, mode, username, now = Date.now()) {
+  return tickets.filter((ticket) => {
+    const active = !["resolved", "closed"].includes(ticket.status);
+    const remaining = new Date(ticket.sla_deadline).getTime() - now;
+    if (mode === "unassigned") return active && !ticket.assignee;
+    if (mode === "mine") return active && ticket.assignee === username;
+    if (mode === "soon") return active && remaining >= 0 && remaining <= 2 * 60 * 60 * 1000;
+    if (mode === "overdue") return active && remaining < 0;
+    return true;
+  });
+}
+
+const auditEventLabels = {
+  created: "Tạo ticket", assigned: "Phân công", status_changed: "Thay đổi trạng thái",
+  comment_added: "Thêm phản hồi", ticket_updated: "Cập nhật ticket",
+  archived: "Lưu trữ ticket", attachment_added: "Thêm tệp đính kèm",
+};
+
 async function loadTickets() {
   const params = new URLSearchParams();
   const search = byId("ticketSearch").value.trim();
@@ -253,7 +272,9 @@ async function loadTickets() {
       byId("statRating").textContent = "—";
       byId("ratingCount").textContent = "Thống kê cá nhân";
     }
-    renderTickets(state.tickets);
+    byId("queueFilter").classList.toggle("hidden", state.user.role === "user");
+    renderTickets(filterQueueTickets(state.tickets,
+      state.user.role === "user" ? "" : byId("queueFilter").value, state.user.username));
   } catch (error) {
     showEmpty("Không thể tải danh sách", error.message);
   }
@@ -711,11 +732,16 @@ async function submitRating(event) {
 
 async function submitTicket(event) {
   event.preventDefault();
+  if (state.ticketBusy) return;
+  state.ticketBusy = true;
   const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  form.setAttribute("aria-busy", "true");
   setMessage("ticketMessage", "");
   const payload = Object.fromEntries(new FormData(form).entries());
   try {
-    await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
+    const created = await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
     form.reset();
     byId("ticketSearch").value = "";
     byId("statusFilter").value = "";
@@ -725,11 +751,26 @@ async function submitTicket(event) {
     setMessage("ticketMessage", "Đã gửi yêu cầu. Mã ticket và tiến độ được lưu trong mục bên dưới.", false);
     await refreshWorkspace();
     setWorkspaceView("tickets");
+    const receipt = byId("ticketReceipt");
+    receipt.textContent = `${window.helpdeskI18n.translate("Đã tạo yêu cầu")} HD-${String(created.ticket.id).padStart(4, "0")}. ${window.helpdeskI18n.translate("Bạn có thể theo dõi tiến độ trong danh sách bên dưới.")}`;
+    receipt.classList.remove("hidden");
     const firstTicket = byId("ticketList").querySelector(".ticket-card");
     firstTicket?.scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (error) {
     setMessage("ticketMessage", error.message);
+  } finally {
+    state.ticketBusy = false;
+    submitButton.disabled = false;
+    form.removeAttribute("aria-busy");
   }
+}
+
+function buildHandoffDescription(question, matches = []) {
+  const sources = [...new Set(matches.map((match) => match.source).filter(Boolean))];
+  if (!sources.length) return question;
+  const heading = window.helpdeskI18n.translate("Tài liệu đã được gợi ý (chưa xác nhận đã thực hiện):");
+  const note = window.helpdeskI18n.translate("Vui lòng bổ sung các bước bạn đã thử và kết quả trước khi gửi.");
+  return `${question}\n\n${heading}\n${sources.slice(0, 5).map((source) => `- ${String(source).slice(0, 180)}`).join("\n")}\n\n${note}`.slice(0, 5000);
 }
 
 async function askKnowledge(event, options = {}) {
@@ -761,6 +802,8 @@ async function askKnowledge(event, options = {}) {
     });
     state.chatSessionId = data.session_id;
     result.replaceChildren(node("div", "question-bubble", question), node("p", "rag-answer", data.answer));
+    result.append(node("p", `rag-evidence ${data.grounded ? "" : "rag-evidence-empty"}`,
+      data.grounded ? "Có tài liệu tham khảo — hãy đối chiếu trước khi thực hiện." : "Chưa tìm thấy nguồn phù hợp. Bạn có thể bổ sung thông tin hoặc chuyển cho IT."));
     if (data.sources.length) {
       const sourceCard = (match, source, index) => {
         const card = node("div", "rag-source");
@@ -870,7 +913,7 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
     setWorkspaceView("submit");
     const title = question.replace(/\s+/g, " ").trim().slice(0, 160);
     byId("ticketTitle").value = title.length >= 5 ? title : `Hỗ trợ: ${title}`;
-    byId("ticketDescription").value = question;
+    byId("ticketDescription").value = buildHandoffDescription(question, options.matches);
     byId("ticketCategory").value = triage.category;
     byId("ticketPriority").value = triage.priority;
     byId("ticketMessage").textContent = "Đã điền sẵn nội dung. Kiểm tra lại rồi gửi cho IT.";
@@ -901,7 +944,7 @@ async function loadKnowledge() {
       label.append(node("strong", "", document.title), node("span", "", document.source));
       row.append(label);
       if (state.user.role === "admin") {
-        const reindex = node("button", "button button-quiet", "Re-index");
+        const reindex = node("button", "button button-quiet", "Cập nhật chỉ mục");
         reindex.type = "button";
         reindex.addEventListener("click", async () => {
           try {
@@ -948,7 +991,7 @@ async function uploadKnowledge(event) {
   try {
     await api("/knowledge", { method: "POST", body: payload });
     form.reset();
-    setMessage("knowledgeMessage", "Đã thêm tài liệu vào Knowledge Base.", false);
+    setMessage("knowledgeMessage", "Đã thêm tài liệu vào Kho tri thức.", false);
     await loadKnowledge();
   } catch (error) {
     setMessage("knowledgeMessage", error.message);
@@ -1122,7 +1165,7 @@ async function loadAnalytics() {
       activity.append(node(
         "div",
         "comment-item",
-        `${new Date(entry.timestamp).toLocaleString(window.helpdeskI18n.locale())} · ${entry.actor} · HD-${String(entry.ticket_id).padStart(4, "0")} · ${entry.event}`,
+        `${new Date(entry.timestamp).toLocaleString(window.helpdeskI18n.locale())} · ${entry.actor} · HD-${String(entry.ticket_id).padStart(4, "0")} · ${window.helpdeskI18n.translate(auditEventLabels[entry.event] || entry.event)}`,
       ));
     });
   } catch (error) {
@@ -1314,6 +1357,7 @@ byId("draftFromRagBtn").addEventListener("click", () => {
     setMessage("ticketMessage", "Nhập sự cố ở ô tra cứu phía trên; nếu chưa xử lý được, chuyển nội dung sang yêu cầu IT.", false);
   }
 });
+byId("queueFilter").addEventListener("change", loadTickets);
 byId("statusFilter").addEventListener("change", loadTickets);
 byId("categoryFilter").addEventListener("change", loadTickets);
 byId("fromDateFilter").addEventListener("change", loadTickets);

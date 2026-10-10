@@ -15,19 +15,25 @@ from app import config
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
 STOP_WORDS = {
-    "a", "an", "and", "are", "bao", "biet", "bi", "bị", "but", "cach", "can",
+    "a", "an", "and", "are", "bao", "biet", "bi", "but", "cach", "can",
     "cannot", "cant", "cho", "co", "cua", "dang", "de", "did", "du", "duoc",
     "gio", "giup", "ha", "hay", "how", "i", "in", "initiate", "is", "it", "la",
     "lam", "loi", "mai", "mot", "mua", "my", "nao", "ngay", "nha", "noi", "not",
     "of", "on", "received", "repeated", "sao", "several", "tai", "team", "the",
     "tho", "thoi", "thu", "tiet", "to", "toi", "va", "ve", "viec", "viet", "voi",
     "what", "when", "where", "why", "with", "work", "works", "you",
+    # Common Vietnamese function syllables (accent-folded). They appear in the Vietnamese
+    # runbooks but carry no topical meaning, and otherwise let off-topic questions match.
+    "khong", "khi", "nay", "thi", "rat", "nhu", "the", "sau", "truoc", "tren", "duoi",
+    "lai", "van", "con", "da", "se", "phai", "neu", "nhung", "cung", "nhieu", "hon",
+    "qua", "hom", "ma", "minh", "ban", "chua", "roi", "luc", "cac", "nhung", "nguoi",
+    "tu", "den", "ra", "vao", "len", "xuong", "duoc", "dung", "can", "muon", "xin",
+    "hien", "bang", "trong", "ngoai", "theo", "tung", "moi", "nhat", "biet", "gi",
 }
 SYNONYMS = {
-    "wifi": "network",
-    "wireless": "network",
+    "wifi": "wifi",
+    "wireless": "wifi",
     "internet": "network",
-    "lan": "network",
     "vpn": "vpn",
     "forticlient": "forticlient",
     "openvpn": "openvpn",
@@ -50,7 +56,107 @@ SYNONYMS = {
     "windows": "windows",
     "mfa": "mfa",
     "authenticator": "mfa",
+    "active": "activation",
+    "activate": "activation",
+    "lag": "latency",
+    "pst": "ost",
 }
+# Vietnamese (accent-folded) phrases -> English/canonical terms used by the runbooks.
+# Most runbooks are written in English, so Vietnamese questions need this bilingual
+# lexicon to match them. Longer phrases are matched first. An empty tuple drops a
+# generic phrase that carries no topical signal.
+PHRASES: dict[tuple[str, ...], tuple[str, ...]] = {
+    # printing / scanning
+    ("may", "in"): ("printer",),
+    ("khong", "in"): ("printer", "print"),
+    ("lenh", "in"): ("printer", "print", "queue"),
+    ("ban", "in"): ("printer", "print"),
+    ("in", "ra"): ("printer", "print"),
+    ("may", "scan"): ("scan",),
+    ("may", "quet"): ("scan",),
+    ("quet",): ("scan",),
+    ("may", "photocopy"): ("multifunction", "printer", "scan"),
+    ("photocopy",): ("multifunction", "printer", "scan"),
+    # certificates / signing / access (existing behaviour)
+    ("chung", "thu", "so"): ("certificate",),
+    ("chung", "thu"): ("certificate",),
+    ("chu", "ky", "so"): ("certificate",),
+    ("ky", "so"): ("certificate",),
+    ("thu", "muc"): ("access",),
+    ("chia", "se"): ("shared",),
+    ("login", "approval", "request"): ("mfa",),
+    # accounts / authentication
+    ("mat", "khau"): ("password",),
+    ("tai", "khoan"): ("account",),
+    ("bi", "khoa"): ("locked", "lockout"),
+    ("khoa", "tai", "khoan"): ("lockout", "account"),
+    ("dang", "nhap"): ("login", "sign"),
+    ("quen",): ("forgot", "reset"),
+    ("ma", "khoi", "phuc"): ("recovery", "key"),
+    ("khoi", "phuc"): ("recovery",),
+    # network
+    ("ket", "noi"): ("connect", "connectivity"),
+    ("chap", "chon"): ("intermittent", "loses", "connectivity"),
+    ("rot", "mang"): ("disconnected", "loses", "connectivity"),
+    ("mat", "mang"): ("disconnected", "loses", "connectivity"),
+    ("mat", "ket", "noi"): ("disconnected", "loses", "connectivity"),
+    ("rot",): ("disconnected", "drops"),
+    ("mang", "day"): ("ethernet", "cable"),
+    ("day", "mang"): ("ethernet", "cable"),
+    ("cap", "mang"): ("ethernet", "cable"),
+    ("mang", "cham"): ("slow", "network", "latency"),
+    ("mang", "noi", "bo"): ("internal", "network"),
+    ("noi", "bo"): ("internal",),
+    ("mang",): ("network",),
+    ("mat", "goi"): ("packet", "loss"),
+    ("trung", "ip"): ("conflict", "ip"),
+    ("trung", "dia", "chi"): ("conflict", "address"),
+    ("dia", "chi", "ip"): ("ip", "address"),
+    ("trinh", "duyet"): ("browser",),
+    ("tu", "xa"): ("remote",),
+    ("dieu", "khien", "tu", "xa"): ("remote", "desktop"),
+    ("dieu", "khien"): ("remote",),
+    ("may", "chu"): ("server",),
+    # performance / hardware
+    ("man", "hinh", "xanh"): ("bsod", "blue", "screen", "crash"),
+    ("khoi", "dong", "lai"): ("restart",),
+    ("tu", "khoi", "dong"): ("restart",),
+    ("cham",): ("slow", "performance"),
+    ("chay", "cham"): ("slow", "performance"),
+    ("o", "cung"): ("disk",),
+    ("o", "dia"): ("disk",),
+    ("o", "cung", "day"): ("disk", "full"),
+    ("dung", "luong"): ("storage", "space"),
+    ("ban", "phim"): ("keyboard", "usb", "peripheral"),
+    ("chuot",): ("mouse", "usb", "peripheral"),
+    ("khong", "nhan"): (),
+    ("nhan", "ip"): ("ip", "dhcp"),
+    ("nhan", "dia", "chi", "ip"): ("ip", "address", "dhcp"),
+    ("treo",): ("stuck", "hang"),
+    # email
+    ("hop", "thu", "day"): ("mailbox", "quota", "full"),
+    ("hop", "thu"): ("mailbox",),
+    ("gui", "thu"): ("send", "email"),
+    ("gui",): ("send",),
+    ("nhan", "thu"): ("receive", "email"),
+    ("nhan", "email"): ("receive", "email"),
+    ("bi", "hong"): ("corruption", "repair"),
+    ("hong",): ("corruption", "repair"),
+    ("cau", "hinh"): ("configuration", "setup"),
+    # software
+    ("ban", "quyen"): ("license", "activation"),
+    ("kich", "hoat"): ("activation",),
+    ("cap", "nhat"): ("update",),
+    ("cai", "dat"): ("install",),
+    ("cai",): ("install",),
+    ("phan", "mem"): ("software",),
+    ("ke", "toan"): ("erp",),
+    # generic phrases without topical signal
+    ("may", "tinh"): (),
+    ("tai", "lieu"): (),
+    ("van", "phong"): (),
+}
+_PHRASES_BY_LENGTH = sorted(PHRASES.items(), key=lambda item: len(item[0]), reverse=True)
 MIN_RELEVANCE = 0.12
 CATEGORY_BY_SOURCE = {
     "ad_account_lockout.md": "security",
@@ -111,44 +217,88 @@ def _normalize_title(path: Path) -> str:
 def _fold_text(text: str) -> str:
     folded = unicodedata.normalize("NFD", text.lower())
     folded = "".join(char for char in folded if unicodedata.category(char) != "Mn")
-    return folded.replace("đ", "d")
+    folded = folded.replace("đ", "d")
+    # "Wi-Fi" / "e-mail" would otherwise split into meaningless fragments ("wi", "fi").
+    folded = re.sub(r"\bwi[\s-]?fi\b", "wifi", folded)
+    return re.sub(r"\be-mail\b", "email", folded)
+
+
+def _stem(word: str) -> str:
+    """Very light English suffix stripping so fail/failed/fails or update/updates/updating match."""
+    if len(word) < 5 or not word.isalpha():
+        return word
+    if word.endswith("ies"):
+        return word[:-3] + "y"
+    if word.endswith("s") and not word.endswith("ss"):
+        word = word[:-1]
+    for suffix in ("ing", "ed"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            word = word[: -len(suffix)]
+            break
+    if word.endswith("e") and len(word) >= 5:
+        word = word[:-1]
+    return word
 
 
 def _tokens(text: str) -> list[str]:
     words = TOKEN_RE.findall(_fold_text(text))
-    compounds = {
-        ("may", "in"): "printer",
-        ("chung", "thu", "so"): "certificate",
-        ("chung", "thu"): "certificate",
-        ("chu", "ky", "so"): "certificate",
-        ("ky", "so"): "certificate",
-        ("thu", "muc"): "access",
-        ("login", "approval", "request"): "mfa",
-    }
-    normalized = []
+    normalized: list[str] = []
     index = 0
     while index < len(words):
-        compound = next(
+        phrase = next(
             (
                 (parts, canonical)
-                for parts, canonical in compounds.items()
+                for parts, canonical in _PHRASES_BY_LENGTH
                 if tuple(words[index:index + len(parts)]) == parts
             ),
             None,
         )
-        if compound:
-            parts, canonical = compound
-            normalized.append(canonical)
+        if phrase:
+            parts, canonical = phrase
+            normalized.extend(_stem(term) for term in canonical)
             index += len(parts)
             continue
         word = words[index]
         index += 1
         if word in STOP_WORDS:
             continue
-        canonical = SYNONYMS.get(word, word)
-        if canonical:
-            normalized.append(canonical)
+        canonical_word = SYNONYMS.get(word, word)
+        if canonical_word:
+            normalized.append(_stem(canonical_word))
     return normalized
+
+
+def _phrase_and_synonym_terms() -> frozenset[str]:
+    terms = {term for canonical in PHRASES.values() for term in canonical}
+    terms.update(SYNONYMS.values())
+    return frozenset(_stem(term) for term in terms)
+
+
+_LEXICON_TERMS = _phrase_and_synonym_terms()
+
+
+def domain_vocabulary() -> frozenset[str]:
+    """IT terms that make a question in scope for the Knowledge Base.
+
+    Built from the bilingual lexicon plus the words of English runbook titles (and the
+    acronyms of Vietnamese titles), so documents uploaded by an admin extend it
+    automatically. Other Vietnamese title words are excluded on purpose: syllables such
+    as "bo", "dong" or "chung" are too generic and let off-topic questions look relevant.
+    """
+    return _title_vocabulary(tuple(document["title"] for document in load_knowledge_base()))
+
+
+@lru_cache(maxsize=4)
+def _title_vocabulary(titles: tuple[str, ...]) -> frozenset[str]:
+    vocabulary = set(_LEXICON_TERMS)
+    for title in titles:
+        if title.isascii():
+            vocabulary.update(_tokens(title))
+        else:
+            # Vietnamese title: keep only acronyms / product names such as ERP or MFA.
+            acronyms = [word for word in re.findall(r"[A-Za-z0-9]+", title) if word.isupper()]
+            vocabulary.update(_tokens(" ".join(acronyms)))
+    return frozenset(vocabulary)
 
 
 @lru_cache(maxsize=1)
@@ -246,6 +396,12 @@ def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]
     query_terms = set(_tokens(query))
     if not passages or not query_terms:
         return []
+    # Out-of-scope guard: BM25 scores are not comparable across queries, and generic
+    # Vietnamese syllables also occur in the Vietnamese runbooks. A question is only
+    # answered when it contains at least one IT domain term that the passage also matches.
+    domain_terms = query_terms & domain_vocabulary()
+    if not domain_terms:
+        return []
 
     document_frequency: Counter[str] = Counter()
     for passage in passages:
@@ -255,6 +411,8 @@ def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]
     ranked: list[dict[str, Any]] = []
 
     for passage in passages:
+        if domain_terms.isdisjoint(passage["tokens"]):
+            continue
         frequencies = Counter(passage["tokens"])
         title_terms = set(_tokens(passage["title"]))
         length = len(passage["tokens"])

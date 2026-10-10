@@ -572,6 +572,12 @@ def test_admin_can_reindex_and_delete_knowledge_document(
     assert client.post("/knowledge/vpn.md/reindex", headers=auth("admin")).status_code == 200
     assert client.delete("/knowledge/vpn.md", headers=auth("agent")).status_code == 403
     assert client.delete("/knowledge/..-outside.md", headers=auth("admin")).status_code == 422
+    # Seeded runbooks use underscores in their file names and must stay manageable.
+    underscored = knowledge_dir / "wifi_network.md"
+    underscored.write_text("# Wi-Fi Guide\n\nReconnect to the office SSID.", encoding="utf-8")
+    assert client.post("/knowledge/wifi_network.md/reindex", headers=auth("admin")).status_code == 200
+    assert client.delete("/knowledge/wifi_network.md", headers=auth("admin")).status_code == 200
+    assert not underscored.exists()
     assert client.delete("/knowledge/vpn.md", headers=auth("admin")).status_code == 200
     assert not target.exists()
     assert client.delete("/knowledge/vpn.md", headers=auth("admin")).status_code == 404

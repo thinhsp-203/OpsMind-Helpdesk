@@ -91,6 +91,23 @@ async function api(path, options = {}) {
   return data;
 }
 
+function toggleUserDropdown() {
+  const menu = byId("userDropdownMenu");
+  const btn = byId("userMenuBtn");
+  if (!menu || !btn) return;
+  const isExpanded = btn.getAttribute("aria-expanded") === "true";
+  btn.setAttribute("aria-expanded", String(!isExpanded));
+  menu.classList.toggle("hidden", isExpanded);
+}
+
+function closeUserDropdown() {
+  const menu = byId("userDropdownMenu");
+  const btn = byId("userMenuBtn");
+  if (!menu || !btn) return;
+  btn.setAttribute("aria-expanded", "false");
+  menu.classList.add("hidden");
+}
+
 function setSignedIn(user) {
   byId("ticketReceipt").classList.add("hidden");
   document.body.classList.add("signed-in");
@@ -107,12 +124,32 @@ function setSignedIn(user) {
   byId("workspaceView").dataset.role = user.role;
   byId("loginView").classList.add("hidden");
   byId("workspaceView").classList.remove("hidden");
-  byId("logoutBtn").classList.remove("hidden");
+
+  // Modern unified user dropdown
+  byId("userMenuWrapper")?.classList.remove("hidden");
+  const topbarAv = byId("topbarAvatar");
+  if (topbarAv) topbarAv.textContent = initials;
+  const topbarName = byId("topbarUserName");
+  if (topbarName) topbarName.textContent = displayName;
+  const topbarRole = byId("topbarUserRole");
+  if (topbarRole) topbarRole.textContent = roleLabels[user.role] || user.role;
+
+  const dropAv = byId("dropdownAvatarLarge");
+  if (dropAv) dropAv.textContent = initials;
+  const dropFullname = byId("dropdownUserFullname");
+  if (dropFullname) dropFullname.textContent = displayName;
+  const dropRole = byId("dropdownUserRole");
+  if (dropRole) dropRole.textContent = `@${user.username} · ${roleLabels[user.role] || user.role}`;
+  closeUserDropdown();
+
+  byId("logoutBtn")?.classList.remove("hidden");
   byId("openProfileBtn")?.classList.remove("hidden");
-  byId("changePasswordBtn").classList.remove("hidden");
+  byId("changePasswordBtn")?.classList.remove("hidden");
   const badge = byId("userBadge");
-  badge.textContent = `${displayName} · ${roleLabels[user.role] || user.role}`;
-  badge.classList.remove("hidden");
+  if (badge) {
+    badge.textContent = `${displayName} · ${roleLabels[user.role] || user.role}`;
+    badge.classList.add("hidden");
+  }
   byId("greeting").textContent = `Xin chào, ${displayName}`;
   byId("roleEyebrow").textContent = roleLabels[user.role].toUpperCase();
   byId("todayLabel").textContent = new Intl.DateTimeFormat(window.helpdeskI18n.locale(), {
@@ -191,10 +228,9 @@ function signOut() {
   state.chatSessionId = null;
   localStorage.removeItem("helpdesk-token");
   byId("workspaceView").classList.add("hidden");
-  byId("logoutBtn").classList.add("hidden");
-  byId("openProfileBtn")?.classList.add("hidden");
-  byId("changePasswordBtn").classList.add("hidden");
-  byId("userBadge").classList.add("hidden");
+  byId("userMenuWrapper")?.classList.add("hidden");
+  closeUserDropdown();
+  byId("userBadge")?.classList.add("hidden");
   closeUserProfileModal();
   closeChangePasswordModal();
   closeForgotPasswordModal();
@@ -206,6 +242,7 @@ function signOut() {
 }
 
 function openChangePasswordModal(isForced = false) {
+  closeUserDropdown();
   const modal = byId("changePasswordModal");
   if (!modal) return;
   modal.dataset.forced = isForced ? "true" : "false";
@@ -235,6 +272,7 @@ function closeChangePasswordModal() {
 }
 
 function openUserProfileModal() {
+  closeUserDropdown();
   const modal = byId("userProfileModal");
   if (!modal || !state.user) return;
   const user = state.user;
@@ -327,9 +365,17 @@ async function handleProfileUpdate(event) {
     const profileAvatar = byId("profileAvatarLarge");
     if (profileAvatar) profileAvatar.textContent = initials;
     byId("profileDisplayName").textContent = displayName;
+    const topbarAv = byId("topbarAvatar");
+    if (topbarAv) topbarAv.textContent = initials;
+    const topbarName = byId("topbarUserName");
+    if (topbarName) topbarName.textContent = displayName;
+    const dropAv = byId("dropdownAvatarLarge");
+    if (dropAv) dropAv.textContent = initials;
+    const dropFullname = byId("dropdownUserFullname");
+    if (dropFullname) dropFullname.textContent = displayName;
     byId("greeting").textContent = `Xin chào, ${displayName}`;
     const badge = byId("userBadge");
-    badge.textContent = `${displayName} · ${roleLabels[state.user.role] || state.user.role}`;
+    if (badge) badge.textContent = `${displayName} · ${roleLabels[state.user.role] || state.user.role}`;
     setMessage("userProfileMessage", result.message || "Cập nhật thông tin cá nhân thành công.", false);
     setTimeout(() => {
       closeUserProfileModal();
@@ -2199,8 +2245,21 @@ if (userProfileModal) {
   });
 }
 
+byId("userMenuBtn")?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleUserDropdown();
+});
+
+document.addEventListener("click", (event) => {
+  const wrapper = byId("userMenuWrapper");
+  if (wrapper && !wrapper.contains(event.target)) {
+    closeUserDropdown();
+  }
+});
+
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    closeUserDropdown();
     closeUserProfileModal();
     closeChangePasswordModal();
     closeForgotPasswordModal();
@@ -2398,17 +2457,34 @@ if (state.token) {
 
 async function refreshServiceState() {
   const label = byId("serviceStateLabel");
+  const textEl = byId("serviceStateText");
   try {
     const response = await fetch("/health", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     await response.json();
-    label.textContent = "Hệ thống sẵn sàng";
-    label.classList.remove("service-state-error");
-    label.classList.add("service-state-ok");
+    const okText = window.helpdeskI18n ? window.helpdeskI18n.translate("Hệ thống sẵn sàng") : "Hệ thống sẵn sàng";
+    if (textEl) {
+      textEl.textContent = okText;
+    } else if (label) {
+      label.textContent = okText;
+    }
+    if (label) {
+      label.title = okText;
+      label.classList.remove("service-state-error");
+      label.classList.add("service-state-ok");
+    }
   } catch {
-    label.textContent = "Dịch vụ đang gián đoạn";
-    label.classList.remove("service-state-ok");
-    label.classList.add("service-state-error");
+    const errText = window.helpdeskI18n ? window.helpdeskI18n.translate("Dịch vụ đang gián đoạn") : "Dịch vụ đang gián đoạn";
+    if (textEl) {
+      textEl.textContent = errText;
+    } else if (label) {
+      label.textContent = errText;
+    }
+    if (label) {
+      label.title = errText;
+      label.classList.remove("service-state-ok");
+      label.classList.add("service-state-error");
+    }
   }
 }
 

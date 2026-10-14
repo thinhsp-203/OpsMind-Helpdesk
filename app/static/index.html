@@ -22,12 +22,43 @@
           <span><strong>OpsMind</strong><small>IT SERVICE DESK</small></span>
         </a>
         <div class="topbar-right">
-          <span id="serviceStateLabel" class="service-state service-state-checking"><i></i> Đang kiểm tra dịch vụ</span>
+          <span id="serviceStateLabel" class="service-state service-state-checking"><i class="status-indicator"></i> <span id="serviceStateText">Đang kiểm tra dịch vụ</span></span>
           <button id="languageToggle" class="button button-quiet language-toggle" type="button" aria-label="Switch language">English</button>
-          <span id="userBadge" class="user-badge user-badge-clickable hidden" title="Xem hồ sơ cá nhân"></span>
-          <button id="openProfileBtn" class="button button-quiet hidden" type="button">Hồ sơ cá nhân</button>
-          <button id="changePasswordBtn" class="button button-quiet hidden" type="button">Đổi mật khẩu</button>
-          <button id="logoutBtn" class="button button-quiet hidden" type="button">Đăng xuất</button>
+          
+          <div id="userMenuWrapper" class="user-menu-wrapper hidden">
+            <button id="userMenuBtn" class="user-menu-btn" type="button" aria-expanded="false" aria-haspopup="true">
+              <span id="topbarAvatar" class="topbar-avatar">AD</span>
+              <span class="user-menu-meta">
+                <strong id="topbarUserName">admin</strong>
+                <small id="topbarUserRole">Quản trị IT</small>
+              </span>
+              <span class="user-menu-chevron">▾</span>
+            </button>
+            <div id="userDropdownMenu" class="user-dropdown-menu hidden" role="menu">
+              <div class="user-dropdown-header">
+                <span id="dropdownAvatarLarge" class="dropdown-avatar">AD</span>
+                <div class="dropdown-header-info">
+                  <strong id="dropdownUserFullname">admin</strong>
+                  <small id="dropdownUserRole">Quản trị IT</small>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button id="openProfileBtn" class="dropdown-item" type="button" role="menuitem">
+                <span class="dropdown-icon">👤</span>
+                <span>Hồ sơ cá nhân</span>
+              </button>
+              <button id="changePasswordBtn" class="dropdown-item" type="button" role="menuitem">
+                <span class="dropdown-icon">🔒</span>
+                <span>Đổi mật khẩu</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button id="logoutBtn" class="dropdown-item dropdown-item-danger" type="button" role="menuitem">
+                <span class="dropdown-icon">🚪</span>
+                <span>Đăng xuất</span>
+              </button>
+            </div>
+          </div>
+          <span id="userBadge" class="hidden"></span>
         </div>
       </header>
 

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import csv
 import math
+import os
 import statistics
 import time
 from pathlib import Path
+
+os.environ.setdefault("DEMO_MODE", "true")
+os.environ.setdefault("SECRET_KEY", "evaluate-rag-offline-secret-key-safe")
 
 from app.rag import retrieve_relevant_context
 

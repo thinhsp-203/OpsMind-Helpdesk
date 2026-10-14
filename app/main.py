@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import jwt
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -792,7 +792,7 @@ async def get_single_knowledge_document(
                 "slug": identifier,
                 "source": identifier,
                 "title": title,
-                "category": CATEGORY_BY_SOURCE.get(identifier, "general"),
+                "category": store.get_document_category_from_db(identifier),
                 "tags": "",
                 "content": content,
                 "status": "published",

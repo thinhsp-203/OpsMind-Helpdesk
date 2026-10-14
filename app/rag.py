@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 import unicodedata
@@ -11,6 +12,8 @@ from typing import Any
 import httpx
 
 from app import config
+
+logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 BASE_KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
@@ -173,8 +176,8 @@ def load_knowledge_base() -> list[dict[str, Any]]:
                     }
                     for doc in sorted(db_docs, key=lambda d: d["slug"])
                 ]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not read knowledge docs from store, falling back to filesystem: %s", exc)
 
         if BASE_KNOWLEDGE_DIR.is_dir():
             for path in sorted(BASE_KNOWLEDGE_DIR.glob("*.md")):
@@ -262,8 +265,8 @@ def save_knowledge_document(
             author="admin",
             is_builtin=0,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Could not record knowledge document in store: %s", exc)
 
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()

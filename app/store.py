@@ -1198,21 +1198,28 @@ def list_knowledge_documents(
 def get_knowledge_document(identifier: int | str) -> dict[str, Any] | None:
     with _connect() as connection:
         if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
-            condition = "d.id = ?"
-            params: tuple[Any, ...] = (int(identifier),)
+            row = connection.execute(
+                """
+                SELECT d.id, d.slug, d.title, d.category, d.tags, d.content, d.status,
+                       d.author, d.reviewer, d.approved_at, d.created_at, d.updated_at, d.is_builtin,
+                       (SELECT COUNT(*) FROM knowledge_versions v WHERE v.document_id = d.id) AS version_count
+                FROM knowledge_documents d
+                WHERE d.id = ?
+                """,
+                (int(identifier),),
+            ).fetchone()
         else:
             slug = identifier if identifier.endswith(".md") else f"{identifier}.md"
-            condition = "(d.slug = ? OR d.slug = ?)"
-            params = (identifier, slug)
-
-        sql = f"""
-            SELECT d.id, d.slug, d.title, d.category, d.tags, d.content, d.status,
-                   d.author, d.reviewer, d.approved_at, d.created_at, d.updated_at, d.is_builtin,
-                   (SELECT COUNT(*) FROM knowledge_versions v WHERE v.document_id = d.id) AS version_count
-            FROM knowledge_documents d
-            WHERE {condition}
-        """
-        row = connection.execute(sql, params).fetchone()
+            row = connection.execute(
+                """
+                SELECT d.id, d.slug, d.title, d.category, d.tags, d.content, d.status,
+                       d.author, d.reviewer, d.approved_at, d.created_at, d.updated_at, d.is_builtin,
+                       (SELECT COUNT(*) FROM knowledge_versions v WHERE v.document_id = d.id) AS version_count
+                FROM knowledge_documents d
+                WHERE d.slug = ? OR d.slug = ?
+                """,
+                (identifier, slug),
+            ).fetchone()
         if not row:
             return None
         return {
@@ -1353,7 +1360,6 @@ def review_knowledge_document(
     with _connect() as connection:
         now = _now()
         if action == "approve":
-            new_status = "published"
             summary = f"Duyệt và xuất bản bởi {reviewer}"
             connection.execute(
                 """
@@ -1364,7 +1370,6 @@ def review_knowledge_document(
                 (reviewer, now, now, doc["id"]),
             )
         else:
-            new_status = "draft"
             summary = f"Từ chối duyệt bởi {reviewer}: {feedback}" if feedback else f"Trả về bản nháp bởi {reviewer}"
             connection.execute(
                 """

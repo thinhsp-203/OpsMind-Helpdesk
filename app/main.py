@@ -317,17 +317,17 @@ def visible_ticket(ticket_id: int, user: dict[str, str]) -> dict:
     return ticket
 
 
-@app.get("/", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
-@app.get("/config", tags=["system"])
+@app.api_route("/config", methods=["GET", "HEAD"], tags=["system"])
 async def public_config() -> dict[str, bool]:
     return {"demo_mode": DEMO_MODE}
 
 
-@app.get("/health", tags=["system"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["system"])
 async def health() -> dict[str, str]:
     try:
         store.check_database()

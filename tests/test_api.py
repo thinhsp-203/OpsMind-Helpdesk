@@ -60,6 +60,9 @@ def test_health_and_web_app_are_available() -> None:
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json() == {"status": "ok", "service": "helpdesk-rag"}
+    assert client.head("/health").status_code == 200
+    assert client.head("/").status_code == 200
+    assert client.head("/config").status_code == 200
     page = client.get("/").text
     assert "Helpdesk RAG" in page
     assert 'id="demoCredentials" class="demo-note hidden"' in page

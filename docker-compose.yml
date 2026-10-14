@@ -23,7 +23,7 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       SECRET_KEY: ${SECRET_KEY:-}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      DEMO_MODE: ${DEMO_MODE:-false}
       DATABASE_URL: ${DATABASE_URL:-postgresql://helpdesk:${POSTGRES_PASSWORD:-helpdesk-local-demo-password}@postgres:5432/helpdesk}
       HELPDESK_DB_PATH: /app/runtime/helpdesk.sqlite3
       HELPDESK_STORAGE_PATH: /app/runtime
@@ -31,9 +31,7 @@ services:
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
     volumes:
       - helpdesk-runtime:/app/runtime
-      - helpdesk-knowledge:/app/data/knowledge
 
 volumes:
   postgres-data:
   helpdesk-runtime:
-  helpdesk-knowledge:

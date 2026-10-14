@@ -14,6 +14,8 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clean_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    from app.main import _failed_logins
+    _failed_logins.clear()
     monkeypatch.setattr(store, "_database_path", tmp_path / "test-helpdesk.sqlite3")
     monkeypatch.setattr(store, "_database_url", "")
     store.initialize_store()
@@ -21,6 +23,7 @@ def clean_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Non
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     yield
+    _failed_logins.clear()
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
 
@@ -791,3 +794,285 @@ def test_rag_llm_synthesis_falls_back_on_error(monkeypatch: pytest.MonkeyPatch) 
     assert response["grounded"] is True
     assert response["llm_generated"] is False
     assert "Mình tìm thấy hướng dẫn liên quan trong Knowledge Base" in response["answer"]
+
+
+def test_login_rate_limiting_blocks_after_five_failed_attempts() -> None:
+    # 5 failed attempts
+    for _ in range(5):
+        res = client.post("/auth/login", json={"username": "user", "password": "wrong-password"})
+        assert res.status_code == 401
+
+    # 6th attempt is throttled with 429
+    blocked = client.post("/auth/login", json={"username": "user", "password": "user"})
+    assert blocked.status_code == 429
+    assert "Đã thử đăng nhập sai quá nhiều lần" in blocked.json()["detail"]
+
+
+def test_user_change_password_and_token_invalidation() -> None:
+    # 1. Login to get token
+    login_res = client.post("/auth/login", json={"username": "user", "password": "user"})
+    assert login_res.status_code == 200
+    token = login_res.json()["token"]
+    user_headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Reject wrong old password
+    bad_old = client.post(
+        "/auth/change-password",
+        headers=user_headers,
+        json={"old_password": "incorrect-password", "new_password": "NewSecretPassword123!"},
+    )
+    assert bad_old.status_code == 400
+    assert "Mật khẩu hiện tại không chính xác" in bad_old.json()["detail"]
+
+    # 3. Reject password under 12 characters
+    short_pw = client.post(
+        "/auth/change-password",
+        headers=user_headers,
+        json={"old_password": "user", "new_password": "short123"},
+    )
+    assert short_pw.status_code == 422
+
+    # 6. Successfully change password
+    change_res = client.post(
+        "/auth/change-password",
+        headers=user_headers,
+        json={"old_password": "user", "new_password": "BrandNewSecurePassword123!"},
+    )
+    assert change_res.status_code == 200
+    assert "Đổi mật khẩu thành công" in change_res.json()["message"]
+
+    # 7. Old JWT token must be invalidated
+    invalidated = client.get("/auth/me", headers=user_headers)
+    assert invalidated.status_code == 401
+    assert "Mật khẩu đã được thay đổi" in invalidated.json()["detail"]
+
+    # 8. Login with old password fails
+    assert client.post("/auth/login", json={"username": "user", "password": "user"}).status_code == 401
+
+    # 9. Login with new password succeeds
+    new_login = client.post(
+        "/auth/login",
+        json={"username": "user", "password": "BrandNewSecurePassword123!"},
+    )
+    assert new_login.status_code == 200
+    assert new_login.json()["force_password_change"] is False
+
+
+def test_admin_reset_user_password_and_force_change_flag() -> None:
+    admin_headers = auth("admin")
+    user_headers = auth("user")
+
+    # 1. Non-admin cannot reset
+    assert client.post(
+        "/admin/users/user/reset-password",
+        headers=user_headers,
+        json={"new_password": "AdminSetPassword123!", "force_change": True},
+    ).status_code == 403
+
+    # 2. Reset with short password fails
+    assert client.post(
+        "/admin/users/user/reset-password",
+        headers=admin_headers,
+        json={"new_password": "short", "force_change": True},
+    ).status_code == 422
+
+    # 3. Admin successfully resets password with force_change=True
+    reset_res = client.post(
+        "/admin/users/user/reset-password",
+        headers=admin_headers,
+        json={"new_password": "AdminSetPassword123!", "force_change": True},
+    )
+    assert reset_res.status_code == 200
+    assert "Đã đặt lại mật khẩu" in reset_res.json()["message"]
+
+    # 4. Login response returns force_password_change=True
+    login_res = client.post(
+        "/auth/login",
+        json={"username": "user", "password": "AdminSetPassword123!"},
+    )
+    assert login_res.status_code == 200
+    assert login_res.json()["force_password_change"] is True
+
+    # 5. User changes password, force_password_change resets to False
+    token = login_res.json()["token"]
+    chg = client.post(
+        "/auth/change-password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"old_password": "AdminSetPassword123!", "new_password": "UserChosenPassword123!"},
+    )
+    assert chg.status_code == 200
+
+    re_login = client.post(
+        "/auth/login",
+        json={"username": "user", "password": "UserChosenPassword123!"},
+    )
+    assert re_login.status_code == 200
+    assert re_login.json()["force_password_change"] is False
+
+
+def test_cannot_delete_builtin_knowledge_document() -> None:
+    admin_headers = auth("admin")
+    # Built-in runbook from repo cannot be deleted
+    res = client.delete("/knowledge/printer_offline_status.md", headers=admin_headers)
+    assert res.status_code == 403
+    assert "Không thể xóa tài liệu mặc định" in res.json()["detail"]
+
+    # But reindexing built-in runbook with underscore succeeds
+    reindex_res = client.post("/knowledge/printer_offline_status.md/reindex", headers=admin_headers)
+    assert reindex_res.status_code == 200
+
+
+def test_knowledge_lifecycle_and_review_workflow() -> None:
+    agent_headers = auth("agent")
+    admin_headers = auth("admin")
+    user_headers = auth("user")
+
+    # 1. Regular user cannot create knowledge documents
+    user_create = client.post(
+        "/knowledge",
+        headers=user_headers,
+        json={
+            "title": "User Attempt Runbook",
+            "category": "software",
+            "content": "# User Runbook\n\nSome invalid attempt text here.",
+            "status": "draft",
+        },
+    )
+    assert user_create.status_code == 403
+
+    # 2. Agent cannot publish directly without review
+    agent_direct_publish = client.post(
+        "/knowledge",
+        headers=agent_headers,
+        json={
+            "title": "Direct Publish Runbook",
+            "category": "software",
+            "content": "# Direct Publish\n\nContent for direct publish.",
+            "status": "published",
+        },
+    )
+    assert agent_direct_publish.status_code == 403
+
+    # 3. Agent creates a draft runbook
+    create_res = client.post(
+        "/knowledge",
+        headers=agent_headers,
+        json={
+            "title": "Docker Troubleshooting Guide",
+            "category": "software",
+            "tags": "docker, container, devops",
+            "content": "# Docker Troubleshooting Guide\n\nCheck running containers with `docker ps` and restart daemon.",
+            "status": "draft",
+        },
+    )
+    assert create_res.status_code == 201
+    doc = create_res.json()
+    slug = doc["slug"]
+    assert doc["status"] == "draft"
+    assert doc["author"] == "agent"
+
+    # 4. Draft is NOT visible in public / user list of knowledge
+    user_kb = client.get("/knowledge", headers=user_headers).json()
+    assert not any(d["slug"] == slug for d in user_kb)
+
+    # 5. Agent updates content and submits for review
+    update_res = client.put(
+        f"/knowledge/{slug}",
+        headers=agent_headers,
+        json={
+            "status": "pending_review",
+            "change_summary": "Hoàn thiện các bước kiểm tra docker socket",
+        },
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["status"] == "pending_review"
+
+    # 6. Agent cannot approve their own document
+    agent_approve = client.post(
+        f"/knowledge/{slug}/review",
+        headers=agent_headers,
+        json={"action": "approve"},
+    )
+    assert agent_approve.status_code == 403
+
+    # 7. Admin approves and publishes the document
+    admin_approve = client.post(
+        f"/knowledge/{slug}/review",
+        headers=admin_headers,
+        json={"action": "approve", "feedback": "Nội dung chuẩn và đầy đủ."},
+    )
+    assert admin_approve.status_code == 200
+    approved_doc = admin_approve.json()
+    assert approved_doc["status"] == "published"
+    assert approved_doc["reviewer"] == "admin"
+    assert approved_doc["approved_at"] is not None
+
+    # 8. Document is now visible to user role
+    user_kb_after = client.get("/knowledge", headers=user_headers).json()
+    assert any(d["slug"] == slug for d in user_kb_after)
+
+    # 9. Clean up non-builtin document
+    del_res = client.delete(f"/knowledge/{slug}", headers=admin_headers)
+    assert del_res.status_code == 200
+
+
+def test_knowledge_version_history_and_restoration() -> None:
+    admin_headers = auth("admin")
+    agent_headers = auth("agent")
+
+    # 1. Admin creates document (Version 1)
+    v1_content = "# K8s Guide\n\nInitial version 1 content: check kubectl get nodes."
+    create_res = client.post(
+        "/knowledge",
+        headers=admin_headers,
+        json={
+            "title": "Kubernetes Cluster Guide",
+            "category": "software",
+            "tags": "k8s, kubernetes",
+            "content": v1_content,
+            "status": "published",
+        },
+    )
+    assert create_res.status_code == 201
+    slug = create_res.json()["slug"]
+
+    # 2. Update to Version 2
+    v2_content = "# K8s Guide\n\nVersion 2 updated content: use helm upgrade for deployments."
+    update_res = client.put(
+        f"/knowledge/{slug}",
+        headers=admin_headers,
+        json={
+            "content": v2_content,
+            "change_summary": "Bổ sung hướng dẫn helm",
+        },
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["version_count"] == 2
+
+    # 3. List versions
+    versions = client.get(f"/knowledge/{slug}/versions", headers=agent_headers).json()
+    assert len(versions) == 2
+    assert versions[0]["version_number"] == 2
+    assert versions[1]["version_number"] == 1
+    assert "helm" in versions[0]["content"]
+    assert "kubectl get nodes" in versions[1]["content"]
+
+    # 4. Agent cannot restore version
+    agent_restore = client.post(f"/knowledge/{slug}/restore/1", headers=agent_headers)
+    assert agent_restore.status_code == 403
+
+    # 5. Admin restores version 1
+    admin_restore = client.post(f"/knowledge/{slug}/restore/1", headers=admin_headers)
+    assert admin_restore.status_code == 200
+    restored = admin_restore.json()
+    assert restored["version_count"] == 3
+    assert "kubectl get nodes" in restored["content"]
+
+    # 6. Verify GET returns restored content
+    current = client.get(f"/knowledge/{slug}", headers=admin_headers).json()
+    assert "kubectl get nodes" in current["content"]
+
+    # Clean up
+    client.delete(f"/knowledge/{slug}", headers=admin_headers)
+
+

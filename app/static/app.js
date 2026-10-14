@@ -6,6 +6,9 @@ const state = {
   chatSessionId: null,
   activeView: "",
   knowledgeDocs: [],
+  knowledgeStatus: "",
+  knowledgeCategory: "",
+  knowledgeSearch: "",
 };
 
 const byId = (id) => document.getElementById(id);
@@ -17,6 +20,10 @@ const statusLabels = {
   resolved: "Đã giải quyết",
   closed: "Đã đóng",
   escalated: "Chuyển cấp",
+  published: "Đã xuất bản",
+  pending_review: "Chờ duyệt",
+  draft: "Bản nháp",
+  archived: "Đã lưu trữ",
 };
 const priorityLabels = { low: "Thấp", medium: "Thông thường", high: "Cao", urgent: "Khẩn cấp" };
 const categoryLabels = {
@@ -54,7 +61,15 @@ async function loadPublicConfig() {
     const response = await fetch("/config");
     if (!response.ok) throw new Error(`Không tải được cấu hình (${response.status}).`);
     const config = await response.json();
-    byId("demoCredentials").classList.toggle("hidden", !config.demo_mode);
+    const demoEl = byId("demoCredentials");
+    if (demoEl) {
+      if (config.demo_mode) {
+        demoEl.classList.remove("hidden");
+      } else {
+        demoEl.classList.add("hidden");
+        demoEl.innerHTML = "";
+      }
+    }
   } catch (error) {
     console.error("Không tải được cấu hình công khai:", error);
   }
@@ -89,6 +104,7 @@ function setSignedIn(user) {
   byId("loginView").classList.add("hidden");
   byId("workspaceView").classList.remove("hidden");
   byId("logoutBtn").classList.remove("hidden");
+  byId("changePasswordBtn").classList.remove("hidden");
   const badge = byId("userBadge");
   badge.textContent = `${user.username} · ${roleLabels[user.role] || user.role}`;
   badge.classList.remove("hidden");
@@ -107,8 +123,8 @@ function setSignedIn(user) {
   byId("analyticsSection").classList.remove("hidden");
   byId("statResolutionCard").classList.toggle("hidden", !isStaff);
   byId("statRatingCard").classList.toggle("hidden", !isStaff);
-  byId("knowledgePanel").classList.toggle("hidden", user.role !== "admin");
-  byId("knowledgeUploadForm").classList.toggle("hidden", user.role !== "admin");
+  byId("knowledgePanel").classList.toggle("hidden", !isStaff);
+  byId("toggleUploadKnowledgeBtn").classList.toggle("hidden", user.role !== "admin");
   byId("adminUsersPanel").classList.toggle("hidden", user.role !== "admin");
   byId("assistantTitle").textContent = isStaff ? "Tra cứu runbook IT" : "Tìm cách xử lý trước";
   byId("assistantIntro").textContent = isStaff
@@ -141,6 +157,9 @@ async function login(event) {
     state.token = result.token;
     localStorage.setItem("helpdesk-token", state.token);
     setSignedIn({ username: result.username, role: result.role });
+    if (result.force_password_change) {
+      openChangePasswordModal(true);
+    }
   } catch (error) {
     setMessage("loginMessage", error.message);
   }
@@ -161,18 +180,87 @@ function signOut() {
   localStorage.removeItem("helpdesk-token");
   byId("workspaceView").classList.add("hidden");
   byId("logoutBtn").classList.add("hidden");
+  byId("changePasswordBtn").classList.add("hidden");
   byId("userBadge").classList.add("hidden");
+  closeChangePasswordModal();
   byId("loginView").classList.remove("hidden");
   byId("loginMessage").textContent = "";
   byId("ticketList").replaceChildren();
   byId("workspaceView").dataset.role = "";
 }
 
+function openChangePasswordModal(isForced = false) {
+  const modal = byId("changePasswordModal");
+  if (!modal) return;
+  modal.dataset.forced = isForced ? "true" : "false";
+  const cancelBtn = byId("cancelChangePasswordBtn");
+  if (cancelBtn) cancelBtn.classList.toggle("hidden", isForced);
+  const subtitle = byId("changePasswordSubtitle");
+  if (subtitle) {
+    subtitle.textContent = window.helpdeskI18n.translate(
+      isForced
+        ? "Quản trị viên yêu cầu bạn đổi mật khẩu trước khi tiếp tục."
+        : "Mật khẩu mới phải có ít nhất 12 ký tự và khác mật khẩu hiện tại."
+    );
+  }
+  byId("changePasswordForm").reset();
+  setMessage("changePasswordMessage", "");
+  modal.classList.remove("hidden");
+  byId("currentPasswordInput").focus();
+}
+
+function closeChangePasswordModal() {
+  const modal = byId("changePasswordModal");
+  if (!modal) return;
+  if (modal.dataset.forced === "true") return;
+  modal.classList.add("hidden");
+  byId("changePasswordForm").reset();
+  setMessage("changePasswordMessage", "");
+}
+
+async function handleChangePassword(event) {
+  event.preventDefault();
+  const currentPassword = byId("currentPasswordInput").value;
+  const newPassword = byId("newPasswordInput").value;
+  const confirmPassword = byId("confirmPasswordInput").value;
+
+  if (newPassword !== confirmPassword) {
+    setMessage("changePasswordMessage", "Mật khẩu xác nhận không khớp.");
+    return;
+  }
+
+  setMessage("changePasswordMessage", "Đang lưu...", false);
+  try {
+    const result = await api("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        old_password: currentPassword,
+        new_password: newPassword,
+      }),
+    });
+    const currentUsername = state.user?.username || "";
+    const modal = byId("changePasswordModal");
+    if (modal) {
+      modal.dataset.forced = "false";
+      modal.classList.add("hidden");
+    }
+    signOut();
+    if (currentUsername) {
+      byId("username").value = currentUsername;
+      byId("password").value = "";
+      byId("password").focus();
+    }
+    setMessage("loginMessage", result.message || "Đổi mật khẩu thành công. Vui lòng đăng nhập lại.", false);
+  } catch (error) {
+    setMessage("changePasswordMessage", error.message);
+  }
+}
+
 async function refreshWorkspace() {
   if (state.user.role !== "user") state.staff = await api("/staff");
   await Promise.all([
     loadTickets(),
-    state.user.role === "admin" ? loadKnowledge() : Promise.resolve(),
+    state.user.role !== "user" ? loadKnowledge() : Promise.resolve(),
   ]);
   if (state.user.role !== "user") await loadAnalytics();
   if (state.user.role === "agent") await loadAgentAnalytics();
@@ -184,7 +272,7 @@ function configureWorkspaceNavigation(role) {
   const items = role === "user"
     ? [["dashboard", "Tổng quan"], ["assistant", "Trợ lý IT"], ["tickets", "Ticket của tôi"], ["submit", "Tạo yêu cầu"]]
     : role === "agent"
-      ? [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["personal", "Thống kê của tôi"], ["assistant", "Tra cứu tri thức"]]
+      ? [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["personal", "Thống kê của tôi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"]]
       : [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"], ["users", "Người dùng"], ["reports", "Báo cáo"]];
   const nav = byId("workspaceNav");
   nav.replaceChildren();
@@ -437,6 +525,14 @@ function createTicketCard(ticket) {
   detailsBody.append(info, commentList);
   if (ticket.status !== "closed") detailsBody.append(commentForm);
   detailsBody.append(auditButton);
+  if (state.user.role !== "user" && ["resolved", "closed"].includes(ticket.status)) {
+    const createRunbookBtn = node("button", "button button-soft", "Tạo Runbook từ ticket");
+    createRunbookBtn.type = "button";
+    createRunbookBtn.addEventListener("click", () => {
+      openKnowledgeEditorForTicket(ticket);
+    });
+    detailsBody.append(createRunbookBtn);
+  }
   if (state.user.role === "admin") {
     const archiveButton = node("button", "button button-quiet", "Lưu trữ ticket");
     archiveButton.type = "button";
@@ -961,39 +1057,172 @@ function showRagResult(message) {
 
 async function loadKnowledge() {
   try {
-    const documents = await api("/knowledge");
+    const params = new URLSearchParams();
+    if (state.knowledgeStatus) params.set("status", state.knowledgeStatus);
+    if (state.knowledgeCategory) params.set("category", state.knowledgeCategory);
+    if (state.knowledgeSearch) params.set("search", state.knowledgeSearch);
+
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const documents = await api(`/knowledge${query}`);
+    state.knowledgeDocs = documents;
+
+    try {
+      const allDocs = state.knowledgeStatus === "" ? documents : await api("/knowledge");
+      const pendingCount = allDocs.filter((d) => d.status === "pending_review").length;
+      const badge = byId("pendingReviewBadge");
+      if (badge) {
+        badge.textContent = pendingCount;
+        badge.classList.toggle("hidden", pendingCount === 0);
+      }
+    } catch {
+      // ignore badge error
+    }
+
     byId("knowledgeCount").textContent = window.helpdeskI18n.translate(`${documents.length} tài liệu`);
     const list = byId("knowledgeList");
     list.replaceChildren();
-    documents.forEach((document) => {
+
+    if (!documents.length) {
+      const empty = node("div", "empty-state");
+      empty.append(
+        node("strong", "", "Chưa có tài liệu nào"),
+        node("span", "", 'Bấm "+ Soạn runbook mới" để tạo bài viết tri thức.')
+      );
+      list.append(empty);
+      return;
+    }
+
+    documents.forEach((doc) => {
       const row = node("div", "knowledge-document");
-      const label = node("div", "knowledge-document-label");
-      label.append(node("strong", "", document.title), node("span", "", document.source));
-      row.append(label);
+      const main = node("div", "knowledge-doc-main");
+      const titleRow = node("div", "knowledge-doc-title-row");
+
+      titleRow.append(node("strong", "", doc.title));
+
+      const statusTag = node("span", `tag tag-status-${doc.status}`, statusLabels[doc.status] || doc.status);
+      titleRow.append(statusTag);
+
+      const catTag = node("span", "tag", categoryLabels[doc.category] || doc.category);
+      titleRow.append(catTag);
+
+      const verTag = node("span", "tag tag-version", `v${doc.version_count || 1}`);
+      titleRow.append(verTag);
+
+      if (doc.is_builtin) {
+        titleRow.append(node("span", "tag tag-builtin", "Hệ thống"));
+      }
+
+      const metaRow = node("div", "knowledge-doc-meta");
+      metaRow.append(node("span", "", `Tệp: ${doc.source || doc.slug}`));
+      metaRow.append(node("span", "", `Tác giả: ${doc.author}`));
+      if (doc.reviewer && doc.status === "published") {
+        metaRow.append(node("span", "", `Duyệt bởi: ${doc.reviewer}`));
+      }
+      if (doc.updated_at) {
+        metaRow.append(node("span", "", `Cập nhật: ${new Date(doc.updated_at).toLocaleDateString(window.helpdeskI18n.locale())}`));
+      }
+      main.append(titleRow, metaRow);
+
+      if (doc.tags) {
+        const tagsRow = node("div", "knowledge-doc-tags");
+        tagsRow.append(node("span", "", `Thẻ: ${doc.tags}`));
+        main.append(tagsRow);
+      }
+
+      row.append(main);
+
+      const actions = node("div", "knowledge-doc-actions");
+
+      const editBtn = node("button", "button button-soft", "Xem / Sửa");
+      editBtn.type = "button";
+      editBtn.addEventListener("click", () => openKnowledgeEditor(doc.slug || doc.id));
+      actions.append(editBtn);
+
+      const versionsBtn = node("button", "button button-quiet", `Lịch sử (v${doc.version_count || 1})`);
+      versionsBtn.type = "button";
+      versionsBtn.addEventListener("click", () => openKnowledgeVersions(doc.slug || doc.id, doc.title));
+      actions.append(versionsBtn);
+
+      if (doc.status === "draft") {
+        const submitReviewBtn = node("button", "button button-quiet", "Gửi duyệt");
+        submitReviewBtn.type = "button";
+        submitReviewBtn.addEventListener("click", async () => {
+          try {
+            await api(`/knowledge/${encodeURIComponent(doc.slug || doc.id)}`, {
+              method: "PUT",
+              body: JSON.stringify({ status: "pending_review", change_summary: "Gửi duyệt tài liệu" }),
+            });
+            await loadKnowledge();
+          } catch (err) {
+            alertUser(err.message);
+          }
+        });
+        actions.append(submitReviewBtn);
+      }
+
+      if (doc.status === "pending_review" && state.user.role === "admin") {
+        const approveBtn = node("button", "button button-primary", "✓ Duyệt & Xuất bản");
+        approveBtn.type = "button";
+        approveBtn.addEventListener("click", async () => {
+          try {
+            await api(`/knowledge/${encodeURIComponent(doc.slug || doc.id)}/review`, {
+              method: "POST",
+              body: JSON.stringify({ action: "approve" }),
+            });
+            await loadKnowledge();
+          } catch (err) {
+            alertUser(err.message);
+          }
+        });
+        actions.append(approveBtn);
+
+        const rejectBtn = node("button", "button button-quiet", "✕ Trả về nháp");
+        rejectBtn.type = "button";
+        rejectBtn.addEventListener("click", async () => {
+          try {
+            await api(`/knowledge/${encodeURIComponent(doc.slug || doc.id)}/review`, {
+              method: "POST",
+              body: JSON.stringify({ action: "reject" }),
+            });
+            await loadKnowledge();
+          } catch (err) {
+            alertUser(err.message);
+          }
+        });
+        actions.append(rejectBtn);
+      }
+
       if (state.user.role === "admin") {
         const reindex = node("button", "button button-quiet", "Cập nhật chỉ mục");
         reindex.type = "button";
         reindex.addEventListener("click", async () => {
           try {
-            await api(`/knowledge/${encodeURIComponent(document.source)}/reindex`, { method: "POST" });
+            await api(`/knowledge/${encodeURIComponent(doc.source || doc.slug)}/reindex`, { method: "POST" });
+            alertUser("Đã cập nhật chỉ mục tìm kiếm BM25.");
             await loadKnowledge();
           } catch (error) {
             alertUser(error.message);
           }
         });
-        const remove = node("button", "button button-quiet", "Xóa");
-        remove.type = "button";
-        remove.addEventListener("click", async () => {
-          if (!window.confirm(window.helpdeskI18n.translate(`Xóa tài liệu ${document.source} khỏi thư viện?`))) return;
-          try {
-            await api(`/knowledge/${encodeURIComponent(document.source)}`, { method: "DELETE" });
-            await loadKnowledge();
-          } catch (error) {
-            alertUser(error.message);
-          }
-        });
-        row.append(reindex, remove);
+        actions.append(reindex);
+
+        if (!doc.is_builtin) {
+          const remove = node("button", "button button-quiet", "Xóa");
+          remove.type = "button";
+          remove.addEventListener("click", async () => {
+            if (!window.confirm(window.helpdeskI18n.translate(`Xóa tài liệu ${doc.source || doc.slug} khỏi thư viện?`))) return;
+            try {
+              await api(`/knowledge/${encodeURIComponent(doc.source || doc.slug)}`, { method: "DELETE" });
+              await loadKnowledge();
+            } catch (error) {
+              alertUser(error.message);
+            }
+          });
+          actions.append(remove);
+        }
       }
+
+      row.append(actions);
       list.append(row);
     });
   } catch {
@@ -1019,10 +1248,203 @@ async function uploadKnowledge(event) {
     await api("/knowledge", { method: "POST", body: payload });
     form.reset();
     setMessage("knowledgeMessage", "Đã thêm tài liệu vào Kho tri thức.", false);
+    byId("knowledgeUploadForm").classList.add("hidden");
     await loadKnowledge();
   } catch (error) {
     setMessage("knowledgeMessage", error.message);
   }
+}
+
+function updateLivePreview() {
+  const content = byId("editDocContent").value;
+  const preview = byId("editDocPreview");
+  if (!content.trim()) {
+    preview.replaceChildren(node("p", "muted", "Nhập nội dung ở khung bên trái để xem trước tại đây..."));
+    return;
+  }
+  preview.replaceChildren(renderRunbook(content));
+}
+
+async function openKnowledgeEditor(identifier) {
+  const modal = byId("knowledgeEditorModal");
+  const form = byId("knowledgeEditorForm");
+  form.reset();
+  setMessage("knowledgeEditorMessage", "");
+
+  const titleEl = byId("knowledgeEditorTitle");
+  const idInput = byId("editDocIdentifier");
+  const changeSummaryRow = byId("changeSummaryRow");
+  const approveBtn = byId("approveKnowledgeDocBtn");
+  const statusBadge = byId("editorStatusBadge");
+
+  byId("statusOptionPublished").classList.toggle("hidden", state.user.role !== "admin");
+
+  if (identifier) {
+    try {
+      const doc = await api(`/knowledge/${encodeURIComponent(identifier)}`);
+      idInput.value = doc.slug || doc.id;
+      byId("editDocTitle").value = doc.title;
+      byId("editDocCategory").value = doc.category;
+      byId("editDocTags").value = doc.tags || "";
+      byId("editDocStatus").value = doc.status;
+      byId("editDocContent").value = doc.content;
+      byId("editDocChangeSummary").value = "";
+      changeSummaryRow.classList.remove("hidden");
+
+      titleEl.textContent = `Chỉnh sửa: ${doc.title}`;
+      statusBadge.className = `tag tag-status-${doc.status}`;
+      statusBadge.textContent = statusLabels[doc.status] || doc.status;
+
+      approveBtn.classList.toggle("hidden", !(state.user.role === "admin" && doc.status === "pending_review"));
+      updateLivePreview();
+    } catch (err) {
+      alertUser(err.message);
+      return;
+    }
+  } else {
+    idInput.value = "";
+    byId("editDocTitle").value = "";
+    byId("editDocCategory").value = "general";
+    byId("editDocTags").value = "";
+    byId("editDocStatus").value = "draft";
+    byId("editDocContent").value = "# Tiêu đề Runbook\n\n## 1. Mô tả sự cố\n...\n\n## 2. Các bước xử lý\n- Bước 1: ...\n- Bước 2: ...\n\n## 3. Kiểm tra kết quả\n...";
+    byId("editDocChangeSummary").value = "";
+    changeSummaryRow.classList.add("hidden");
+    approveBtn.classList.add("hidden");
+
+    titleEl.textContent = "Soạn thảo Runbook mới";
+    statusBadge.className = "tag tag-status-draft";
+    statusBadge.textContent = "Bản nháp";
+    updateLivePreview();
+  }
+
+  modal.classList.remove("hidden");
+  byId("editDocTitle").focus();
+}
+
+async function saveKnowledgeDocument(event) {
+  event.preventDefault();
+  const idInput = byId("editDocIdentifier").value;
+  const title = byId("editDocTitle").value.trim();
+  const category = byId("editDocCategory").value;
+  const tags = byId("editDocTags").value.trim();
+  const status = byId("editDocStatus").value;
+  const content = byId("editDocContent").value.trim();
+  const changeSummary = byId("editDocChangeSummary").value.trim();
+
+  setMessage("knowledgeEditorMessage", "Đang lưu tài liệu...", false);
+  try {
+    if (idInput) {
+      await api(`/knowledge/${encodeURIComponent(idInput)}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title,
+          category,
+          tags,
+          status,
+          content,
+          change_summary: changeSummary || "Cập nhật nội dung",
+        }),
+      });
+      setMessage("knowledgeEditorMessage", "Đã lưu cập nhật thành công.", false);
+    } else {
+      await api("/knowledge", {
+        method: "POST",
+        body: JSON.stringify({
+          title,
+          category,
+          tags,
+          status,
+          content,
+        }),
+      });
+      setMessage("knowledgeEditorMessage", "Đã tạo tài liệu thành công.", false);
+    }
+    setTimeout(() => {
+      byId("knowledgeEditorModal").classList.add("hidden");
+      loadKnowledge();
+    }, 600);
+  } catch (err) {
+    setMessage("knowledgeEditorMessage", err.message);
+  }
+}
+
+async function openKnowledgeVersions(identifier, title) {
+  const modal = byId("knowledgeVersionsModal");
+  byId("knowledgeVersionsTitle").textContent = `Lịch sử phiên bản: ${title || identifier}`;
+  const list = byId("knowledgeVersionsList");
+  list.replaceChildren(node("span", "muted", "Đang tải lịch sử phiên bản..."));
+  modal.classList.remove("hidden");
+
+  try {
+    const versions = await api(`/knowledge/${encodeURIComponent(identifier)}/versions`);
+    list.replaceChildren();
+    if (!versions.length) {
+      list.append(node("p", "muted", "Không tìm thấy phiên bản nào."));
+      return;
+    }
+
+    versions.forEach((ver) => {
+      const card = node("div", "version-card");
+      const main = node("div", "version-card-main");
+
+      const header = node("div", "version-card-header");
+      header.append(
+        node("span", "tag tag-version", `v${ver.version_number}`),
+        node("strong", "", ver.title),
+        node("span", "tag", categoryLabels[ver.category] || ver.category)
+      );
+
+      const summary = node("div", "version-summary", `Thay đổi: ${ver.change_summary || "Không có tóm tắt"}`);
+      const meta = node("div", "version-meta", `Tác giả: ${ver.author} · ${new Date(ver.created_at).toLocaleString(window.helpdeskI18n.locale())}`);
+
+      main.append(header, summary, meta);
+
+      const contentDetails = node("details", "version-content-details");
+      contentDetails.append(node("summary", "", "Xem nội dung phiên bản này"));
+      contentDetails.append(renderRunbook(ver.content));
+      main.append(contentDetails);
+
+      card.append(main);
+
+      if (state.user.role === "admin") {
+        const restoreBtn = node("button", "button button-soft", "Khôi phục phiên bản này");
+        restoreBtn.type = "button";
+        restoreBtn.addEventListener("click", async () => {
+          if (!window.confirm(window.helpdeskI18n.translate(`Bạn có chắc muốn khôi phục về phiên bản #${ver.version_number}?`))) return;
+          try {
+            await api(`/knowledge/${encodeURIComponent(identifier)}/restore/${ver.version_number}`, { method: "POST" });
+            alertUser(`Đã khôi phục về phiên bản #${ver.version_number}.`);
+            modal.classList.add("hidden");
+            await loadKnowledge();
+          } catch (err) {
+            alertUser(err.message);
+          }
+        });
+        card.append(restoreBtn);
+      }
+
+      list.append(card);
+    });
+  } catch (err) {
+    list.replaceChildren(node("span", "muted", err.message));
+  }
+}
+
+function openKnowledgeEditorForTicket(ticket) {
+  openKnowledgeEditor();
+  byId("editDocTitle").value = `Xử lý sự cố: ${ticket.title}`;
+  byId("editDocCategory").value = ticket.category;
+  byId("editDocTags").value = `${ticket.category}, ticket-${ticket.id}`;
+  byId("editDocStatus").value = "draft";
+
+  const commentsText = (ticket.comments || [])
+    .map((c) => `- ${c.author}: ${c.comment}`)
+    .join("\n");
+
+  byId("editDocContent").value = `# Xử lý sự cố: ${ticket.title}\n\n## 1. Mô tả sự cố\n${ticket.description}\n\n## 2. Quá trình xử lý (tham chiếu Ticket HD-${String(ticket.id).padStart(4, "0")})\n${commentsText || "- Các bước giải quyết đã xác nhận thành công."}\n\n## 3. Hướng dẫn khắc phục nhanh\n1. Kiểm tra nguyên nhân gốc rễ.\n2. Thực hiện cấu hình hoặc khắc phục sự cố.\n3. Xác minh người dùng hoạt động bình thường.\n\n## 4. Biện pháp phòng ngừa\n- Lưu ý định kỳ cập nhật thông tin và kiểm tra thiết bị.`;
+
+  updateLivePreview();
 }
 
 async function loadAdminUsers() {
@@ -1077,6 +1499,53 @@ async function loadAdminUsers() {
         }
       });
       profileDetails.append(profileForm);
+      const resetDetails = document.createElement("details");
+      resetDetails.className = "admin-profile-details";
+      resetDetails.append(node("summary", "", "Đặt lại MK"));
+      const resetForm = document.createElement("form");
+      resetForm.className = "admin-profile-form";
+      resetForm.dataset.username = user.username;
+
+      const resetInput = document.createElement("input");
+      resetInput.type = "password";
+      resetInput.name = "new_password";
+      resetInput.placeholder = window.helpdeskI18n.translate("Mật khẩu mới (tối thiểu 12 ký tự)");
+      resetInput.required = true;
+      resetInput.minLength = 12;
+      resetInput.maxLength = 200;
+      resetInput.setAttribute("aria-label", `Mật khẩu mới ${user.username}`);
+
+      const forceLabel = document.createElement("label");
+      const forceCheckbox = document.createElement("input");
+      forceCheckbox.type = "checkbox";
+      forceCheckbox.name = "force_password_change";
+      forceCheckbox.checked = true;
+      forceLabel.append(forceCheckbox, node("span", "", "Buộc đổi khi đăng nhập"));
+
+      const resetBtn = node("button", "button button-soft", "Lưu mật khẩu mới");
+      resetBtn.type = "submit";
+
+      resetForm.append(resetInput, forceLabel, resetBtn);
+      resetForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          await api(`/admin/users/${encodeURIComponent(user.username)}/reset-password`, {
+            method: "POST",
+            body: JSON.stringify({
+              new_password: resetInput.value,
+              force_change: forceCheckbox.checked,
+            }),
+          });
+          alertUser("Đổi mật khẩu thành công.");
+          resetForm.reset();
+          forceCheckbox.checked = true;
+          resetDetails.removeAttribute("open");
+        } catch (error) {
+          alertUser(error.message);
+        }
+      });
+      resetDetails.append(resetForm);
+
       const roleSelect = document.createElement("select");
       roleSelect.setAttribute("aria-label", `Vai trò ${user.username}`);
       Object.entries(roleLabels).forEach(([value, label]) => {
@@ -1121,6 +1590,7 @@ async function loadAdminUsers() {
       row.append(
         identity,
         profileDetails,
+        resetDetails,
         node("span", "", user.is_active ? "Hoạt động" : "Đã khóa"),
         actions,
       );
@@ -1346,17 +1816,110 @@ window.addEventListener("helpdesk-language-changed", () => {
 loadPublicConfig();
 byId("loginForm").addEventListener("submit", login);
 byId("logoutBtn").addEventListener("click", signOut);
-byId("ticketForm").addEventListener("submit", submitTicket);
-byId("ragForm").addEventListener("submit", askKnowledge);
-byId("knowledgeUploadForm").addEventListener("submit", uploadKnowledge);
-byId("adminUserForm").addEventListener("submit", createAdminUser);
-byId("exportReportBtn").addEventListener("click", exportReport);
-byId("knowledgeSearch").addEventListener("input", () => {
-  const query = byId("knowledgeSearch").value.trim().toLocaleLowerCase();
-  byId("knowledgeList").querySelectorAll(".knowledge-document").forEach((row) => {
-    row.classList.toggle("hidden", !row.textContent.toLocaleLowerCase().includes(query));
+byId("changePasswordBtn").addEventListener("click", () => openChangePasswordModal(false));
+byId("cancelChangePasswordBtn").addEventListener("click", closeChangePasswordModal);
+byId("changePasswordForm").addEventListener("submit", handleChangePassword);
+const changePasswordModal = byId("changePasswordModal");
+if (changePasswordModal) {
+  changePasswordModal.addEventListener("click", (event) => {
+    if (event.target === changePasswordModal && changePasswordModal.dataset.forced !== "true") {
+      closeChangePasswordModal();
+    }
+  });
+}
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeChangePasswordModal();
+    byId("knowledgeEditorModal")?.classList.add("hidden");
+    byId("knowledgeVersionsModal")?.classList.add("hidden");
+  }
+});
+const knowledgeEditorModal = byId("knowledgeEditorModal");
+if (knowledgeEditorModal) {
+  knowledgeEditorModal.addEventListener("click", (event) => {
+    if (event.target === knowledgeEditorModal) {
+      knowledgeEditorModal.classList.add("hidden");
+    }
+  });
+}
+const knowledgeVersionsModal = byId("knowledgeVersionsModal");
+if (knowledgeVersionsModal) {
+  knowledgeVersionsModal.addEventListener("click", (event) => {
+    if (event.target === knowledgeVersionsModal) {
+      knowledgeVersionsModal.classList.add("hidden");
+    }
+  });
+}
+
+byId("openCreateKnowledgeBtn")?.addEventListener("click", () => openKnowledgeEditor());
+byId("toggleUploadKnowledgeBtn")?.addEventListener("click", () => {
+  byId("knowledgeUploadForm").classList.toggle("hidden");
+});
+byId("closeUploadKnowledgeBtn")?.addEventListener("click", () => {
+  byId("knowledgeUploadForm").classList.add("hidden");
+});
+byId("knowledgeUploadForm")?.addEventListener("submit", uploadKnowledge);
+
+document.querySelectorAll(".knowledge-status-tabs .status-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".knowledge-status-tabs .status-tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    state.knowledgeStatus = tab.dataset.status || "";
+    loadKnowledge();
   });
 });
+byId("knowledgeSearch")?.addEventListener("input", () => {
+  state.knowledgeSearch = byId("knowledgeSearch").value.trim();
+  loadKnowledge();
+});
+byId("knowledgeCategoryFilter")?.addEventListener("change", () => {
+  state.knowledgeCategory = byId("knowledgeCategoryFilter").value;
+  loadKnowledge();
+});
+
+byId("knowledgeEditorForm")?.addEventListener("submit", saveKnowledgeDocument);
+byId("cancelKnowledgeEditorBtn")?.addEventListener("click", () => {
+  byId("knowledgeEditorModal").classList.add("hidden");
+});
+byId("editDocContent")?.addEventListener("input", updateLivePreview);
+
+document.querySelectorAll(".editor-toolbar .toolbar-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const textarea = byId("editDocContent");
+    const insert = btn.dataset.insert;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    textarea.value = text.slice(0, start) + insert + text.slice(end);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + insert.length;
+    updateLivePreview();
+  });
+});
+
+byId("approveKnowledgeDocBtn")?.addEventListener("click", async () => {
+  const identifier = byId("editDocIdentifier").value;
+  if (!identifier) return;
+  try {
+    await api(`/knowledge/${encodeURIComponent(identifier)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action: "approve" }),
+    });
+    alertUser("Đã duyệt và xuất bản tài liệu.");
+    byId("knowledgeEditorModal").classList.add("hidden");
+    await loadKnowledge();
+  } catch (err) {
+    alertUser(err.message);
+  }
+});
+byId("closeKnowledgeVersionsBtn")?.addEventListener("click", () => {
+  byId("knowledgeVersionsModal").classList.add("hidden");
+});
+
+byId("ticketForm").addEventListener("submit", submitTicket);
+byId("ragForm").addEventListener("submit", askKnowledge);
+byId("adminUserForm").addEventListener("submit", createAdminUser);
+byId("exportReportBtn").addEventListener("click", exportReport);
 byId("newChatBtn").addEventListener("click", () => {
   state.chatSessionId = null;
   byId("ragQuestion").value = "";
@@ -1399,9 +1962,25 @@ byId("ticketSearch").addEventListener("input", () => {
   searchTimer = window.setTimeout(loadTickets, 250);
 });
 
+function parseJwt(token) {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(decodeURIComponent(escape(atob(base64))));
+  } catch {
+    return null;
+  }
+}
+
 if (state.token) {
+  const payload = parseJwt(state.token);
   api("/auth/me")
-    .then(setSignedIn)
+    .then((user) => {
+      setSignedIn(user);
+      if (payload && payload.force_pwd) {
+        openChangePasswordModal(true);
+      }
+    })
     .catch(() => signOut());
 }
 

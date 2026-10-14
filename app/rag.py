@@ -13,7 +13,9 @@ import httpx
 from app import config
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
-KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
+BASE_KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
+STORAGE_KNOWLEDGE_DIR = Path(config.STORAGE_PATH).resolve() / "knowledge"
+KNOWLEDGE_DIR = BASE_KNOWLEDGE_DIR
 STOP_WORDS = {
     "a", "an", "and", "are", "bao", "biet", "bi", "bị", "but", "cach", "can",
     "cannot", "cant", "cho", "co", "cua", "dang", "de", "did", "du", "duoc",
@@ -152,19 +154,66 @@ def _tokens(text: str) -> list[str]:
 
 
 @lru_cache(maxsize=1)
-def load_knowledge_base() -> list[dict[str, str]]:
-    documents: list[dict[str, str]] = []
-    for path in sorted(KNOWLEDGE_DIR.glob("*.md")):
-        content = path.read_text(encoding="utf-8")
-        heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
-        documents.append(
-            {
-                "title": heading.group(1) if heading else _normalize_title(path),
-                "source": path.name,
-                "content": content,
-            }
-        )
-    return documents
+def load_knowledge_base() -> list[dict[str, Any]]:
+    docs_by_source: dict[str, dict[str, Any]] = {}
+    if KNOWLEDGE_DIR.resolve() == BASE_KNOWLEDGE_DIR.resolve():
+        try:
+            from app import store
+            db_docs = store.list_knowledge_documents(status="published")
+            if db_docs:
+                return [
+                    {
+                        "title": doc["title"],
+                        "source": doc["slug"],
+                        "content": doc["content"],
+                        "category": doc["category"],
+                        "tags": doc["tags"],
+                        "is_builtin": bool(doc["is_builtin"]),
+                        "id": doc["id"],
+                    }
+                    for doc in sorted(db_docs, key=lambda d: d["slug"])
+                ]
+        except Exception:
+            pass
+
+        if BASE_KNOWLEDGE_DIR.is_dir():
+            for path in sorted(BASE_KNOWLEDGE_DIR.glob("*.md")):
+                content = path.read_text(encoding="utf-8")
+                heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+                docs_by_source[path.name] = {
+                    "title": heading.group(1) if heading else _normalize_title(path),
+                    "source": path.name,
+                    "content": content,
+                    "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
+                    "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
+                    "is_builtin": True,
+                }
+        if STORAGE_KNOWLEDGE_DIR.is_dir() and STORAGE_KNOWLEDGE_DIR.resolve() != BASE_KNOWLEDGE_DIR.resolve():
+            for path in sorted(STORAGE_KNOWLEDGE_DIR.glob("*.md")):
+                content = path.read_text(encoding="utf-8")
+                heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+                docs_by_source[path.name] = {
+                    "title": heading.group(1) if heading else _normalize_title(path),
+                    "source": path.name,
+                    "content": content,
+                    "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
+                    "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
+                    "is_builtin": False,
+                }
+    else:
+        if KNOWLEDGE_DIR.is_dir():
+            for path in sorted(KNOWLEDGE_DIR.glob("*.md")):
+                content = path.read_text(encoding="utf-8")
+                heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+                docs_by_source[path.name] = {
+                    "title": heading.group(1) if heading else _normalize_title(path),
+                    "source": path.name,
+                    "content": content,
+                    "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
+                    "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
+                    "is_builtin": False,
+                }
+    return sorted(docs_by_source.values(), key=lambda d: d["source"])
 
 
 def save_knowledge_document(
@@ -186,6 +235,8 @@ def save_knowledge_document(
     path = directory / f"{slug}.md"
     if path.exists():
         raise FileExistsError(path.name)
+    if directory.resolve() == STORAGE_KNOWLEDGE_DIR.resolve() and (BASE_KNOWLEDGE_DIR / f"{slug}.md").exists():
+        raise FileExistsError(path.name)
 
     document = f"# {title.strip()}\n\n{content.strip()}\n"
     created = False
@@ -199,6 +250,20 @@ def save_knowledge_document(
         if created:
             path.unlink(missing_ok=True)
         raise
+
+    try:
+        from app import store
+        store.create_knowledge_document(
+            title=title.strip(),
+            category=CATEGORY_BY_SOURCE.get(path.name, "general"),
+            content=content.strip(),
+            custom_slug=path.name,
+            status="published",
+            author="admin",
+            is_builtin=0,
+        )
+    except Exception:
+        pass
 
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
@@ -234,6 +299,8 @@ def build_retrieval_index() -> list[dict[str, Any]]:
                 {
                     "title": document["title"],
                     "source": document["source"],
+                    "category": document.get("category", CATEGORY_BY_SOURCE.get(document["source"], "general")),
+                    "tags": document.get("tags", ""),
                     "content": chunk,
                     "tokens": words,
                 }
@@ -273,6 +340,8 @@ def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]
             {
                 "title": passage["title"],
                 "source": passage["source"],
+                "category": passage.get("category", "general"),
+                "tags": passage.get("tags", ""),
                 "content": passage["content"],
                 "score": score,
             }
@@ -299,7 +368,17 @@ def suggest_ticket_triage(
 ) -> dict[str, str | bool]:
     normalized = _fold_text(question)
     source = matches[0]["source"] if matches else ""
-    category = CATEGORY_BY_SOURCE.get(source, "general")
+    category = "general"
+    if matches and matches[0].get("category"):
+        category = matches[0]["category"]
+    elif source:
+        try:
+            from app import store
+            db_cat = store.get_document_category_from_db(source)
+            category = db_cat or CATEGORY_BY_SOURCE.get(source, "general")
+        except Exception:
+            category = CATEGORY_BY_SOURCE.get(source, "general")
+
     if any(marker in normalized for marker in URGENT_MARKERS):
         priority = "urgent"
         priority_reason = "Có dấu hiệu ảnh hưởng nhiều người hoặc sự cố an ninh; cần IT xác nhận."
@@ -312,7 +391,7 @@ def suggest_ticket_triage(
 
     category_reason = (
         f"Gợi ý từ runbook {source}."
-        if source in CATEGORY_BY_SOURCE
+        if source
         else "Chưa có runbook đủ phù hợp; chọn danh mục thủ công."
     )
     return {

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 import sqlite3
+import unicodedata
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -105,6 +107,89 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(candidate, digest_hex)
 
 
+def _slugify(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text.lower())
+    normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    normalized = normalized.replace("đ", "d")
+    slug = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")[:64]
+    return slug or "runbook"
+
+
+def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection) -> None:
+    try:
+        count_row = connection.execute("SELECT COUNT(*) AS count FROM knowledge_documents").fetchone()
+        count = count_row["count"] if count_row else 0
+    except Exception:
+        return
+    if count > 0:
+        return
+
+    knowledge_dir = Path(__file__).resolve().parent.parent / "data" / "knowledge"
+    if not knowledge_dir.is_dir():
+        return
+
+    category_map = {
+        "ad_account_lockout.md": "security",
+        "bitlocker_recovery_key.md": "security",
+        "certificate_signature.md": "security",
+        "dns_dhcp_conflict.md": "network",
+        "email_send_receive_error.md": "software",
+        "erp_accounting.md": "software",
+        "ethernet_cable_disconnect.md": "network",
+        "folder_access.md": "security",
+        "high_cpu_ram_disk.md": "software",
+        "mfa_account.md": "security",
+        "openvpn_client_error.md": "network",
+        "outlook_autodiscover_failed.md": "software",
+        "outlook_email.md": "software",
+        "outlook_mailbox_quota.md": "software",
+        "outlook_ost_corruption.md": "software",
+        "printer_driver_install.md": "hardware",
+        "printer_offline_status.md": "hardware",
+        "printer_queue.md": "hardware",
+        "proxy_pac_bypass.md": "network",
+        "remote_desktop_rdp.md": "software",
+        "scanner_smb_folder.md": "hardware",
+        "shared_folder_permission.md": "security",
+        "slow_network_latency.md": "network",
+        "usb_peripheral_not_recognized.md": "hardware",
+        "vpn_forticlient.md": "network",
+        "vpn_split_tunnel.md": "network",
+        "wifi_network.md": "network",
+        "windows_bsod_crash.md": "software",
+        "windows_license_activation.md": "software",
+        "windows_update.md": "software",
+    }
+    now = _now()
+    for path in sorted(knowledge_dir.glob("*.md")):
+        content = path.read_text(encoding="utf-8")
+        heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+        title = heading.group(1).strip() if heading else path.stem.replace("_", " ").title()
+        category = category_map.get(path.name, "general")
+        tags = f"{category}, runbook"
+        connection.execute(
+            """
+            INSERT INTO knowledge_documents
+                (slug, title, category, tags, content, status, author, reviewer, approved_at, created_at, updated_at, is_builtin)
+            VALUES (?, ?, ?, ?, ?, 'published', 'admin', 'admin', ?, ?, ?, 1)
+            """,
+            (path.name, title, category, tags, content, now, now, now),
+        )
+        doc_row = connection.execute(
+            "SELECT id FROM knowledge_documents WHERE slug = ?",
+            (path.name,),
+        ).fetchone()
+        if doc_row:
+            connection.execute(
+                """
+                INSERT INTO knowledge_versions
+                    (document_id, version_number, title, category, tags, content, change_summary, author, created_at)
+                VALUES (?, 1, ?, ?, ?, ?, 'Khởi tạo từ runbook mặc định', 'admin', ?)
+                """,
+                (doc_row["id"], title, category, tags, content, now),
+            )
+
+
 def initialize_store() -> None:
     with _connect() as connection:
         schema = """
@@ -116,7 +201,9 @@ def initialize_store() -> None:
                 email TEXT NOT NULL DEFAULT '',
                 department TEXT NOT NULL DEFAULT '',
                 phone TEXT NOT NULL DEFAULT '',
-                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                password_changed_at TEXT,
+                force_password_change INTEGER NOT NULL DEFAULT 0 CHECK (force_password_change IN (0, 1))
             );
             CREATE TABLE IF NOT EXISTS tickets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,6 +263,33 @@ def initialize_store() -> None:
                 feedback TEXT CHECK (feedback IN ('up', 'down') OR feedback IS NULL),
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS knowledge_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL CHECK (category IN ('network', 'hardware', 'software', 'security', 'general')),
+                tags TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('draft', 'pending_review', 'approved', 'published', 'archived')),
+                author TEXT NOT NULL DEFAULT 'admin',
+                reviewer TEXT,
+                approved_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_builtin INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0, 1))
+            );
+            CREATE TABLE IF NOT EXISTS knowledge_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+                version_number INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL,
+                change_summary TEXT NOT NULL DEFAULT '',
+                author TEXT NOT NULL DEFAULT 'admin',
+                created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_tickets_requester ON tickets(requester);
             CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
             CREATE INDEX IF NOT EXISTS idx_comments_ticket ON comments(ticket_id);
@@ -183,6 +297,10 @@ def initialize_store() -> None:
             CREATE INDEX IF NOT EXISTS idx_attachments_ticket ON ticket_attachments(ticket_id);
             CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, last_message_at);
             CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_documents_slug ON knowledge_documents(slug);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_documents_status ON knowledge_documents(status);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_documents_category ON knowledge_documents(category);
+            CREATE INDEX IF NOT EXISTS idx_knowledge_versions_doc ON knowledge_versions(document_id, version_number);
             """
         if _database_url:
             schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
@@ -199,6 +317,8 @@ def initialize_store() -> None:
                 ("users", "department", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "phone", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "is_active", "INTEGER NOT NULL DEFAULT 1"),
+                ("users", "password_changed_at", "TEXT"),
+                ("users", "force_password_change", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 connection.execute(
                     f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}"
@@ -218,6 +338,8 @@ def initialize_store() -> None:
                 ("department", "TEXT NOT NULL DEFAULT ''"),
                 ("phone", "TEXT NOT NULL DEFAULT ''"),
                 ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+                ("password_changed_at", "TEXT"),
+                ("force_password_change", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if column not in user_columns:
                     connection.execute(
@@ -314,6 +436,7 @@ def initialize_store() -> None:
                     "Provision INITIAL_ADMIN_USERNAME and a unique INITIAL_ADMIN_PASSWORD "
                     "of at least 12 characters for the first non-demo startup."
                 )
+        seed_builtin_knowledge(connection)
 
 
 def reset_store() -> None:
@@ -321,7 +444,7 @@ def reset_store() -> None:
         if _database_url:
             connection.execute(
                 "TRUNCATE TABLE audit_logs, comments, tickets, chat_messages, chat_sessions, "
-                "ticket_attachments, users RESTART IDENTITY CASCADE"
+                "ticket_attachments, users, knowledge_versions, knowledge_documents RESTART IDENTITY CASCADE"
             )
             if DEMO_MODE:
                 demo_users = (
@@ -338,9 +461,12 @@ def reset_store() -> None:
         connection.execute("DELETE FROM comments")
         connection.execute("DELETE FROM tickets")
         connection.execute("DELETE FROM chat_sessions")
+        connection.execute("DELETE FROM ticket_attachments")
+        connection.execute("DELETE FROM knowledge_versions")
+        connection.execute("DELETE FROM knowledge_documents")
         connection.execute("DELETE FROM users")
         connection.execute(
-            "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'comments', 'audit_logs')"
+            "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'comments', 'audit_logs', 'knowledge_documents', 'knowledge_versions')"
         )
     initialize_store()
 
@@ -348,7 +474,8 @@ def reset_store() -> None:
 def get_user_credentials(username: str) -> dict[str, Any] | None:
     with _connect() as connection:
         row = connection.execute(
-            "SELECT username, password_hash, role, full_name, email, department, phone, is_active "
+            "SELECT username, password_hash, role, full_name, email, department, phone, is_active, "
+            "password_changed_at, force_password_change "
             "FROM users WHERE username = ?",
             (username,),
         ).fetchone()
@@ -390,18 +517,42 @@ def create_user(
     email: str = "",
     department: str = "",
     phone: str = "",
+    force_password_change: int = 0,
 ) -> dict[str, str]:
+    now_str = _now()
     with _connect() as connection:
         try:
             connection.execute(
                 "INSERT INTO users "
-                "(username, password_hash, role, full_name, email, department, phone) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (username, _password_hash(password), role, full_name, email, department, phone),
+                "(username, password_hash, role, full_name, email, department, phone, password_changed_at, force_password_change) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (username, _password_hash(password), role, full_name, email, department, phone, now_str, force_password_change),
             )
         except DatabaseIntegrityError as exc:
             raise ValueError("Username already exists.") from exc
     return {"username": username, "role": role}
+
+
+def update_user_password(
+    username: str,
+    new_password: str,
+    force_password_change: int = 0,
+) -> None:
+    now_str = _now()
+    with _connect() as connection:
+        connection.execute(
+            "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ? "
+            "WHERE username = ?",
+            (_password_hash(new_password), now_str, force_password_change, username),
+        )
+
+
+def admin_reset_password(
+    username: str,
+    new_password: str,
+    force_password_change: int = 1,
+) -> None:
+    update_user_password(username, new_password, force_password_change=force_password_change)
 
 
 def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None:
@@ -995,6 +1146,344 @@ def get_agent_analytics(username: str) -> dict[str, Any]:
             for row in rows
         ),
     }
+
+
+def list_knowledge_documents(
+    status: str | None = None,
+    category: str | None = None,
+    query: str | None = None,
+) -> list[dict[str, Any]]:
+    with _connect() as connection:
+        sql = """
+            SELECT d.id, d.slug, d.title, d.category, d.tags, d.content, d.status,
+                   d.author, d.reviewer, d.approved_at, d.created_at, d.updated_at, d.is_builtin,
+                   (SELECT COUNT(*) FROM knowledge_versions v WHERE v.document_id = d.id) AS version_count
+            FROM knowledge_documents d
+            WHERE 1=1
+        """
+        params: list[Any] = []
+        if status and status != "all":
+            sql += " AND d.status = ?"
+            params.append(status)
+        if category and category != "all":
+            sql += " AND d.category = ?"
+            params.append(category)
+        if query:
+            search_pattern = f"%{query.strip()}%"
+            sql += " AND (d.title LIKE ? OR d.content LIKE ? OR d.tags LIKE ?)"
+            params.extend([search_pattern, search_pattern, search_pattern])
+        sql += " ORDER BY d.updated_at DESC"
+        rows = connection.execute(sql, tuple(params)).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "slug": row["slug"],
+                "title": row["title"],
+                "category": row["category"],
+                "tags": row["tags"],
+                "content": row["content"],
+                "status": row["status"],
+                "author": row["author"],
+                "reviewer": row["reviewer"],
+                "approved_at": row["approved_at"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "is_builtin": bool(row["is_builtin"]),
+                "version_count": row["version_count"],
+            }
+            for row in rows
+        ]
+
+
+def get_knowledge_document(identifier: int | str) -> dict[str, Any] | None:
+    with _connect() as connection:
+        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+            condition = "d.id = ?"
+            params: tuple[Any, ...] = (int(identifier),)
+        else:
+            slug = identifier if identifier.endswith(".md") else f"{identifier}.md"
+            condition = "(d.slug = ? OR d.slug = ?)"
+            params = (identifier, slug)
+
+        sql = f"""
+            SELECT d.id, d.slug, d.title, d.category, d.tags, d.content, d.status,
+                   d.author, d.reviewer, d.approved_at, d.created_at, d.updated_at, d.is_builtin,
+                   (SELECT COUNT(*) FROM knowledge_versions v WHERE v.document_id = d.id) AS version_count
+            FROM knowledge_documents d
+            WHERE {condition}
+        """
+        row = connection.execute(sql, params).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "slug": row["slug"],
+            "title": row["title"],
+            "category": row["category"],
+            "tags": row["tags"],
+            "content": row["content"],
+            "status": row["status"],
+            "author": row["author"],
+            "reviewer": row["reviewer"],
+            "approved_at": row["approved_at"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "is_builtin": bool(row["is_builtin"]),
+            "version_count": row["version_count"],
+        }
+
+
+def create_knowledge_document(
+    title: str,
+    category: str,
+    content: str,
+    tags: str = "",
+    status: str = "draft",
+    author: str = "agent",
+    is_builtin: int = 0,
+    custom_slug: str | None = None,
+) -> dict[str, Any]:
+    with _connect() as connection:
+        now = _now()
+        if custom_slug:
+            slug = custom_slug if custom_slug.endswith(".md") else f"{custom_slug}.md"
+        else:
+            base_slug = _slugify(title)
+            slug = f"{base_slug}.md"
+            counter = 1
+            while connection.execute("SELECT 1 FROM knowledge_documents WHERE slug = ?", (slug,)).fetchone():
+                slug = f"{base_slug}_{counter}.md"
+                counter += 1
+
+        reviewer = author if status == "published" else None
+        approved_at = now if status == "published" else None
+
+        connection.execute(
+            """
+            INSERT INTO knowledge_documents
+                (slug, title, category, tags, content, status, author, reviewer, approved_at, created_at, updated_at, is_builtin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (slug, title.strip(), category, tags.strip(), content.strip(), status, author, reviewer, approved_at, now, now, is_builtin),
+        )
+        doc_id = connection.execute("SELECT id FROM knowledge_documents WHERE slug = ?", (slug,)).fetchone()["id"]
+        connection.execute(
+            """
+            INSERT INTO knowledge_versions
+                (document_id, version_number, title, category, tags, content, change_summary, author, created_at)
+            VALUES (?, 1, ?, ?, ?, ?, 'Tạo mới tài liệu', ?, ?)
+            """,
+            (doc_id, title.strip(), category, tags.strip(), content.strip(), author, now),
+        )
+    return get_knowledge_document(doc_id)  # type: ignore[return-value]
+
+
+def update_knowledge_document(
+    identifier: int | str,
+    updates: dict[str, Any],
+    actor: str,
+    change_summary: str = "Cập nhật nội dung",
+) -> dict[str, Any] | None:
+    doc = get_knowledge_document(identifier)
+    if not doc:
+        return None
+
+    new_title = updates.get("title", doc["title"]).strip() if updates.get("title") is not None else doc["title"]
+    new_category = updates.get("category", doc["category"]) if updates.get("category") is not None else doc["category"]
+    new_tags = updates.get("tags", doc["tags"]).strip() if updates.get("tags") is not None else doc["tags"]
+    new_content = updates.get("content", doc["content"]).strip() if updates.get("content") is not None else doc["content"]
+    new_status = updates.get("status", doc["status"]) if updates.get("status") is not None else doc["status"]
+
+    content_changed = (
+        new_title != doc["title"]
+        or new_category != doc["category"]
+        or new_tags != doc["tags"]
+        or new_content != doc["content"]
+    )
+
+    with _connect() as connection:
+        now = _now()
+        reviewer = doc["reviewer"]
+        approved_at = doc["approved_at"]
+
+        if new_status == "published" and doc["status"] != "published":
+            reviewer = actor
+            approved_at = now
+        elif new_status in ("draft", "pending_review") and doc["status"] == "published":
+            approved_at = None
+
+        connection.execute(
+            """
+            UPDATE knowledge_documents
+            SET title = ?, category = ?, tags = ?, content = ?, status = ?,
+                reviewer = ?, approved_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (new_title, new_category, new_tags, new_content, new_status, reviewer, approved_at, now, doc["id"]),
+        )
+
+        if content_changed:
+            max_ver_row = connection.execute(
+                "SELECT COALESCE(MAX(version_number), 0) AS max_v FROM knowledge_versions WHERE document_id = ?",
+                (doc["id"],),
+            ).fetchone()
+            next_ver = (max_ver_row["max_v"] or 0) + 1
+            connection.execute(
+                """
+                INSERT INTO knowledge_versions
+                    (document_id, version_number, title, category, tags, content, change_summary, author, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (doc["id"], next_ver, new_title, new_category, new_tags, new_content, change_summary, actor, now),
+            )
+
+    return get_knowledge_document(doc["id"])
+
+
+def review_knowledge_document(
+    identifier: int | str,
+    action: str,
+    reviewer: str,
+    feedback: str = "",
+) -> dict[str, Any] | None:
+    doc = get_knowledge_document(identifier)
+    if not doc:
+        return None
+
+    with _connect() as connection:
+        now = _now()
+        if action == "approve":
+            new_status = "published"
+            summary = f"Duyệt và xuất bản bởi {reviewer}"
+            connection.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = 'published', reviewer = ?, approved_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (reviewer, now, now, doc["id"]),
+            )
+        else:
+            new_status = "draft"
+            summary = f"Từ chối duyệt bởi {reviewer}: {feedback}" if feedback else f"Trả về bản nháp bởi {reviewer}"
+            connection.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = 'draft', updated_at = ?
+                WHERE id = ?
+                """,
+                (now, doc["id"]),
+            )
+
+        max_ver_row = connection.execute(
+            "SELECT COALESCE(MAX(version_number), 0) AS max_v FROM knowledge_versions WHERE document_id = ?",
+            (doc["id"],),
+        ).fetchone()
+        next_ver = (max_ver_row["max_v"] or 0) + 1
+        connection.execute(
+            """
+            INSERT INTO knowledge_versions
+                (document_id, version_number, title, category, tags, content, change_summary, author, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (doc["id"], next_ver, doc["title"], doc["category"], doc["tags"], doc["content"], summary, reviewer, now),
+        )
+
+    return get_knowledge_document(doc["id"])
+
+
+def list_knowledge_versions(identifier: int | str) -> list[dict[str, Any]]:
+    doc = get_knowledge_document(identifier)
+    if not doc:
+        return []
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, document_id, version_number, title, category, tags, content, change_summary, author, created_at
+            FROM knowledge_versions
+            WHERE document_id = ?
+            ORDER BY version_number DESC
+            """,
+            (doc["id"],),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "document_id": row["document_id"],
+                "version_number": row["version_number"],
+                "title": row["title"],
+                "category": row["category"],
+                "tags": row["tags"],
+                "content": row["content"],
+                "change_summary": row["change_summary"],
+                "author": row["author"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+
+def restore_knowledge_version(
+    identifier: int | str,
+    version_number: int,
+    actor: str,
+) -> dict[str, Any] | None:
+    doc = get_knowledge_document(identifier)
+    if not doc:
+        return None
+    with _connect() as connection:
+        v_row = connection.execute(
+            """
+            SELECT title, category, tags, content
+            FROM knowledge_versions
+            WHERE document_id = ? AND version_number = ?
+            """,
+            (doc["id"], version_number),
+        ).fetchone()
+        if not v_row:
+            return None
+
+        now = _now()
+        connection.execute(
+            """
+            UPDATE knowledge_documents
+            SET title = ?, category = ?, tags = ?, content = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (v_row["title"], v_row["category"], v_row["tags"], v_row["content"], now, doc["id"]),
+        )
+        max_ver_row = connection.execute(
+            "SELECT COALESCE(MAX(version_number), 0) AS max_v FROM knowledge_versions WHERE document_id = ?",
+            (doc["id"],),
+        ).fetchone()
+        next_ver = (max_ver_row["max_v"] or 0) + 1
+        connection.execute(
+            """
+            INSERT INTO knowledge_versions
+                (document_id, version_number, title, category, tags, content, change_summary, author, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (doc["id"], next_ver, v_row["title"], v_row["category"], v_row["tags"], v_row["content"],
+             f"Khôi phục về phiên bản #{version_number}", actor, now),
+        )
+
+    return get_knowledge_document(doc["id"])
+
+
+def delete_knowledge_document(identifier: int | str) -> bool:
+    doc = get_knowledge_document(identifier)
+    if not doc:
+        return False
+    if doc["is_builtin"]:
+        raise ValueError("Không thể xóa tài liệu mặc định của hệ thống.")
+    with _connect() as connection:
+        connection.execute("DELETE FROM knowledge_documents WHERE id = ?", (doc["id"],))
+        return True
+
+
+def get_document_category_from_db(slug_or_source: str) -> str | None:
+    doc = get_knowledge_document(slug_or_source)
+    return doc["category"] if doc else None
 
 
 initialize_store()

@@ -25,6 +25,7 @@
           <span id="serviceStateLabel" class="service-state service-state-checking"><i></i> Đang kiểm tra dịch vụ</span>
           <button id="languageToggle" class="button button-quiet language-toggle" type="button" aria-label="Switch language">English</button>
           <span id="userBadge" class="user-badge hidden"></span>
+          <button id="changePasswordBtn" class="button button-quiet hidden" type="button">Đổi mật khẩu</button>
           <button id="logoutBtn" class="button button-quiet hidden" type="button">Đăng xuất</button>
         </div>
       </header>
@@ -199,23 +200,58 @@
               </section>
 
               <section id="knowledgePanel" class="panel knowledge-panel hidden workspace-panel" data-view="knowledge">
-                <div class="section-heading compact-heading">
-                  <div><span class="eyebrow">THƯ VIỆN</span><h2>Chủ đề hỗ trợ</h2></div>
-                  <span id="knowledgeCount" class="count-pill">—</span>
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">QUẢN LÝ TRI THỨC</span>
+                    <h2>Kho tri thức & Runbook</h2>
+                  </div>
+                  <div class="knowledge-header-actions">
+                    <span id="knowledgeCount" class="count-pill">—</span>
+                    <button id="openCreateKnowledgeBtn" class="button button-primary" type="button">+ Soạn runbook mới</button>
+                    <button id="toggleUploadKnowledgeBtn" class="button button-quiet" type="button">Nạp tệp .md</button>
+                  </div>
                 </div>
-                <label class="search-box knowledge-search"><span>⌕</span><input id="knowledgeSearch" type="search" placeholder="Tìm tài liệu..." aria-label="Tìm tài liệu tri thức" /></label>
-                <div id="knowledgeList" class="knowledge-list"><span class="muted">Đang tải tài liệu...</span></div>
+
+                <div class="knowledge-toolbar">
+                  <div class="knowledge-status-tabs" role="tablist" aria-label="Lọc trạng thái tri thức">
+                    <button class="status-tab active" type="button" data-status="">Tất cả</button>
+                    <button class="status-tab" type="button" data-status="published">Đã xuất bản</button>
+                    <button class="status-tab" type="button" data-status="pending_review">Chờ duyệt <span id="pendingReviewBadge" class="tab-badge hidden">0</span></button>
+                    <button class="status-tab" type="button" data-status="draft">Bản nháp</button>
+                  </div>
+                  <div class="knowledge-filters">
+                    <label class="search-box knowledge-search">
+                      <span>⌕</span>
+                      <input id="knowledgeSearch" type="search" placeholder="Tìm kiếm theo tiêu đề, nội dung, thẻ..." aria-label="Tìm tài liệu tri thức" />
+                    </label>
+                    <select id="knowledgeCategoryFilter" aria-label="Lọc theo danh mục">
+                      <option value="">Tất cả danh mục</option>
+                      <option value="network">Mạng & VPN</option>
+                      <option value="hardware">Phần cứng</option>
+                      <option value="software">Phần mềm</option>
+                      <option value="security">Tài khoản & bảo mật</option>
+                      <option value="general">Khác</option>
+                    </select>
+                  </div>
+                </div>
+
                 <form id="knowledgeUploadForm" class="knowledge-upload hidden">
-                  <label class="field" for="knowledgeTitle">Nạp runbook Markdown
-                    <input id="knowledgeTitle" name="title" minlength="3" maxlength="120" placeholder="Tên chủ đề tài liệu" required />
+                  <div class="upload-form-header">
+                    <strong>Nạp runbook Markdown từ tệp tin</strong>
+                    <button id="closeUploadKnowledgeBtn" class="button button-quiet" type="button">✕ Đóng</button>
+                  </div>
+                  <label class="field" for="knowledgeTitle">Tên chủ đề tài liệu
+                    <input id="knowledgeTitle" name="title" minlength="3" maxlength="120" placeholder="Ví dụ: Cấu hình OpenVPN Client" required />
                   </label>
                   <label class="field" for="knowledgeFile">Tệp .md (tối đa 256 KiB)
                     <input id="knowledgeFile" name="document" type="file" accept=".md,text/markdown,text/plain" required />
                   </label>
-                  <button class="button button-soft" type="submit">Thêm vào Kho tri thức</button>
+                  <button class="button button-soft" type="submit">Nạp vào Kho tri thức</button>
                   <p id="knowledgeMessage" class="form-message" role="status"></p>
                 </form>
-                <div class="knowledge-footer"><span class="online-dot"></span> Tri thức nội bộ · Markdown</div>
+
+                <div id="knowledgeList" class="knowledge-list" aria-live="polite"><span class="muted">Đang tải tài liệu...</span></div>
+                <div class="knowledge-footer"><span class="online-dot"></span> Tri thức nội bộ · Hỗ trợ CSDL & Full-text BM25</div>
               </section>
 
               <section id="adminUsersPanel" class="panel knowledge-panel hidden workspace-panel" data-view="users">
@@ -289,6 +325,118 @@
       </main>
       <footer class="footer"><span>HELPDESK RAG · PROTOTYPE HỌC THUẬT</span><span>Hướng dẫn tri thức không thay thế xác nhận của IT.</span></footer>
     </div>
+
+    <div id="changePasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">
+      <div class="modal-card">
+        <h2 id="changePasswordTitle">Đổi mật khẩu</h2>
+        <p id="changePasswordSubtitle">Mật khẩu mới phải có ít nhất 12 ký tự và khác mật khẩu hiện tại.</p>
+        <form id="changePasswordForm">
+          <label class="field" for="currentPasswordInput">Mật khẩu hiện tại
+            <input id="currentPasswordInput" name="old_password" type="password" autocomplete="current-password" required />
+          </label>
+          <label class="field" for="newPasswordInput">Mật khẩu mới (tối thiểu 12 ký tự)
+            <input id="newPasswordInput" name="new_password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required />
+          </label>
+          <label class="field" for="confirmPasswordInput">Xác nhận mật khẩu mới
+            <input id="confirmPasswordInput" name="confirm_password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required />
+          </label>
+          <p id="changePasswordMessage" class="form-message" role="status"></p>
+          <div class="modal-actions">
+            <button id="cancelChangePasswordBtn" class="button button-quiet" type="button">Hủy</button>
+            <button class="button button-primary" type="submit">Lưu mật khẩu mới</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="knowledgeEditorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="knowledgeEditorTitle">
+      <div class="modal-card modal-card-wide">
+        <div class="modal-header">
+          <div>
+            <h2 id="knowledgeEditorTitle">Soạn thảo Runbook</h2>
+            <p id="knowledgeEditorSubtitle">Soạn thảo tài liệu tri thức với trình xem trước Markdown thời gian thực.</p>
+          </div>
+          <span id="editorStatusBadge" class="tag tag-status-draft">Bản nháp</span>
+        </div>
+        <form id="knowledgeEditorForm">
+          <input type="hidden" id="editDocIdentifier" value="" />
+          <div class="form-row">
+            <label class="field flex-2" for="editDocTitle">Tiêu đề tài liệu <span>*</span>
+              <input id="editDocTitle" name="title" minlength="3" maxlength="150" placeholder="Ví dụ: Khắc phục sự cố không nhận IP qua DHCP" required />
+            </label>
+            <label class="field flex-1" for="editDocCategory">Danh mục <span>*</span>
+              <select id="editDocCategory" name="category" required>
+                <option value="network">Mạng & VPN</option>
+                <option value="hardware">Phần cứng</option>
+                <option value="software">Phần mềm</option>
+                <option value="security">Tài khoản & bảo mật</option>
+                <option value="general">Khác</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field flex-2" for="editDocTags">Thẻ từ khóa
+              <input id="editDocTags" name="tags" maxlength="200" placeholder="Ví dụ: dhcp, ip, network, windows (cách nhau bởi dấu phẩy)" />
+            </label>
+            <label class="field flex-1" for="editDocStatus">Trạng thái lưu
+              <select id="editDocStatus" name="status">
+                <option value="draft">Bản nháp</option>
+                <option value="pending_review">Gửi duyệt (Chờ admin phê duyệt)</option>
+                <option value="published" id="statusOptionPublished">Xuất bản ngay</option>
+              </select>
+            </label>
+          </div>
+          <div id="changeSummaryRow" class="form-row hidden">
+            <label class="field flex-full" for="editDocChangeSummary">Tóm tắt thay đổi (cho phiên bản mới)
+              <input id="editDocChangeSummary" name="change_summary" maxlength="300" placeholder="Ví dụ: Bổ sung bước giải phóng IP với lệnh ipconfig /release" />
+            </label>
+          </div>
+          <div class="editor-toolbar">
+            <span class="editor-toolbar-label">Định dạng nhanh:</span>
+            <button type="button" class="toolbar-btn" data-insert="# ">H1</button>
+            <button type="button" class="toolbar-btn" data-insert="## ">H2</button>
+            <button type="button" class="toolbar-btn" data-insert="**In đậm**">B</button>
+            <button type="button" class="toolbar-btn" data-insert="- ">Danh sách</button>
+            <button type="button" class="toolbar-btn" data-insert="`code`">Code</button>
+            <button type="button" class="toolbar-btn" data-insert="1. ">Số thứ tự</button>
+          </div>
+          <div class="editor-split">
+            <div class="editor-pane">
+              <label for="editDocContent" class="sr-only">Nội dung Markdown</label>
+              <textarea id="editDocContent" name="content" rows="14" minlength="10" placeholder="# Title&#10;&#10;## 1. Issue description&#10;...&#10;&#10;## 2. Steps&#10;- Step 1: ...&#10;- Step 2: ..." required></textarea>
+            </div>
+            <div class="preview-pane">
+              <div class="preview-header">Xem trước (Live Preview)</div>
+              <div id="editDocPreview" class="preview-content runbook-content">
+                <p class="muted">Nhập nội dung ở khung bên trái để xem trước tại đây...</p>
+              </div>
+            </div>
+          </div>
+          <p id="knowledgeEditorMessage" class="form-message" role="status"></p>
+          <div class="modal-actions">
+            <button id="cancelKnowledgeEditorBtn" class="button button-quiet" type="button">Hủy</button>
+            <button id="saveKnowledgeDocBtn" class="button button-primary" type="submit">Lưu tài liệu</button>
+            <button id="approveKnowledgeDocBtn" class="button button-dark hidden" type="button">✓ Duyệt & Xuất bản</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="knowledgeVersionsModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="knowledgeVersionsTitle">
+      <div class="modal-card modal-card-wide">
+        <div class="modal-header">
+          <div>
+            <h2 id="knowledgeVersionsTitle">Lịch sử phiên bản</h2>
+            <p id="knowledgeVersionsSubtitle">Danh sách các phiên bản đã lưu của tài liệu.</p>
+          </div>
+          <button id="closeKnowledgeVersionsBtn" class="button button-quiet" type="button">✕ Đóng</button>
+        </div>
+        <div id="knowledgeVersionsList" class="versions-list">
+          <span class="muted">Đang tải lịch sử phiên bản...</span>
+        </div>
+      </div>
+    </div>
+
     <script src="/static/i18n.js?v=20261010-filter-3"></script>
     <script src="/static/app.js?v=20261010-filter-3"></script>
   </body>

@@ -6,7 +6,7 @@ import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import jwt
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -24,12 +24,41 @@ from app.config import (
 from app import store
 from app.telegram_notify import notify_ticket_created
 from app.rag import (
+    BASE_KNOWLEDGE_DIR,
+    STORAGE_KNOWLEDGE_DIR,
     KNOWLEDGE_DIR,
     build_retrieval_index,
     generate_answer,
     load_knowledge_base,
     save_knowledge_document,
 )
+
+DUMMY_PASSWORD_HASH = store._password_hash("dummy_fallback_timing_attack_mitigation")
+FAILED_LOGIN_LIMIT = 5
+FAILED_LOGIN_WINDOW_SECONDS = 900
+_failed_logins: dict[str, list[float]] = {}
+
+
+def _check_login_rate_limit(key: str) -> None:
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in _failed_logins.get(key, []) if now - t < FAILED_LOGIN_WINDOW_SECONDS]
+    _failed_logins[key] = attempts
+    if len(attempts) >= FAILED_LOGIN_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+        )
+
+
+def _record_failed_login(key: str) -> None:
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in _failed_logins.get(key, []) if now - t < FAILED_LOGIN_WINDOW_SECONDS]
+    attempts.append(now)
+    _failed_logins[key] = attempts
+
+
+def _clear_failed_login(key: str) -> None:
+    _failed_logins.pop(key, None)
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -98,6 +127,16 @@ class UserUpdate(BaseModel):
         ):
             raise ValueError("Cần cung cấp ít nhất một trường để cập nhật.")
         return self
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=12, max_length=200)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=12, max_length=200)
+    force_change: bool = True
 
 
 class TicketCreate(BaseModel):
@@ -196,6 +235,40 @@ class RAGFeedback(BaseModel):
     feedback: Literal["up", "down"]
 
 
+class KnowledgeDocumentCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=150)
+    category: Literal["network", "hardware", "software", "security", "general"]
+    tags: str = Field(default="", max_length=200)
+    content: str = Field(min_length=10)
+    status: Literal["draft", "pending_review", "published"] = "draft"
+
+    @field_validator("title", "content", "tags", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class KnowledgeDocumentUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=150)
+    category: Literal["network", "hardware", "software", "security", "general"] | None = None
+    tags: str | None = Field(default=None, max_length=200)
+    content: str | None = Field(default=None, min_length=10)
+    status: Literal["draft", "pending_review", "published", "archived"] | None = None
+    change_summary: str | None = Field(default="Cập nhật tài liệu", max_length=300)
+
+    @field_validator("title", "content", "tags", "change_summary", mode="before")
+    @classmethod
+    def trim_optional_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class KnowledgeReviewRequest(BaseModel):
+    action: Literal["approve", "reject"]
+    feedback: str | None = Field(default=None, max_length=1000)
+
+
 async def current_user(request: Request) -> dict[str, str]:
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
@@ -210,6 +283,14 @@ async def current_user(request: Request) -> dict[str, str]:
     user = store.get_user_credentials(username) if isinstance(username, str) else None
     if user is None or not user["is_active"] or payload.get("role") != user["role"]:
         raise HTTPException(status_code=401, detail="Tài khoản không còn hợp lệ.")
+
+    if user.get("password_changed_at"):
+        if payload.get("pwd_at") != user.get("password_changed_at"):
+            raise HTTPException(
+                status_code=401,
+                detail="Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.",
+            )
+
     return {"username": username, "role": user["role"]}
 
 
@@ -256,26 +337,71 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/auth/login", tags=["auth"])
-async def login(payload: LoginRequest) -> dict[str, str]:
+async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
+    client_ip = request.client.host if request.client else "unknown"
+    user_key = f"user:{payload.username.lower()}"
+    ip_key = f"ip:{client_ip}"
+
+    _check_login_rate_limit(user_key)
+    _check_login_rate_limit(ip_key)
+
     user = store.get_user_credentials(payload.username)
-    if (
-        user is None
-        or not user["is_active"]
-        or not store.verify_password(payload.password, user["password_hash"])
-    ):
+    if user is None or not user["is_active"]:
+        store.verify_password(payload.password, DUMMY_PASSWORD_HASH)
+        _record_failed_login(user_key)
+        _record_failed_login(ip_key)
         raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không đúng.")
+
+    if not store.verify_password(payload.password, user["password_hash"]):
+        _record_failed_login(user_key)
+        _record_failed_login(ip_key)
+        raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không đúng.")
+
+    _clear_failed_login(user_key)
+    _clear_failed_login(ip_key)
+
     issued_at = datetime.now(timezone.utc)
     token = jwt.encode(
         {
             "sub": payload.username,
             "role": user["role"],
-            "iat": issued_at,
+            "iat": int(issued_at.timestamp()),
             "exp": issued_at + timedelta(minutes=TOKEN_EXPIRE_MINUTES),
+            "pwd_at": user.get("password_changed_at"),
+            "force_pwd": bool(user.get("force_password_change", 0)),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,
     )
-    return {"token": token, "username": payload.username, "role": user["role"]}
+    return {
+        "token": token,
+        "username": payload.username,
+        "role": user["role"],
+        "force_password_change": bool(user.get("force_password_change", 0)),
+    }
+
+
+@app.post("/auth/change-password", tags=["auth"])
+async def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, str]:
+    actor = await current_user(request)
+    user = store.get_user_credentials(actor["username"])
+    if user is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+
+    if not store.verify_password(payload.old_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác.")
+
+    if len(payload.new_password) < 12:
+        raise HTTPException(status_code=422, detail="Mật khẩu mới phải có ít nhất 12 ký tự.")
+
+    if payload.new_password.lower() == actor["username"].lower():
+        raise HTTPException(status_code=400, detail="Mật khẩu mới không được trùng với tên đăng nhập.")
+
+    if payload.new_password == payload.old_password:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới không được trùng với mật khẩu hiện tại.")
+
+    store.update_user_password(actor["username"], payload.new_password, force_password_change=0)
+    return {"message": "Đổi mật khẩu thành công. Vui lòng sử dụng mật khẩu mới cho các lần đăng nhập tiếp theo."}
 
 
 @app.get("/auth/me", tags=["auth"])
@@ -349,6 +475,30 @@ async def update_admin_user(
     if updated is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
     return updated
+
+
+@app.post("/admin/users/{username}/reset-password", tags=["admin"])
+async def admin_reset_user_password(
+    request: Request,
+    username: str,
+    payload: AdminResetPasswordRequest,
+) -> dict[str, str]:
+    actor = await current_user(request)
+    if actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
+    existing = store.get_user_credentials(username)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    if len(payload.new_password) < 12:
+        raise HTTPException(status_code=422, detail="Mật khẩu mới phải có ít nhất 12 ký tự.")
+    if payload.new_password.lower() == username.lower():
+        raise HTTPException(status_code=400, detail="Mật khẩu mới không được trùng với tên đăng nhập.")
+    store.admin_reset_password(
+        username,
+        payload.new_password,
+        force_password_change=1 if payload.force_change else 0,
+    )
+    return {"message": f"Đã đặt lại mật khẩu cho tài khoản {username}."}
 
 
 @app.get("/tickets", tags=["tickets"])
@@ -597,12 +747,162 @@ async def agent_analytics(request: Request) -> dict:
 
 
 @app.get("/knowledge", tags=["rag"])
-async def knowledge_documents(request: Request) -> list[dict[str, str]]:
-    await current_user(request)
-    return [
-        {"title": document["title"], "source": document["source"]}
-        for document in load_knowledge_base()
-    ]
+async def knowledge_documents(
+    request: Request,
+    status: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+) -> list[dict[str, Any]]:
+    user = await current_user(request)
+    is_staff = user["role"] in {"agent", "admin"}
+    effective_status = status if is_staff else "published"
+    docs = store.list_knowledge_documents(
+        status=effective_status,
+        category=category,
+        query=search,
+    )
+    if not docs and KNOWLEDGE_DIR.resolve() != BASE_KNOWLEDGE_DIR.resolve():
+        return [
+            {
+                "title": document["title"],
+                "source": document["source"],
+                "is_builtin": bool(document.get("is_builtin", True)),
+                "category": document.get("category", "general"),
+                "status": "published",
+            }
+            for document in load_knowledge_base()
+        ]
+    return [{**doc, "source": doc["slug"]} for doc in docs]
+
+
+@app.get("/knowledge/{identifier}", tags=["rag"])
+async def get_single_knowledge_document(
+    request: Request,
+    identifier: str,
+) -> dict[str, Any]:
+    user = await current_user(request)
+    doc = store.get_knowledge_document(identifier)
+    if not doc:
+        if (KNOWLEDGE_DIR / identifier).is_file():
+            content = (KNOWLEDGE_DIR / identifier).read_text(encoding="utf-8")
+            heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+            title = heading.group(1).strip() if heading else identifier
+            return {
+                "id": None,
+                "slug": identifier,
+                "source": identifier,
+                "title": title,
+                "category": CATEGORY_BY_SOURCE.get(identifier, "general"),
+                "tags": "",
+                "content": content,
+                "status": "published",
+                "author": "admin",
+                "reviewer": "admin",
+                "approved_at": None,
+                "created_at": None,
+                "updated_at": None,
+                "is_builtin": (BASE_KNOWLEDGE_DIR / identifier).is_file(),
+                "version_count": 1,
+            }
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+
+    if user["role"] == "user" and doc["status"] != "published":
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+
+    return {**doc, "source": doc["slug"]}
+
+
+@app.put("/knowledge/{identifier}", tags=["rag"])
+async def edit_knowledge_document(
+    request: Request,
+    identifier: str,
+    payload: KnowledgeDocumentUpdate,
+) -> dict[str, Any]:
+    user = await current_user(request)
+    require_staff(user)
+    doc = store.get_knowledge_document(identifier)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+
+    if user["role"] == "agent":
+        if doc["author"] != user["username"] and doc["status"] == "draft":
+            raise HTTPException(status_code=403, detail="Chỉ tác giả hoặc Admin mới được sửa bản nháp này.")
+        if payload.status == "published":
+            payload.status = "pending_review"
+
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    summary = updates.pop("change_summary", "Cập nhật tài liệu")
+    updated = store.update_knowledge_document(
+        doc["id"],
+        updates,
+        actor=user["username"],
+        change_summary=summary,
+    )
+    load_knowledge_base.cache_clear()
+    build_retrieval_index.cache_clear()
+    return {"message": "Đã cập nhật tài liệu tri thức.", **(updated or {}), "source": updated["slug"] if updated else ""}
+
+
+@app.post("/knowledge/{identifier}/review", tags=["rag"])
+async def review_knowledge_document_endpoint(
+    request: Request,
+    identifier: str,
+    payload: KnowledgeReviewRequest,
+) -> dict[str, Any]:
+    user = await current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền duyệt tài liệu.")
+    doc = store.get_knowledge_document(identifier)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+
+    reviewed = store.review_knowledge_document(
+        doc["id"],
+        action=payload.action,
+        reviewer=user["username"],
+        feedback=payload.feedback or "",
+    )
+    load_knowledge_base.cache_clear()
+    build_retrieval_index.cache_clear()
+    msg = "Đã duyệt và xuất bản tài liệu." if payload.action == "approve" else "Đã trả về bản nháp."
+    return {"message": msg, **(reviewed or {}), "source": reviewed["slug"] if reviewed else ""}
+
+
+@app.get("/knowledge/{identifier}/versions", tags=["rag"])
+async def get_knowledge_versions(
+    request: Request,
+    identifier: str,
+) -> list[dict[str, Any]]:
+    user = await current_user(request)
+    require_staff(user)
+    doc = store.get_knowledge_document(identifier)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+    return store.list_knowledge_versions(doc["id"])
+
+
+@app.post("/knowledge/{identifier}/restore/{version_number}", tags=["rag"])
+async def restore_knowledge_version_endpoint(
+    request: Request,
+    identifier: str,
+    version_number: int,
+) -> dict[str, Any]:
+    user = await current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền khôi phục phiên bản.")
+    doc = store.get_knowledge_document(identifier)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+    restored = store.restore_knowledge_version(
+        doc["id"],
+        version_number=version_number,
+        actor=user["username"],
+    )
+    if not restored:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên bản cần khôi phục.")
+    load_knowledge_base.cache_clear()
+    build_retrieval_index.cache_clear()
+    return {"message": f"Đã khôi phục về phiên bản #{version_number}.", **restored, "source": restored["slug"]}
 
 
 @app.delete("/knowledge/{source}", tags=["rag"])
@@ -610,15 +910,38 @@ async def delete_knowledge_document(request: Request, source: str) -> dict[str, 
     user = await current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}\.md", source):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
+
+    doc = store.get_knowledge_document(source)
+    if doc and doc["is_builtin"]:
+        raise HTTPException(status_code=403, detail="Không thể xóa tài liệu mặc định của hệ thống.")
+
+    deleted_any = False
+    if doc:
+        store.delete_knowledge_document(doc["id"])
+        deleted_any = True
+
     target = (KNOWLEDGE_DIR / source).resolve()
-    if target.parent != KNOWLEDGE_DIR.resolve() or not target.is_file():
+    if target.is_file() and target.parent == KNOWLEDGE_DIR.resolve():
+        if KNOWLEDGE_DIR.resolve() == BASE_KNOWLEDGE_DIR.resolve():
+            raise HTTPException(status_code=403, detail="Không thể xóa tài liệu mặc định của hệ thống.")
+        try:
+            target.unlink()
+            deleted_any = True
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Không thể xóa tài liệu tri thức.") from exc
+
+    if (STORAGE_KNOWLEDGE_DIR / source).is_file():
+        (STORAGE_KNOWLEDGE_DIR / source).unlink(missing_ok=True)
+        deleted_any = True
+
+    if (BASE_KNOWLEDGE_DIR / source).is_file():
+        raise HTTPException(status_code=403, detail="Không thể xóa tài liệu mặc định của hệ thống.")
+
+    if not deleted_any:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
-    try:
-        target.unlink()
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail="Không thể xóa tài liệu tri thức.") from exc
+
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     return {"message": "Đã xóa tài liệu khỏi Knowledge Base."}
@@ -629,9 +952,10 @@ async def reindex_knowledge_document(request: Request, source: str) -> dict[str,
     user = await current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}\.md", source):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
-    if not (KNOWLEDGE_DIR / source).is_file():
+    doc = store.get_knowledge_document(source)
+    if not doc and not (KNOWLEDGE_DIR / source).is_file() and not (BASE_KNOWLEDGE_DIR / source).is_file():
         raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
@@ -683,43 +1007,88 @@ async def export_analytics(request: Request) -> StreamingResponse:
 @app.post("/knowledge", tags=["rag"], status_code=status.HTTP_201_CREATED)
 async def upload_knowledge_document(
     request: Request,
-    title: str = Form(min_length=3, max_length=120),
-    document: UploadFile = File(...),
-) -> dict[str, str]:
+) -> dict[str, Any]:
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        user = await current_user(request)
+        if user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Chỉ Admin mới được nạp tài liệu tri thức.")
+        form = await request.form()
+        title_val = form.get("title")
+        doc_file = form.get("document")
+        if not title_val or not isinstance(title_val, str):
+            raise HTTPException(status_code=422, detail="Tiêu đề là bắt buộc.")
+        cleaned_title = title_val.strip()
+        if len(cleaned_title) < 3 or len(cleaned_title) > 120:
+            raise HTTPException(status_code=422, detail="Tiêu đề cần có từ 3 đến 120 ký tự.")
+        if not doc_file or not hasattr(doc_file, "filename"):
+            raise HTTPException(status_code=422, detail="Tài liệu tải lên là bắt buộc.")
+
+        original_name = Path(doc_file.filename or "").name
+        if not original_name.lower().endswith(".md"):
+            raise HTTPException(status_code=415, detail="Chỉ hỗ trợ tài liệu Markdown (.md).")
+
+        file_size = getattr(doc_file, "size", None)
+        if file_size is not None and file_size > 262_144:
+            raise HTTPException(status_code=413, detail="Tài liệu vượt quá giới hạn 256 KiB.")
+        content = await doc_file.read(262_145)
+        if len(content) > 262_144:
+            raise HTTPException(status_code=413, detail="Tài liệu vượt quá giới hạn 256 KiB.")
+        try:
+            text = content.decode("utf-8-sig").strip()
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=422, detail="Tài liệu phải được mã hóa UTF-8.") from exc
+        if not text or not re.search(r"(?m)^#\s+\S+", text):
+            raise HTTPException(status_code=422, detail="Tài liệu cần có tiêu đề Markdown cấp 1.")
+        try:
+            saved = save_knowledge_document(
+                KNOWLEDGE_DIR,
+                original_name,
+                cleaned_title,
+                text,
+            )
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail="Tên tài liệu này đã tồn tại.") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Tên tệp hoặc tiêu đề tài liệu không hợp lệ.") from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Không thể lưu tài liệu tri thức.") from exc
+        return {"message": "Đã nạp tài liệu tri thức.", **saved}
+
     user = await current_user(request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Chỉ Admin mới được nạp tài liệu tri thức.")
-    original_name = Path(document.filename or "").name
-    if not original_name.lower().endswith(".md"):
-        raise HTTPException(status_code=415, detail="Chỉ hỗ trợ tài liệu Markdown (.md).")
-    if document.size is not None and document.size > 262_144:
-        raise HTTPException(status_code=413, detail="Tài liệu vượt quá giới hạn 256 KiB.")
-    content = await document.read(262_145)
-    if len(content) > 262_144:
-        raise HTTPException(status_code=413, detail="Tài liệu vượt quá giới hạn 256 KiB.")
+    require_staff(user)
     try:
-        text = content.decode("utf-8-sig").strip()
-    except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=422, detail="Tài liệu phải được mã hóa UTF-8.") from exc
-    if not text or not re.search(r"(?m)^#\s+\S+", text):
-        raise HTTPException(status_code=422, detail="Tài liệu cần có tiêu đề Markdown cấp 1.")
-    cleaned_title = title.strip()
-    if len(cleaned_title) < 3:
-        raise HTTPException(status_code=422, detail="Tiêu đề cần có ít nhất 3 ký tự.")
+        data = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Dữ liệu JSON không hợp lệ.") from exc
+
     try:
-        saved = save_knowledge_document(
-            KNOWLEDGE_DIR,
-            original_name,
-            cleaned_title,
-            text,
-        )
-    except FileExistsError as exc:
-        raise HTTPException(status_code=409, detail="Tên tài liệu này đã tồn tại.") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Tên tệp hoặc tiêu đề tài liệu không hợp lệ.") from exc
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail="Không thể lưu tài liệu tri thức.") from exc
-    return {"message": "Đã nạp tài liệu tri thức.", **saved}
+        payload = KnowledgeDocumentCreate.model_validate(data)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if payload.status == "published" and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền xuất bản tài liệu trực tiếp.")
+
+    target_status = payload.status
+    if user["role"] == "agent" and target_status not in ("draft", "pending_review"):
+        target_status = "draft"
+
+    doc = store.create_knowledge_document(
+        title=payload.title,
+        category=payload.category,
+        content=payload.content,
+        tags=payload.tags,
+        status=target_status,
+        author=user["username"],
+    )
+
+    if doc["status"] == "published":
+        load_knowledge_base.cache_clear()
+        build_retrieval_index.cache_clear()
+
+    return {"message": "Đã tạo tài liệu tri thức.", **doc, "source": doc["slug"]}
+
 
 
 @app.post("/rag/ask", tags=["rag"])

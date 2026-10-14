@@ -1,7 +1,7 @@
 import os
 import secrets
 
-DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() in {"1", "true", "yes"}
+DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in {"1", "true", "yes"}
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     if not DEMO_MODE:

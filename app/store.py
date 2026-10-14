@@ -122,14 +122,6 @@ def _slugify(text: str) -> str:
 
 
 def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection) -> None:
-    try:
-        count_row = connection.execute("SELECT COUNT(*) AS count FROM knowledge_documents").fetchone()
-        count = count_row["count"] if count_row else 0
-    except Exception:
-        return
-    if count > 0:
-        return
-
     knowledge_dir = Path(__file__).resolve().parent.parent / "data" / "knowledge"
     if not knowledge_dir.is_dir():
         return
@@ -173,6 +165,12 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
         title = heading.group(1).strip() if heading else path.stem.replace("_", " ").title()
         category = category_map.get(path.name, "general")
         tags = f"{category}, runbook"
+        existing = connection.execute(
+            "SELECT id FROM knowledge_documents WHERE slug = ?",
+            (path.name,),
+        ).fetchone()
+        if existing:
+            continue
         connection.execute(
             """
             INSERT INTO knowledge_documents

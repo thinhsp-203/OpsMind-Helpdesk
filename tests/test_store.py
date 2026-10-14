@@ -109,3 +109,19 @@ def test_database_migration_adds_archive_timestamp_to_existing_ticket_table(
         "user",
     )
     assert ticket["id"] == 2
+
+
+def test_seed_builtin_knowledge_upserts_newly_added_runbooks(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", True)
+    store.initialize_store()
+
+    initial_docs = store.list_knowledge_documents()
+    assert len(initial_docs) >= 30
+
+    # Running seed again is idempotent and doesn't duplicate
+    with store._connect() as conn:
+        store.seed_builtin_knowledge(conn)
+    assert len(store.list_knowledge_documents()) == len(initial_docs)

@@ -34,7 +34,23 @@ Mở trình duyệt tại `http://127.0.0.1:8000`. Tài liệu API Swagger tại
 | **IT Support (Agent)** | `agent` | `agent` | Tiếp nhận hàng đợi, phân loại SLA, phản hồi ticket, soạn thảo Runbook tri thức, gửi duyệt bài viết |
 | **Quản trị IT (Admin)** | `admin` | `admin` | Phê duyệt & xuất bản Runbook, khôi phục phiên bản, quản lý người dùng, đặt lại mật khẩu, xuất báo cáo |
 
-> **Lưu ý bảo mật:** Khi triển khai production hoặc môi trường có người dùng thật, luôn đặt `DEMO_MODE=false`, cung cấp `SECRET_KEY` bảo mật và khởi tạo mật khẩu Admin ban đầu thông qua `INITIAL_ADMIN_PASSWORD`.
+### Nạp dữ liệu mô phỏng thực tế phục vụ Demo / Bảo vệ đồ án
+
+Hệ thống cung cấp script nạp tự động 20 sự cố thực tế đa dạng trạng thái, mức ưu tiên, đính kèm tệp và lịch sử tra cứu:
+
+```powershell
+# Nạp 20 ticket mẫu, 6 tài khoản phòng ban và lịch sử RAG:
+py scripts/seed_demo_data.py --reset
+```
+
+| Tài khoản | Mật khẩu mẫu | Vai trò & Phòng ban | Mục đích trong kịch bản demo |
+|---|---|---|---|
+| `admin` | `OpsMindAdmin2026!` | Quản trị viên IT (IT Operations) | Duyệt xuất bản Runbook, quản lý phân quyền, xem Analytics |
+| `agent_nam` | `AgentPass2026!` | Kỹ thuật viên (Hạ tầng & Mạng) | Tiếp nhận hàng đợi, xử lý sự cố LAN/Wi-Fi/VPN, tạo Runbook |
+| `agent_hoa` | `AgentPass2026!` | Kỹ thuật viên (Hệ thống & Phần mềm) | Xử lý sự cố Outlook/Active Directory/Phần mềm kế toán |
+| `user_linh` | `UserPass2026!` | Nhân viên (Phòng Kế toán) | Hỏi RAG máy in/hóa đơn, tạo ticket sự cố, đánh giá 5 sao |
+| `user_tuan` | `UserPass2026!` | Nhân viên (Phòng Kinh doanh) | Tra cứu VPN, phản hồi ticket đang xử lý |
+| `user_mai` | `UserPass2026!` | Nhân viên (Phòng Nhân sự) | Gặp lỗi Outlook đầy hòm thư, gửi phản hồi |
 
 ---
 

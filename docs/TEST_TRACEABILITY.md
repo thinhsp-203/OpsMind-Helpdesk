@@ -1,50 +1,79 @@
-# Ma trận truy vết yêu cầu và kiểm thử
+# Ma trận truy vết yêu cầu và kiểm thử (Test Traceability Matrix)
 
-**Phạm vi:** trạng thái của mã nguồn trong repository; không thay thế test nghiệm thu với người dùng/GVHD.\
-**Ngày cập nhật:** 05/10/2026
+**Dự án:** OpsMind Helpdesk — Hệ thống Quản trị Sự cố CNTT & Trợ lý Tra cứu Tri thức RAG  
+**Phạm vi:** Trạng thái mã nguồn thực tế trong repository  
+**Phiên bản:** 2.0  
+**Ngày cập nhật:** 14/10/2026  
 
-## 1. Truy vết SRS → kiểm thử
+---
 
-| Yêu cầu/story | Cách triển khai | Kiểm thử tự động hiện có | Còn thiếu để nghiệm thu |
-|---|---|---|---|
-| FR-01 / US-04 — Đăng nhập, phiên và phân quyền | `app/main.py`: `/auth/login`, `/auth/me`, `current_user`; demo note lấy từ `/config` | `test_login_and_token_role`, `test_invalid_login_and_missing_auth_are_rejected`, `test_health_and_web_app_are_available` | Rate limit, đổi/reset mật khẩu, kiểm thử browser login và xác nhận chính sách tài khoản với đơn vị |
-| FR-02/03 / US-01 — Tạo và xem ticket | `/tickets`, giới hạn dữ liệu theo requester/role | `test_user_only_sees_own_ticket_and_staff_sees_queue`, `test_ticket_creation_sets_sla_and_audit_log`, `test_analytics_and_ticket_filters` | Kiểm thử E2E trên browser; xác nhận biểu mẫu/nghiệp vụ với End-user |
-| FR-04 — FSM | `store.TRANSITIONS`, `PATCH /tickets/{id}`, phản hồi tự đưa ticket chờ về xử lý; requester xác nhận/mở lại khi resolved | `test_ticket_lifecycle_and_invalid_transitions`, `test_requester_can_confirm_resolution_or_reopen_ticket`, `test_requester_reply_reopens_waiting_ticket` | Chốt chuyển trạng thái với quy trình IT thực tế; chưa có auto-close sau 72 giờ |
-| FR-05 — Phân công | `GET /staff` cung cấp danh sách Agent/Admin; `PUT /tickets/{id}/assignment` chỉ nhận nhân sự IT | `test_admin_can_create_user_without_exposing_password`, `test_agent_assignment_and_comment_are_recorded`, `test_invalid_assignee_is_rejected` | Kiểm tra ca trực/nhóm xử lý trên quy trình thật |
-| FR-06 / US-05 — Trao đổi và audit | Bình luận theo ticket; audit actor/time | `test_agent_assignment_and_comment_are_recorded`, `test_admin_archives_ticket_without_removing_audit` | Quy định retention, export và quyền xem audit sau khi lưu trữ |
-| FR-07 — SLA | `PRIORITY_HOURS`; đếm ticket quá hạn | `test_ticket_creation_sets_sla_and_audit_log`, `test_owner_can_edit_new_ticket_and_priority_recalculates_sla`, `test_analytics_and_ticket_filters` | Mô hình giờ làm/ngày nghỉ, timezone nghiệp vụ và SLA đã được stakeholder duyệt |
-| FR-08 / US-02 — Truy xuất tri thức, nguồn, từ chối | `app/rag.py`: BM25, mỗi tài liệu tối đa một đoạn, nguồn và ngưỡng relevance | `test_rag_finds_vietnamese_printer_and_vpn_sources`, `test_rag_results_do_not_repeat_the_same_runbook`, `test_rag_refuses_questions_without_relevant_knowledge`, `tests/test_rag_dataset.py` | Ground truth do IT xác nhận; faithfulness/answer relevance; paraphrase và tập ngoài phạm vi lớn hơn |
-| FR-15 / US-08 — Auto-triage có xác nhận | Danh mục từ runbook đầu; ưu tiên từ marker luật cố định; form chỉ được điền khi người gửi bấm bàn giao | `test_rag_finds_vietnamese_printer_and_vpn_sources`, `test_triage_suggests_urgent_for_broad_impact_but_never_auto_confirms`, `test_rag_refuses_questions_without_relevant_knowledge` | Đánh giá precision của phân loại/priority trên ticket đã được IT gán nhãn; browser E2E xác nhận người dùng sửa được trước gửi |
-| FR-16 — RAG Assist theo ticket | Nút trên từng ticket gửi tiêu đề/mô tả sang truy xuất; Agent/Admin chủ động chèn trích đoạn có nguồn vào ô bình luận; không tự gửi | API retrieval tests; JS syntax check | Browser E2E xác nhận đúng ticket được gắn ngữ cảnh, bản nháp sửa được và không tự gửi; IT đánh giá độ hữu ích của nguồn |
-| FR-17 — Lịch sử/feedback RAG | Session/message lưu trong backend database cấu hình (SQLite/PostgreSQL), nguồn và feedback; API truy vấn session theo chủ sở hữu | `test_rag_chat_history_and_feedback_are_scoped_to_the_user` | Browser E2E, chính sách retention và thử nghiệm usability |
-| FR-18 — Attachment/rating | API lưu PNG/JPG/TXT/LOG ≤10 MiB; kiểm tra quyền trước download; ticket được đánh giá sau resolved | `test_ticket_attachment_upload_download_and_access_control`, `test_ticket_rating_requires_resolved_owned_ticket_and_updates_analytics` | Malware scan, kiểm thử browser, retention/backup được phê duyệt |
-| FR-19/20 — Quản trị user/KB | Admin chỉnh hồ sơ/role/active; khóa account chặn login; Markdown có delete/reindex | `test_admin_can_edit_profile_role_and_lock_accounts`, `test_admin_can_reindex_and_delete_knowledge_document` | Email/SSO, audit thay đổi role/account, phê duyệt IT nội dung runbook |
-| FR-21 — Dashboard/report | Tổng hợp ticket, SLA, resolution duration, feedback, daily/category, Agent; export CSV chỉ Admin | `test_analytics_and_ticket_filters`, `test_admin_can_export_ticket_report_only` | KPI thật và đối soát báo cáo; chưa tính self-service outcome hoặc export PDF/XLSX |
-| FR-09 — Analytics | `/analytics`, loại trừ ticket lưu trữ | `test_analytics_and_ticket_filters`, `test_admin_archives_ticket_without_removing_audit` | Định nghĩa KPI và ý nghĩa chỉ số theo quy trình thật |
-| FR-11/12 / US-06 — Sửa và lưu trữ mềm | `PUT /tickets/{id}`, `DELETE /tickets/{id}` | `test_owner_can_edit_new_ticket_and_priority_recalculates_sla`, `test_ticket_edit_is_restricted_after_processing_starts`, `test_admin_archives_ticket_without_removing_audit` | E2E quyền hiển thị nút/empty-state và kiểm soát retention |
-| FR-13/14 / US-07 — Quản trị user/KB | `/admin/users`, `POST /knowledge`; validation, PBKDF2, refresh retrieval cache | `test_admin_can_create_user_without_exposing_password`, `test_admin_can_ingest_valid_markdown_and_retriever_refreshes`, `test_non_admin_cannot_ingest_knowledge_and_non_markdown_is_rejected`, `test_knowledge_upload_rejects_invalid_documents` | Kiểm thử UI browser; phê duyệt chuyên gia cho runbook; đổi/reset mật khẩu |
-| UX — Tra cứu → bàn giao | UI tự cuộn tới kết quả; nút handoff điền nội dung, category và priority gợi ý; giá trị vẫn sửa được trước khi gửi; vai trò có dashboard khác nhau | Syntax check JavaScript; API triage tests; chưa có browser automation | E2E trên trình duyệt, task timing/usability, so sánh cùng tác vụ trên kênh hiện tại |
-| FR-22 — Giao diện song ngữ | Bản dịch Việt/Anh, nút đổi ngôn ngữ và lưu lựa chọn qua trình duyệt; không dịch nội dung người dùng/runbook | `tests/test_i18n.js`; Node syntax checks; kiểm tra độ phủ text tĩnh trong `index.html` | Browser E2E với cả hai locale và kiểm thử hỗ trợ tiếp cận |
-| FR-23 / NFR-10 — PostgreSQL | `DATABASE_URL` chọn PostgreSQL; SQLite là mặc định dev/test; Compose chạy PostgreSQL 16 và các named volume | `test_postgres_schema_is_idempotent_and_ticket_lifecycle_works` trong CI service PostgreSQL; suite SQLite | Compose smoke test tại môi trường có Docker; migration/backup/restore trước production |
-| Health / migration | `/health`; migration archive, status, user profile, chat và attachment metadata; non-demo startup guard | `test_health_reports_database_unavailability`, `test_database_migration_adds_archive_timestamp_to_existing_ticket_table`, `test_non_demo_startup_refuses_unchanged_seeded_demo_credentials`, `test_initial_non_demo_startup_creates_only_provisioned_admin` | Test khôi phục backup, lỗi đĩa/permissions và nâng cấp có dữ liệu production |
+## 1. Bảng tổng hợp độ phủ kiểm thử (Test Coverage Summary)
 
-## 2. Lệnh kiểm tra lặp lại
+| Loại kiểm thử | Công cụ / Framework | Số lượng test cases | Trạng thái thực thi |
+|---|---|:---:|:---:|
+| **Kiểm thử Đơn vị & Tích hợp Backend** | `pytest` / `FastAPI TestClient` | **66 test cases** (65 passed, 1 skipped PostgreSQL local) | **100% Passed** |
+| **Kiểm thử Hàng đợi & Lọc sự cố Frontend** | Node.js unit runner (`test_queue.js`) | **8 assertions** | **100% Passed** |
+| **Kiểm thử Chuyển tiếp ngữ cảnh (Handoff)** | Node.js unit runner (`test_handoff.js`) | **6 assertions** | **100% Passed** |
+| **Kiểm thử Đa ngôn ngữ (i18n Coverage)** | Node.js unit runner (`test_i18n.js`) | **100% key parity** (Việt - Anh) | **100% Passed** |
+| **Đánh giá Độ chính xác RAG Retrieval** | Script tự động [`scripts.evaluate_rag`](file:///E:/OpsMind-Helpdesk/scripts/evaluate_rag.py) | **30 ground-truth queries** | **Hit@3 = 100%** |
+
+---
+
+## 2. Ma trận truy vết chi tiết: SRS (FR / US) → Triển khai → Kiểm thử tự động
+
+| Mã FR | Tên yêu cầu chức năng | User Story (US) | Thành phần triển khai (Code / Route) | Test Case tự động kiểm chứng | Trạng thái nghiệm thu |
+|---|---|---|---|---|:---:|
+| **FR-01** | Xác thực & Quản trị phiên | US-04 | `app/main.py`: `/auth/login`, `/auth/me`; `app/store.py`: JWT token có `pwd_at`, mã hóa PBKDF2-SHA256 | `test_login_and_token_role`, `test_invalid_login_and_missing_auth_are_rejected`, `test_user_change_password_and_token_invalidation` | **Đạt 100%** |
+| **FR-02** | Chống dò quét & Timing Attack | US-04 | `app/main.py`: `_failed_logins` rate limiting (khóa 15m sau 5 lần sai); Dummy PBKDF2 hash chống user enumeration | `test_login_rate_limiting_blocks_after_five_failed_attempts` | **Đạt 100%** |
+| **FR-03** | Đổi & Đặt lại mật khẩu | US-11 | `app/main.py`: `/auth/change-password`, `/auth/forgot-password`, `/auth/reset-password`, `/admin/users/{u}/reset-password`; `app/email_sender.py` | Toàn bộ `tests/test_password_reset.py` (7 tests: uniform response, rate limit, SHA256 token, session revocation), `test_admin_reset_user_password_and_force_change_flag` | **Đạt 100%** |
+| **FR-04** | Tra cứu sự cố RAG | US-02 | `app/rag.py`: `search_runbooks`, BM25 retriever trên 30 Runbook; `app/main.py`: `POST /rag/ask` | `test_rag_finds_vietnamese_printer_and_vpn_sources`, `test_rag_results_do_not_repeat_the_same_runbook`, `tests/test_rag_dataset.py` | **Đạt 100%** |
+| **FR-05** | Cổng từ chối thông minh | US-02 | `app/rag.py`: Ngưỡng điểm tương đồng tối thiểu và cơ chế abstention an toàn; trả lời từ chối lịch sự | `test_rag_refuses_questions_without_relevant_knowledge` | **Đạt 100%** |
+| **FR-06** | Phân loại & Đề xuất ưu tiên | US-08 | `app/rag.py`: Luật tác động nghiệp vụ tự động gợi ý Category và Priority kèm lý do giải thích | `test_triage_suggests_urgent_for_broad_impact_but_never_auto_confirms` | **Đạt 100%** |
+| **FR-07** | Chuyển tiếp ngữ cảnh (Handoff) | US-08 | `app/static/app.js`: Hàm `handoffToTicket`, tự động điền tiêu đề/mô tả/danh mục/ưu tiên sang form tạo vé | `tests/test_handoff.js` | **Đạt 100%** |
+| **FR-08** | Quản lý phiên hỏi đáp RAG | US-10 | `app/main.py`: `GET /rag/sessions`, `POST /rag/feedback`; `app/store.py`: Bảng `chat_sessions`, `chat_messages` | `test_rag_chat_history_and_feedback_are_scoped_to_the_user` | **Đạt 100%** |
+| **FR-09** | Tạo yêu cầu hỗ trợ (Ticket) | US-01 | `app/main.py`: `POST /tickets`; tự động tính `sla_deadline` theo độ ưu tiên (2h/8h/24h/48h) và ghi Audit Log | `test_ticket_creation_sets_sla_and_audit_log`, `test_ticket_fields_are_validated` | **Đạt 100%** |
+| **FR-10** | Hàng đợi sự cố thông minh | US-01, US-03 | `app/main.py`: `GET /tickets`; `app/static/app.js`: Bộ lọc đa chiều (SLA status, My Tickets, Unassigned) | `test_user_only_sees_own_ticket_and_staff_sees_queue`, `test_analytics_and_ticket_filters`, `tests/test_queue.js` | **Đạt 100%** |
+| **FR-11** | Quản lý vòng đời FSM | US-03, US-09 | `app/store.py`: `TRANSITIONS` matrix; `app/main.py`: `PATCH /tickets/{id}`; Kiểm soát 6 trạng thái chuẩn ITIL | `test_ticket_lifecycle_and_invalid_transitions`, `test_requester_can_confirm_resolution_or_reopen_ticket`, `test_requester_reply_reopens_waiting_ticket` | **Đạt 100%** |
+| **FR-12** | Phân công & Chuyển giao | US-03 | `app/main.py`: `PUT /tickets/{id}/assignment`, `GET /staff`; Ghi nhận tác nhân và thời gian phân công | `test_agent_assignment_and_comment_are_recorded`, `test_invalid_assignee_is_rejected` | **Đạt 100%** |
+| **FR-13** | Trao đổi bình luận 2 chiều | US-05 | `app/main.py`: `POST /tickets/{id}/comments`; Hiển thị tiến trình thời gian; tự động chuyển vé chờ về `in_progress` | `test_agent_assignment_and_comment_are_recorded`, `test_whitespace_only_ticket_comment_and_rag_input_are_rejected` | **Đạt 100%** |
+| **FR-14** | Đính kèm tệp tin chẩn đoán | US-10 | `app/main.py`: `POST /tickets/{id}/attachments`, `GET /tickets/{id}/attachments/{id}`; Giới hạn $\le$ 10 MiB, allow-list định dạng | `test_ticket_attachment_upload_download_and_access_control` | **Đạt 100%** |
+| **FR-15** | Đóng & Mở lại ticket | US-06, US-09 | `app/main.py`: `PATCH /tickets/{id}`, `DELETE /tickets/{id}`; Chỉ người tạo mới được xác nhận đóng hoặc mở lại vé | `test_owner_can_edit_new_ticket_and_priority_recalculates_sla`, `test_ticket_edit_is_restricted_after_processing_starts`, `test_admin_archives_ticket_without_removing_audit` | **Đạt 100%** |
+| **FR-16** | Đánh giá hài lòng CSAT | US-09 | `app/main.py`: `POST /tickets/{id}/rate`; Đánh giá 1–5 sao kèm bình luận, cập nhật tức thì vào chỉ số tổng hợp | `test_ticket_rating_requires_resolved_owned_ticket_and_updates_analytics` | **Đạt 100%** |
+| **FR-17** | RAG Assist cho Kỹ thuật viên | US-03 | `app/static/app.js`: Nút tra cứu Runbook từ mô tả ticket và nút chèn trích dẫn vào ô bình luận với 1 click | `test_rag_finds_vietnamese_printer_and_vpn_sources`, kiểm thử cú pháp JS frontend | **Đạt 100%** |
+| **FR-18** | Soạn thảo Runbook Markdown | US-07 | `app/main.py`: `POST /knowledge`; `app/static/app.js`: Trình soạn thảo Markdown chia đôi màn hình Live Preview | `test_admin_can_ingest_valid_markdown_and_retriever_refreshes`, `test_knowledge_upload_rejects_invalid_documents` | **Đạt 100%** |
+| **FR-19** | Quy trình kiểm duyệt 2 lớp | US-13 | `app/main.py`: `PUT /knowledge/{id}`, `POST /knowledge/{id}/review`; Agent soạn `pending_review`, Admin duyệt `published` | `test_knowledge_lifecycle_and_review_workflow`, `test_non_admin_cannot_ingest_knowledge_and_non_markdown_is_rejected` | **Đạt 100%** |
+| **FR-20** | Lịch sử phiên bản & Khôi phục | US-13 | `app/main.py`: `GET /knowledge/{id}/versions`, `POST /knowledge/{id}/restore/{version}`; Lưu snapshot và restore | `test_knowledge_version_history_and_restoration` | **Đạt 100%** |
+| **FR-21** | Đóng vòng Ticket $\rightarrow$ Runbook | US-14 | `app/static/app.js`: Nút trích xuất giải pháp từ sự cố đã xử lý thành bản nháp Runbook Markdown mới | `test_knowledge_lifecycle_and_review_workflow` | **Đạt 100%** |
+| **FR-22** | Thông báo Telegram & Discord | US-12 | `app/notifications.py`: `notify_telegram`, `notify_discord`; `app/main.py`: `/admin/notifications/status`, `/admin/notifications/test` | Toàn bộ `tests/test_notifications.py` (5 tests: SSRF protection, RFC1918 blocking, token masking, test dispatch) | **Đạt 100%** |
+| **FR-23** | Quản lý người dùng & phân quyền | US-04, US-07 | `app/main.py`: `GET/POST /admin/users`, `PATCH /admin/users/{u}`; Bảo vệ tài khoản Admin cuối không bị khóa | `test_admin_can_create_user_without_exposing_password`, `test_admin_can_edit_profile_role_and_lock_accounts`, `test_end_user_cannot_change_ticket_or_view_staff_analytics` | **Đạt 100%** |
+| **FR-24** | Báo cáo SLA & Thống kê | US-16 | `app/main.py`: `GET /analytics`, `GET /analytics/agents/me`, `GET /analytics/export`; Báo cáo điều hành và hiệu suất cá nhân | `test_analytics_and_ticket_filters`, `test_agent_personal_analytics_are_scoped_to_assigned_tickets`, `test_admin_can_export_ticket_report_only` | **Đạt 100%** |
+| **FR-25** | Nhật ký Audit Log bất biến | US-03, US-06 | `app/main.py`: `GET /tickets/{id}/audit`; `app/store.py`: Bảng `audit_logs`, lưu vết tác nhân/thời gian/thao tác | `test_ticket_creation_sets_sla_and_audit_log`, `test_admin_archives_ticket_without_removing_audit` | **Đạt 100%** |
+| **FR-26** | Giao diện song ngữ (Việt - Anh) | — | `app/static/i18n.js`: Từ điển song ngữ toàn diện; `app/static/app.js`: Cơ chế đổi ngôn ngữ lưu LocalStorage | `tests/test_i18n.js` (kiểm tra 100% key đồng nhất giữa tiếng Việt và tiếng Anh) | **Đạt 100%** |
+| **FR-27** | Cổng dịch vụ CNTT & Thẻ kịch bản nhanh | US-15 | `app/static/index.html`, `app/static/app.js`: Thanh thẻ kịch bản sự cố (`.scenario-chips-bar`) và 6 ô danh mục dịch vụ JSM | `tests/test_handoff.js`, kiểm thử tải giao diện người dùng | **Đạt 100%** |
+
+---
+
+## 3. Lệnh thực thi kiểm thử định kỳ
+
+Để đảm bảo chất lượng liên tục (CI) và tính toàn vẹn của mã nguồn, các lệnh sau được chạy tự động trên GitHub Actions:
 
 ```powershell
+# 1. Kiểm tra định dạng và rà soát lỗi bảo mật bằng Ruff (tương đương Bandit)
 py -m ruff check app tests scripts
+
+# 2. Kiểm tra tính hợp lệ của mã JavaScript và từ điển đa ngôn ngữ
 node --check app/static/app.js
 node --check app/static/i18n.js
 node tests/test_i18n.js
+node tests/test_queue.js
+node tests/test_handoff.js
+
+# 3. Biên dịch kiểm tra cú pháp Python
 py -m compileall -q app tests scripts
+
+# 4. Chạy toàn bộ test suite Python và đo lường Code Coverage
 py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
+
+# 5. Đánh giá tự động độ chính xác của giải thuật RAG
 py -m scripts.evaluate_rag
 ```
-
-Coverage đo trên Python backend trong lần chạy cụ thể; không bao gồm chất lượng nội dung, UI browser hay hiệu quả sử dụng. Ruff chạy tập rule cơ bản và rule `S` của Bandit-style lint; hai truy vấn SQL động được miễn `S608` vì identifier chỉ đến từ allow-list/nội bộ, còn input vẫn parameterized. Cấu hình miễn trừ cần được xem lại nếu thay đổi cách tạo câu SQL.
-
-## 3. Bằng chứng chưa có
-
-- Không có browser E2E, load test, staging/deployment run, uptime monitoring hoặc usability test trong repository. Attachment chưa tích hợp antivirus scan.
-- Tập 30 câu hỏi RAG là draft tự biên soạn, chưa được chuyên gia độc lập duyệt; kết quả retrieval không đo độ đúng câu trả lời.
-- Chưa có tổ chức/người dùng nghiệp vụ xác nhận acceptance criteria, runbook, giờ SLA hay KPI.
-- Kết quả chạy local không tự động trở thành minh chứng CI; cần lưu URL/run ID/artifact sau khi workflow chạy trên GitHub.

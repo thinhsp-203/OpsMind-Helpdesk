@@ -8,16 +8,23 @@
 ```mermaid
 flowchart LR
   Browser[Web UI: HTML/CSS/JS] -->|HTTP(S) / JSON API| API[FastAPI]
-  API --> Auth[Auth + RBAC]
+  API --> Auth[Auth + RBAC + Rate Limit]
   API --> Tickets[Ticket / SLA / Audit]
-  API --> RAG[RAG retrieval]
+  API --> RAG[RAG Retrieval: BM25 + Synonyms]
+  API --> KBMod[Knowledge Base: 2-stage Review & Versions]
+  API --> Notify[Notification Hub: Telegram / Discord]
+  API --> Email[Email Sender / Password Reset]
   Tickets --> DB[(PostgreSQL / SQLite)]
-  Files[Local attachment storage] --> API
-  RAG --> Markdown[Markdown Knowledge Base]
-  RAG -->|trích đoạn + file nguồn| API
+  Auth --> DB
+  KBMod --> DB
+  KBMod --> Markdown[Markdown Runbook Storage]
+  Files[Local Attachment Storage] --> API
+  RAG --> Markdown
+  RAG -->|Trích đoạn + File nguồn| API
+  Notify -->|HTTPS Allowlist / Anti-SSRF| ExtChannels[Telegram Bot & Discord Webhook]
 ```
 
-Trong demo, ứng dụng web và API chạy cùng FastAPI. `DATABASE_URL` chọn PostgreSQL; nếu không đặt, ứng dụng dùng SQLite. Hai backend lưu người dùng, ticket, bình luận, audit log, attachment metadata và lịch sử RAG. Docker Compose khởi chạy PostgreSQL 16 có named volume; SQLite vẫn là mặc định local và test. Mô-đun truy xuất đọc Markdown, chia đoạn, chuẩn hóa truy vấn tiếng Việt và xếp hạng bằng BM25 có tăng trọng số token xuất hiện trong tiêu đề; mỗi nguồn chỉ xuất hiện một lần trong top-k. Không có dịch vụ LLM bên ngoài. UI có lựa chọn Việt/Anh lưu trong browser; nội dung do người dùng/tác giả nhập không tự dịch.
+Trong hệ thống, ứng dụng web và API chạy cùng FastAPI. `DATABASE_URL` chọn PostgreSQL (cho Docker Compose và Cloud Deployment Neon) hoặc SQLite (cho local test). Cơ sở dữ liệu lưu trữ người dùng, ticket, bình luận, audit log, attachment metadata, lịch sử hỏi đáp RAG, token đặt lại mật khẩu và lịch sử phiên bản Runbook. Phân hệ Notification Hub tích hợp Telegram Bot và Discord Webhook với lớp phòng thủ chống SSRF nghiêm ngặt. Phân hệ Email Sender hỗ trợ gửi link khôi phục mật khẩu tự phục vụ một lần. UI hỗ trợ song ngữ Việt - Anh lưu trong browser LocalStorage.
 
 ## 2. Sơ đồ ngữ cảnh
 
@@ -104,27 +111,87 @@ stateDiagram-v2
   closed --> [*]
 ```
 
-## 6. Quy trình quản trị tri thức/tài khoản
+## 6. Các quy trình nghiệp vụ chính
+
+### 6.1. Quy trình quản trị tri thức & Kiểm duyệt 2 lớp
 
 ```mermaid
 sequenceDiagram
-  actor Admin
+  actor Agent as Kỹ thuật viên (Agent)
+  actor Admin as Quản trị viên (Admin)
   participant UI as Web UI
   participant API as FastAPI
   participant DB as PostgreSQL / SQLite
-  participant KB as Markdown KB
-  Admin->>UI: Nạp runbook hoặc tạo tài khoản
-  UI->>API: POST /knowledge hoặc POST /admin/users
-  API->>API: Xác thực JWT, kiểm tra role Admin và dữ liệu đầu vào
-  alt Tạo tài khoản
-    API->>DB: PBKDF2 hash rồi INSERT username/role
-    DB-->>API: Thành công hoặc trùng username
-  else Nạp runbook
-    API->>API: Kiểm tra .md, UTF-8, H1, kích thước
-    API->>KB: Lưu tệp bằng tên slug duy nhất
-    API->>API: Xóa cache retrieval để index lần sau đọc tài liệu mới
+  participant KB as Markdown Storage
+  participant RAG as RAG Index
+
+  Agent->>UI: Soạn thảo Runbook Markdown & Live Preview
+  Agent->>UI: Bấm gửi duyệt (pending_review)
+  UI->>API: PUT /knowledge/{id} (status: pending_review)
+  API->>DB: Lưu snapshot phiên bản (v1, v2...)
+  API->>KB: Ghi tệp Markdown
+  API-->>UI: Bản nháp chờ duyệt (chưa nạp vào RAG tìm kiếm của User)
+
+  Admin->>UI: Mở tab Phê duyệt tri thức
+  Admin->>UI: Thẩm định nội dung và bấm Phê duyệt
+  UI->>API: POST /knowledge/{id}/review (action: approve)
+  API->>DB: Cập nhật status = published
+  API->>RAG: Làm mới bộ chỉ mục BM25
+  API-->>UI: Xuất bản thành công, User bắt đầu tìm kiếm được
+```
+
+### 6.2. Quy trình khôi phục mật khẩu tự phục vụ qua Email
+
+```mermaid
+sequenceDiagram
+  actor U as Người dùng
+  participant UI as Web UI
+  participant API as FastAPI
+  participant RL as Rate Limiter (5 req/15m)
+  participant DB as PostgreSQL / SQLite
+  participant Mail as Email Sender
+
+  U->>UI: Nhập username hoặc email yêu cầu reset
+  UI->>API: POST /auth/forgot-password
+  API->>RL: Kiểm tra số lần gọi trong 15 phút
+  alt Vượt quá 5 lần/15 phút
+    RL-->>UI: HTTP 429 Too Many Requests
+  else Hợp lệ
+    API->>DB: Tìm tài khoản (nếu không thấy vẫn trả success đồng nhất)
+    API->>API: Sinh token ngẫu nhiên 32 bytes, băm SHA256
+    API->>DB: Lưu token_hash, expires_at = now + 15m
+    API->>Mail: Gửi link reset có chứa raw token
+    API-->>UI: HTTP 200 Thông báo tiếp nhận đồng nhất
   end
-  API-->>UI: Kết quả hoặc lỗi có mã HTTP
+
+  U->>UI: Mở link email, nhập mật khẩu mới (≥12 ký tự)
+  UI->>API: POST /auth/reset-password (token, new_password)
+  API->>DB: Xác thực token_hash chưa dùng và chưa hết hạn
+  API->>DB: Cập nhật password_hash (PBKDF2), đánh dấu token used
+  API->>DB: Cập nhật password_changed_at = now
+  API-->>UI: Thành công! Toàn bộ JWT token cũ bị vô hiệu hóa tức thì
+```
+
+### 6.3. Quy trình thông báo sự cố đa kênh (Telegram & Discord)
+
+```mermaid
+sequenceDiagram
+  actor U as Người dùng / Hệ thống
+  participant API as FastAPI
+  participant Hub as Notification Hub
+  participant Guard as Anti-SSRF Guard
+  participant Ext as Telegram / Discord API
+
+  U->>API: Tạo sự cố mới (POST /tickets) hoặc Chuyển cấp (escalated)
+  API->>Hub: dispatch_ticket_notification(ticket)
+  Hub->>Guard: Kiểm tra an toàn URL webhook/bot
+  alt Phát hiện HTTP, Localhost, IP nội bộ (RFC1918) hoặc AWS metadata
+    Guard-->>Hub: Từ chối kết nối (Chặn đứng SSRF)
+  else Domain hợp lệ (api.telegram.org / discord.com)
+    Guard-->>Hub: Cho phép
+    Hub->>Ext: POST JSON thông điệp Markdown (Ticket ID, Priority, Title, SLA)
+    Ext-->>Hub: HTTP 200 Delivered
+  end
 ```
 
 ## 7. Sơ đồ triển khai demo
@@ -153,6 +220,9 @@ erDiagram
   TICKETS ||--o{ TICKET_ATTACHMENTS : contains
   USERS ||--o{ CHAT_SESSIONS : owns
   CHAT_SESSIONS ||--o{ CHAT_MESSAGES : contains
+  USERS ||--o{ PASSWORD_RESET_TOKENS : requests
+  USERS ||--o{ KB_VERSIONS : authors
+
   USERS {
     string username PK
     string password_hash
@@ -162,6 +232,8 @@ erDiagram
     string department
     string phone
     boolean is_active
+    boolean force_password_change
+    datetime password_changed_at
   }
   TICKETS {
     int id PK
@@ -221,6 +293,23 @@ erDiagram
     string sources
     string feedback
   }
+  PASSWORD_RESET_TOKENS {
+    int id PK
+    string user_id FK
+    string token_hash
+    datetime expires_at
+    datetime used_at
+    datetime created_at
+  }
+  KB_VERSIONS {
+    int id PK
+    string document_identifier
+    int version_number
+    string content
+    string summary
+    string created_by FK
+    datetime created_at
+  }
 ```
 
 ### Từ điển dữ liệu
@@ -228,54 +317,73 @@ erDiagram
 | Bảng | Trường | Ý nghĩa / ràng buộc |
 |---|---|---|
 | `users` | `username` | Khóa chính; 3–50 ký tự, chữ/số/`._-`; được chuẩn hóa chữ thường khi tạo qua API |
-| `users` | `password_hash` | PBKDF2-HMAC-SHA256, salt ngẫu nhiên; không trả qua API |
-| `users` | `role` | `user`, `agent` hoặc `admin` |
-| `users` | `full_name`, `email`, `department`, `phone`, `is_active` | Hồ sơ cơ bản; `is_active=0` chặn đăng nhập và phân công |
+| `users` | `password_hash` | PBKDF2-HMAC-SHA256 (180.000 vòng lặp), salt ngẫu nhiên; không trả qua API |
+| `users` | `role` | Enum: `user` (Nhân viên), `agent` (Kỹ thuật viên) hoặc `admin` (Quản trị viên) |
+| `users` | `full_name`, `email`, `department`, `phone`, `is_active` | Hồ sơ người dùng; `is_active=0` khóa tài khoản, chặn đăng nhập và phân công |
+| `users` | `force_password_change` | Cờ bắt buộc đổi mật khẩu ở lần đăng nhập tiếp theo do Admin đặt lại |
+| `users` | `password_changed_at` | Mốc thời gian đổi mật khẩu UTC; dùng đối soát để vô hiệu hóa JWT cấp trước mốc này (`pwd_at`) |
 | `tickets` | `id` | Khóa chính tăng tự động |
-| `tickets` | `requester`, `assignee` | Khóa ngoại tới `users`; assignee để trống hoặc Agent/Admin |
-| `tickets` | `title`, `description`, `category` | Tiêu đề 5–160, mô tả 10–5000, loại 2–50 ký tự qua API |
-| `tickets` | `priority`, `status` | Enum được ràng buộc ở schema SQLite và API; PostgreSQL cần được tạo từ schema hiện hành |
-| `tickets` | `resolved_at`, `closed_at`, `rating`, `rating_comment` | Mốc hoàn tất và đánh giá 1–5 của chủ ticket |
-| `tickets` | `sla_deadline` | Thời gian UTC; mục tiêu tính bằng giờ lịch theo ưu tiên |
-| `tickets` | `created_at`, `updated_at`, `archived_at` | Mốc UTC ISO-8601; `archived_at` null khi còn hoạt động |
-| `comments` | `ticket_id`, `author` | Khóa ngoại; bình luận gắn ticket và user |
-| `audit_logs` | `ticket_id`, `actor`, `event` | Lịch sử thay đổi; lưu tác nhân/thời gian/trạng thái/chi tiết; ticket archive không xóa log |
-| `ticket_attachments` | `stored_name`, `content_type`, `size_bytes` | Tệp PNG/JPG/TXT/LOG tối đa 10 MiB; tên lưu trữ sinh ngẫu nhiên, download qua API có xác thực |
-| `chat_sessions`, `chat_messages` | `user_id`, `session_id`, `sources`, `feedback` | Lịch sử tra cứu được giới hạn theo chủ phiên; feedback gắn câu trả lời |
+| `tickets` | `requester`, `assignee` | Khóa ngoại tới `users`; `assignee` để trống hoặc trỏ tới Kỹ thuật viên/Admin |
+| `tickets` | `title`, `description`, `category` | Tiêu đề (5–160), mô tả (10–5000), loại (2–50 ký tự) |
+| `tickets` | `priority`, `status` | Enum ràng buộc: Priority (`low`, `medium`, `high`, `urgent`); Status (`new`, `in_progress`, `pending_waiting_user`, `resolved`, `closed`, `escalated`) |
+| `tickets` | `resolved_at`, `closed_at`, `rating`, `rating_comment` | Mốc hoàn tất và đánh giá 1–5 sao của người tạo ticket |
+| `tickets` | `sla_deadline` | Thời gian UTC; mục tiêu cam kết tính theo giờ lịch: 48h (Low), 24h (Medium), 8h (High), 2h (Urgent) |
+| `tickets` | `created_at`, `updated_at`, `archived_at` | Mốc UTC ISO-8601; `archived_at` null khi hoạt động, có giá trị khi lưu trữ mềm |
+| `comments` | `ticket_id`, `author` | Khóa ngoại; chuỗi trao đổi 2 chiều giữa nhân viên và IT |
+| `audit_logs` | `ticket_id`, `actor`, `event` | Nhật ký bất biến; lưu tác nhân/thời gian/trạng thái cũ/mới; lưu trữ ticket không xóa log |
+| `ticket_attachments` | `stored_name`, `content_type`, `size_bytes` | Tệp PNG/JPG/TXT/LOG tối đa 10 MiB; tên lưu trữ UUID ngẫu nhiên; download qua API xác thực |
+| `chat_sessions`, `chat_messages` | `user_id`, `session_id`, `sources`, `feedback` | Lịch sử tra cứu giới hạn theo chủ phiên; feedback 👍 / 👎 phục vụ tinh chỉnh tri thức |
+| `password_reset_tokens` | `token_hash`, `expires_at`, `used_at` | Token đặt lại mật khẩu ngẫu nhiên băm SHA256; hạn sử dụng 15 phút; dùng một lần |
+| `kb_versions` | `document_identifier`, `version_number`, `summary` | Lịch sử phiên bản Runbook (v1, v2...); hỗ trợ đối soát thay đổi và khôi phục (Restore) |
 
-SQLite migration idempotent khi khởi động thêm hồ sơ user, metadata kết quả/đánh giá và các bảng phụ; bảng `tickets` được thay cấu trúc để thêm trạng thái chờ/chuyển cấp mà vẫn giữ dữ liệu SQLite cũ. PostgreSQL được khởi tạo từ schema hiện hành và thêm các cột thiếu, nhưng chưa thay thế constraints cũ hoặc chuyển đổi dữ liệu/backend.
+---
 
 ## 9. API chính
 
-| Method | Endpoint | Quyền / hành vi |
-|---|---|---|
-| GET | `/config` | Công khai; chỉ trả cờ `demo_mode` để UI hiện/ẩn thông tin tài khoản mẫu |
-| POST | `/auth/login` | Công khai |
-| GET | `/auth/me` | Đã đăng nhập |
-| GET | `/staff` | Agent/Admin; danh sách tên/vai trò để chọn người được giao |
-| GET | `/admin/users` | Admin; username/vai trò, không lộ hash |
-| POST | `/admin/users` | Admin; username duy nhất, mật khẩu ≥12 ký tự |
-| PATCH | `/admin/users/{username}` | Admin; hồ sơ, vai trò và active; không thể tự khóa hoặc khóa Admin cuối |
-| GET/POST | `/tickets` | Đã đăng nhập; tạo ticket cho chính mình |
-| GET | `/tickets/{id}` | Chủ ticket hoặc IT; ticket đã lưu trữ trả 404 |
-| PUT | `/tickets/{id}` | Chủ chỉ khi `new`; Agent/Admin trước `closed` |
-| PATCH | `/tickets/{id}` | Agent/Admin; kiểm tra FSM |
-| DELETE | `/tickets/{id}` | Admin; lưu trữ mềm |
-| PUT | `/tickets/{id}/assignment` | Agent/Admin |
-| POST | `/tickets/{id}/comments` | Chủ ticket hoặc IT |
-| POST/GET | `/tickets/{id}/attachments` | Chủ ticket hoặc IT; PNG/JPG/TXT/LOG ≤10 MiB |
-| POST | `/tickets/{id}/rate` | Chủ ticket; ticket đã giải quyết/đóng |
-| GET | `/tickets/{id}/audit` | Chủ ticket hoặc IT |
-| GET | `/analytics` | Agent/Admin |
-| GET | `/analytics/agents/me` | Agent/Admin; ticket gán cho tài khoản hiện tại |
-| GET | `/analytics/export` | Admin; xuất CSV |
-| GET | `/knowledge` | Đã đăng nhập |
-| POST | `/knowledge` | Admin; Markdown UTF-8 ≤256 KiB, có H1 |
-| DELETE/POST | `/knowledge/{source}` | Admin; xóa hoặc làm mới index Markdown |
-| POST | `/rag/ask` | Đã đăng nhập; BM25, nguồn và abstention |
-| GET | `/rag/sessions` | Đã đăng nhập; phiên của chính người dùng |
-| POST | `/rag/feedback` | Đã đăng nhập; feedback câu trả lời trong phiên của mình |
-| GET | `/health` | Công khai |
+| Method | Endpoint | Quyền hạn | Mục đích & Nghiệp vụ |
+|---|---|---|---|
+| GET | `/config` | Công khai | Trả cờ `demo_mode` để giao diện hiển thị thông tin mẫu hỗ trợ kiểm thử |
+| POST | `/auth/login` | Công khai | Đăng nhập; cấp JWT token; rate limit 5 lần sai/15 phút; dummy hash chống timing attack |
+| GET | `/auth/me` | Đã đăng nhập | Lấy thông tin tài khoản hiện tại; kiểm tra token còn hợp lệ so với `pwd_at` |
+| POST | `/auth/change-password` | Đã đăng nhập | Người dùng đổi mật khẩu chủ động; yêu cầu mật khẩu cũ, mật khẩu mới $\ge$ 12 ký tự |
+| POST | `/auth/forgot-password` | Công khai | Yêu cầu link reset mật khẩu qua email; rate limit 5 req/15m; phản hồi đồng nhất |
+| POST | `/auth/reset-password` | Công khai | Đặt lại mật khẩu bằng token email; hủy token và vô hiệu hóa JWT cũ |
+| GET | `/staff` | Agent / Admin | Danh sách nhân sự IT khả dụng để phân công ticket |
+| GET | `/admin/users` | Admin | Danh sách toàn bộ người dùng và vai trò; không lộ hash mật khẩu |
+| POST | `/admin/users` | Admin | Tạo tài khoản mới; kiểm tra mật khẩu $\ge$ 12 ký tự |
+| PATCH | `/admin/users/{username}` | Admin | Chỉnh sửa hồ sơ, vai trò, khóa/mở khóa; chặn tự khóa hoặc khóa Admin duy nhất |
+| POST | `/admin/users/{username}/reset-password` | Admin | Đặt lại mật khẩu nhân viên kèm cờ `force_password_change` |
+| GET | `/admin/notifications/status` | Admin | Xem trạng thái cấu hình Telegram Bot & Discord Webhook (che mờ token) |
+| POST | `/admin/notifications/test` | Admin | Bắn thông báo thử nghiệm tới Telegram hoặc Discord có kiểm tra chống SSRF |
+| GET | `/tickets` | Đã đăng nhập | Xem danh sách ticket (User chỉ xem vé của mình; IT xem toàn bộ hàng đợi) |
+| POST | `/tickets` | Đã đăng nhập | Tạo ticket mới; tự động tính `sla_deadline` và ghi Audit Log |
+| GET | `/tickets/{id}` | Chủ vé / IT | Xem chi tiết sự cố, tiến trình SLA và chuỗi trao đổi |
+| PUT | `/tickets/{id}` | Chủ vé (`new`) / IT | Cập nhật thông tin ticket; tự động tính lại SLA nếu thay đổi Mức độ ưu tiên |
+| PATCH | `/tickets/{id}` | Agent / Admin / Chủ vé | Chuyển đổi trạng thái FSM hoặc đóng/mở lại ticket đã giải quyết |
+| DELETE | `/tickets/{id}` | Admin | Lưu trữ mềm ticket (soft archive); giữ nguyên toàn bộ Audit Log |
+| PUT | `/tickets/{id}/assignment` | Agent / Admin | Nhận hoặc chuyển giao ticket cho Kỹ thuật viên phụ trách |
+| POST | `/tickets/{id}/comments` | Chủ vé / IT | Thêm bình luận trao đổi; người tạo bình luận tự động đưa vé chờ về `in_progress` |
+| POST | `/tickets/{id}/attachments` | Chủ vé / IT | Tải lên tệp chẩn đoán (PNG, JPG, TXT, LOG $\le$ 10 MiB) |
+| GET | `/tickets/{id}/attachments/{aid}` | Chủ vé / IT | Tải về tệp đính kèm an toàn qua xác thực quyền truy cập |
+| POST | `/tickets/{id}/rate` | Chủ vé | Đánh giá sao CSAT (1–5 sao) và phản hồi sau khi ticket được giải quyết |
+| GET | `/tickets/{id}/audit` | Chủ vé / IT | Xem nhật ký kiểm toán bất biến theo thời gian của ticket |
+| GET | `/analytics` | Agent / Admin | Bảng điều khiển phân tích tổng quan: SLA compliance, CSAT, phân bố danh mục |
+| GET | `/analytics/agents/me` | Agent / Admin | Báo cáo hiệu suất cá nhân của chính Kỹ thuật viên (vé được giao, SLA cá nhân) |
+| GET | `/analytics/export` | Admin | Xuất dữ liệu báo cáo sự cố toàn diện dưới định dạng CSV |
+| GET | `/knowledge` | Đã đăng nhập | Danh sách tài liệu Runbook (User chỉ xem `published`; IT xem cả bản nháp) |
+| POST | `/knowledge` | Admin | Nạp tệp Runbook Markdown mới (kiểm tra UTF-8, tiêu đề H1, dung lượng $\le$ 256 KiB) |
+| GET | `/knowledge/{identifier}` | Đã đăng nhập | Xem nội dung chi tiết của một tài liệu Runbook |
+| PUT | `/knowledge/{identifier}` | Agent / Admin | Cập nhật nội dung Runbook; Agent gửi duyệt (`pending_review`); Admin lưu trực tiếp |
+| POST | `/knowledge/{identifier}/review` | Admin | Phê duyệt (`published`) hoặc trả lời từ chối bản nháp Runbook kèm ghi chú |
+| GET | `/knowledge/{identifier}/versions` | Agent / Admin | Xem lịch sử các phiên bản sửa đổi (v1, v2...) của tài liệu Runbook |
+| POST | `/knowledge/{identifier}/restore/{version}` | Admin | Khôi phục nội dung tài liệu về một phiên bản lịch sử cụ thể |
+| DELETE | `/knowledge/{source}` | Admin | Xóa tài liệu Runbook tự tạo (bảo vệ các Runbook chuẩn mặc định hệ thống) |
+| POST | `/knowledge/{source}/reindex` | Admin | Làm mới bộ chỉ mục tìm kiếm BM25 của tài liệu |
+| POST | `/rag/ask` | Đã đăng nhập | Tra cứu tri thức tự phục vụ BM25; trích dẫn nguồn; trả thông báo từ chối an toàn |
+| GET | `/rag/sessions` | Đã đăng nhập | Xem danh sách các phiên hỏi đáp trợ lý RAG của chính người dùng |
+| GET | `/rag/sessions/{session_id}` | Đã đăng nhập | Xem chi tiết chuỗi hội thoại trong một phiên hỏi đáp cụ thể |
+| POST | `/rag/feedback` | Đã đăng nhập | Gửi phản hồi đánh giá hữu ích 👍 hoặc không hữu ích 👎 cho câu trả lời |
+| GET | `/health` | Công khai | Kiểm tra tình trạng kết nối CSDL và sức khỏe của hệ thống |
 
 ## 10. An toàn, lỗi và giới hạn
 

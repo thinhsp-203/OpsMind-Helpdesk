@@ -4,45 +4,111 @@
 **Phiên bản:** 1.0\
 **Trạng thái:** Đặc tả khởi đầu; nhóm/GVHD cần xác nhận phạm vi và chỉ tiêu trước mốc G1.
 
-## 1. Mục đích và phạm vi
+## 1. Mục đích và Phạm vi thực hiện đề tài
 
-Hệ thống hỗ trợ nhân viên tra cứu hướng dẫn CNTT và gửi yêu cầu; IT Support quản lý, phân công, trao đổi, cập nhật ticket; Admin/Agent theo dõi thống kê. Ứng dụng là prototype trình diễn, chưa thay thế nền tảng ITSM hoặc quy trình bảo mật của doanh nghiệp.
+### 1.1. Mục đích đề tài
+Đề tài **OpsMind Helpdesk** nghiên cứu và xây dựng giải pháp Service Desk nội bộ tích hợp kỹ thuật RAG (Retrieval-Augmented Generation) nhằm:
+1. **Tự phục vụ sự cố CNTT cấp 1 (Tier-1 Self-service):** Giúp nhân viên nội bộ nhanh chóng tra cứu giải pháp xử lý sự cố máy tính, mạng, tài khoản và phần mềm dựa trên kho tri thức chuẩn hóa, giảm tải khối lượng công việc lặp lại cho bộ phận IT.
+2. **Chuẩn hóa vòng đời xử lý yêu cầu (Incident Lifecycle Management):** Xây dựng quy trình tiếp nhận, phân loại mức độ ưu tiên, cam kết chất lượng dịch vụ (SLA) và theo dõi xử lý sự cố minh bạch theo chuẩn ITIL thu nhỏ.
+3. **Khép kín vòng đời tri thức (Ticket-to-Knowledge Loop):** Chuyển hóa các giải pháp sự cố thực tế đã xử lý thành tài liệu Runbook mới thông qua quy trình biên tập Markdown và kiểm duyệt 2 lớp.
 
-## 2. Tác nhân và quyền
+### 1.2. Phạm vi thực hiện (In-Scope)
+Hệ thống tập trung vào môi trường vận hành CNTT doanh nghiệp vừa và nhỏ (SMB), bao gồm các phân hệ chính:
+- **Phân hệ Cổng tự phục vụ & Trợ lý Tra cứu RAG:**
+  - Tra cứu sự cố song ngữ (Việt - Anh) trên 30 Runbook doanh nghiệp chuẩn hóa (Mạng, Phần cứng, Phần mềm, Bảo mật).
+  - Trích dẫn chính xác nguồn tài liệu và cơ chế từ chối an toàn với các câu hỏi ngoài phạm vi nghiệp vụ.
+  - Tự động gợi ý Phân loại (Category) và Mức độ ưu tiên (Priority) dựa trên nội dung tra cứu và mức độ ảnh hưởng nghiệp vụ.
+  - Chuyển tiếp ngữ cảnh tra cứu sang yêu cầu hỗ trợ (Ticket Handoff) không cần gõ lại.
+- **Phân hệ Quản lý Ticket & Vòng đời Sự cố:**
+  - Hàng đợi IT thông minh (Smart Queue) hỗ trợ lọc theo SLA, trạng thái, người phụ trách và tìm kiếm từ khóa.
+  - Quản lý FSM chuyển 6 trạng thái chuẩn: `Mới (new)` $\rightarrow$ `Đang xử lý (in_progress)` $\rightarrow$ `Chờ phản hồi (pending_waiting_user)` $\rightarrow$ `Đã giải quyết (resolved)` $\rightarrow$ `Đã đóng (closed)` / `Chuyển cấp (escalated)`.
+  - Tính toán hạn xử lý cam kết (SLA Deadline) theo 4 mức ưu tiên: Khẩn cấp (2h), Cao (8h), Trung bình (24h), Thấp (48h).
+  - Trao đổi bình luận 2 chiều giữa nhân viên và kỹ thuật viên; đính kèm tệp tin chẩn đoán/ảnh chụp màn hình (PNG, JPG, TXT, LOG $\le$ 10 MiB).
+  - Khảo sát mức độ hài lòng khách hàng nội bộ (CSAT 1–5 sao) sau khi giải quyết ticket.
+- **Phân hệ Quản trị Kho Tri thức (Knowledge Base Management):**
+  - Trình soạn thảo Markdown trực quan với khung xem trước thời gian thực (Live Preview chia đôi màn hình).
+  - Quy trình kiểm duyệt 2 lớp: Kỹ thuật viên (Agent) soạn thảo bản nháp (`draft`) và gửi duyệt (`pending_review`); Quản trị viên (Admin) thẩm định và xuất bản (`published`).
+  - Quản lý lịch sử phiên bản (v1, v2...), so sánh và khôi phục (Restore) phiên bản cũ.
+  - Tính năng trích xuất ticket đã giải quyết thành bản nháp Runbook mới (Ticket-to-Knowledge).
+- **Phân hệ Quản trị An toàn thông tin & Định danh:**
+  - Xác thực phiên làm việc qua JWT Token có kiểm tra thời điểm đổi mật khẩu (`pwd_at`).
+  - Chính sách mật khẩu mạnh (tối thiểu 12 ký tự, không trùng tên đăng nhập).
+  - Cơ chế chống tấn công Brute-force đăng nhập (Rate Limiting: khóa tạm sau 5 lần sai trong 15 phút, trả mã HTTP 429).
+  - Chống Timing Attack thông qua Dummy Password Hash.
+  - Tính năng Đổi mật khẩu chủ động và Admin đặt lại mật khẩu kèm cờ bắt buộc đổi ở lần đăng nhập kế tiếp (`force_password_change`).
+  - Khôi phục mật khẩu thông qua liên kết bảo mật gửi qua Email (Reset Token băm một lần, có thời hạn).
+- **Phân hệ Thông báo Đa kênh (Notification Hub):**
+  - Gửi thông báo tự động khi có ticket mới hoặc chuyển cấp khẩn cấp qua Telegram Bot và Discord Webhook.
+- **Phân hệ Báo cáo Quản trị & Giám sát:**
+  - Thống kê tỷ lệ tuân thủ SLA theo từng Kỹ thuật viên, phân bố danh mục sự cố và điểm CSAT.
+  - Nhật ký Audit Log minh bạch, bất biến cho từng thao tác trên ticket; hỗ trợ xuất báo cáo CSV.
+- **Môi trường & Kiến trúc triển khai:**
+  - Hỗ trợ triển khai linh hoạt: Docker Compose (PostgreSQL 16) chạy offline cục bộ trên máy tính bảo vệ và triển khai Cloud Web Service (Render) kết hợp CSDL Serverless (Neon Postgres).
 
-| Tác nhân | Quyền |
-|---|---|
-| End-user | Đăng nhập; chỉ xem ticket của mình; tạo ticket; hỏi Knowledge Base; trao đổi trên ticket của mình |
-| Agent | Xem hàng đợi; phân công cho Agent/Admin; chuyển trạng thái; trao đổi; xem analytics |
-| Admin | Quyền Agent; nạp runbook Markdown; tạo và xem danh sách tài khoản; lưu trữ ticket |
+### 1.3. Giới hạn đề tài & Phạm vi không thực hiện (Out-of-Scope)
+Để tập trung hoàn thiện sâu các nghiệp vụ cốt lõi theo đúng thời lượng đồ án tốt nghiệp, các nội dung sau không nằm trong phạm vi thực hiện:
+- Không tích hợp hệ thống xác thực tập trung doanh nghiệp SSO/SAML/LDAP (Active Directory, Azure AD, Okta) mà sử dụng hệ thống tài khoản nội bộ có mã hóa mật khẩu PBKDF2-SHA256.
+- Không tích hợp module quét mã độc (Antivirus engine) thời gian thực trên tệp đính kèm; hệ thống áp dụng cơ chế phòng vệ bằng danh sách trắng định dạng (Allow-list: PNG, JPG, TXT, LOG) và giới hạn kích thước tối đa 10 MiB.
+- Không tính toán SLA theo lịch làm việc phức tạp (Business Hours / Ngày lễ / Ca trực), chỉ áp dụng giờ lịch liên tục (Calendar Hours) phục vụ mô phỏng thực nghiệm.
+- Không mở cổng kết nối kênh thoại VoIP Call Center hoặc tích hợp WhatsApp/Viber doanh nghiệp trả phí.
+- Không sử dụng giải pháp cơ sở dữ liệu véc-tơ độc lập bên ngoài (như Milvus, Pinecone); RAG sử dụng giải thuật BM25 kết hợp từ điển thuật ngữ CNTT song ngữ và tiền xử lý tiếng Việt chuyên sâu, kèm tùy chọn LLM Synthesis cục bộ/API.
 
-## 3. Yêu cầu chức năng
+---
 
-| ID | Yêu cầu |
-|---|---|
-| FR-01 | Người dùng đăng nhập bằng tài khoản hợp lệ; token có thời hạn; thông tin lỗi đăng nhập không tiết lộ tài khoản tồn tại. Trang đăng nhập chỉ hiển thị tài khoản mẫu khi cấu hình demo bật. |
-| FR-02 | End-user tạo ticket với tiêu đề, mô tả, loại sự cố và ưu tiên; hệ thống gán mã, thời gian, hạn SLA và audit event. |
-| FR-03 | End-user chỉ xem danh sách/chi tiết ticket do mình tạo; Agent/Admin xem hàng đợi và lọc theo trạng thái, loại, từ khóa. |
-| FR-04 | Ticket hỗ trợ `new → in_progress → pending_waiting_user / resolved / escalated`; phản hồi người gửi đưa ticket đang chờ về `in_progress`; từ `resolved` người gửi xác nhận `closed` hoặc yêu cầu xử lý lại; cấm chuyển trạng thái không hợp lệ và không mở lại ticket đã đóng. |
-| FR-05 | Agent/Admin gán ticket cho tài khoản Agent/Admin; thao tác được ghi audit. |
-| FR-06 | Người dùng có quyền trên ticket thêm bình luận; nội dung và thời điểm được lưu. |
-| FR-07 | Hệ thống tính hạn SLA theo ưu tiên; hiển thị/đếm ticket còn mở đã quá hạn. Bản demo tính giờ lịch, không xử lý ngày nghỉ. |
-| FR-08 | Người dùng đặt câu hỏi bằng tiếng Việt/Anh; hệ thống truy xuất các đoạn Markdown liên quan và trả nguồn. Khi không đủ liên quan phải từ chối khẳng định và hướng dẫn tạo ticket. |
-| FR-09 | Agent/Admin xem tổng số ticket, phân bố trạng thái/loại sự cố, số ticket quá SLA và hoạt động gần đây. |
-| FR-10 | Thay đổi trạng thái, giao việc, tạo ticket và bình luận được ghi audit log với tác nhân và thời gian. |
-| FR-11 | Chủ ticket được sửa nội dung khi ticket còn `new`; Agent/Admin được sửa ticket chưa `closed`. Thay đổi được audit; sửa ưu tiên tính lại SLA từ thời điểm sửa. |
-| FR-12 | Admin lưu trữ mềm ticket; ticket lưu trữ bị ẩn khỏi danh sách/analytics nhưng dữ liệu và audit không bị xóa. |
-| FR-13 | Admin tạo tài khoản với username duy nhất, vai trò hợp lệ và mật khẩu tối thiểu 12 ký tự; API không trả password/hash. |
-| FR-14 | Admin nạp runbook Markdown UTF-8 tối đa 256 KiB, có H1; từ chối file không hỗ trợ, nội dung lỗi và tên tệp xung đột. Index truy xuất được làm mới sau khi nạp. |
-| FR-15 | Sau khi tra cứu, hệ thống gợi ý danh mục từ runbook phù hợp nhất và gợi ý ưu tiên bằng luật từ khóa minh bạch; không tự gửi ticket, không tự đổi lựa chọn sau khi người dùng đã chỉnh. Người gửi phải xác nhận/chỉnh trước khi gửi. |
-| FR-16 | Agent/Admin có thể tra cứu Knowledge Base từ tiêu đề và mô tả ticket đang xử lý; khi có nguồn phù hợp, có thể chèn trích đoạn kèm nguồn vào ô phản hồi để xem xét/chỉnh sửa. Hệ thống không tự gửi bình luận hoặc ticket. |
-| FR-17 | Hệ thống lưu lịch sử phiên hỏi đáp của từng tài khoản, nguồn đi cùng câu trả lời và feedback hữu ích/không hữu ích; chỉ chủ phiên xem được nội dung, Agent/Admin không tự động thấy hội thoại riêng. |
-| FR-18 | Người có quyền trên ticket có thể tải lên ảnh PNG/JPG hoặc TXT/LOG không quá 10 MiB; tệp được phục vụ qua API có xác thực và kiểm tra quyền ticket. Người tạo ticket đánh giá 1–5 sao sau khi ticket được giải quyết/đóng. |
-| FR-19 | Admin tạo tài khoản có hồ sơ cơ bản, đổi vai trò và khóa/mở tài khoản; tài khoản bị khóa không đăng nhập hoặc nhận phân công; hệ thống không cho khóa/hạ quyền Admin cuối cùng hoặc tự khóa Admin đang đăng nhập. |
-| FR-20 | Admin tìm, nạp, xóa và làm mới chỉ mục tài liệu Markdown; hệ thống không nhận PDF/DOCX trong prototype. |
-| FR-21 | Agent xem thống kê theo ticket được giao; Admin xem tổng quan, xu hướng/danh mục, thống kê Agent, rating và xuất báo cáo CSV. Chưa có tỷ lệ tự giải quyết nếu không ghi nhận người dùng xác nhận outcome. |
-| FR-22 | Người dùng đổi giao diện giữa tiếng Việt và tiếng Anh; lựa chọn lưu trong trình duyệt. Nội dung ticket, bình luận và runbook giữ nguyên ngôn ngữ nhập. |
-| FR-23 | Ứng dụng dùng PostgreSQL khi có `DATABASE_URL`; khi không cấu hình URL, local development/test dùng SQLite. Docker Compose cung cấp PostgreSQL có persistence. |
+## 2. Đối tượng sử dụng và Phân quyền (Personas & Permissions)
+
+| Tác nhân (Actor) | Chân dung & Bối cảnh sử dụng | Quyền hạn trong hệ thống |
+|---|---|---|
+| **Nhân viên nội bộ (End-user / Employee)** | Nhân viên thuộc các phòng ban (Kế toán, Kinh doanh, Nhân sự, Vận hành...). Thường gặp trục trặc thiết bị, phần mềm văn phòng, tài khoản và mạng khi làm việc. Cần tự tra cứu giải quyết nhanh hoặc tạo ticket theo dõi xử lý mà không cần trực tiếp gọi điện thoại cho IT. | - Tra cứu tri thức tự phục vụ qua trợ lý RAG.<br>- Tạo ticket sự cố mới (tự gõ hoặc handoff từ câu hỏi RAG).<br>- Theo dõi danh sách và tiến độ các ticket do chính mình tạo (không được xem ticket của người khác).<br>- Trao đổi bình luận, tải lên ảnh/log đính kèm trên ticket của mình.<br>- Sửa nội dung ticket khi ticket còn ở trạng thái `new`.<br>- Xác nhận hoàn thành hoặc yêu cầu xử lý lại khi ticket được `resolved`; đánh giá sao CSAT (1-5 sao).<br>- Đổi mật khẩu cá nhân; yêu cầu đặt lại mật khẩu qua email. |
+| **Kỹ thuật viên IT (IT Support / Agent)** | Cán bộ hỗ trợ kỹ thuật CNTT (L1/L2) chịu trách nhiệm tiếp nhận, phân loại và giải quyết các sự cố máy trạm, mạng, ứng dụng văn phòng. Cần công cụ quản lý hàng đợi tập trung, nhận biết vé khẩn cấp/quá hạn SLA và hỗ trợ tra cứu kiến thức nhanh để trả lời người dùng. | - Xem toàn bộ hàng đợi sự cố (Queue) của phòng IT.<br>- Nhận phân công ticket cho bản thân hoặc chuyển giao cho Agent khác.<br>- Cập nhật trạng thái ticket (`in_progress`, `pending_waiting_user`, `resolved`, `escalated`).<br>- Sử dụng tính năng RAG Assist để tra cứu nhanh runbook và chèn giải pháp vào bình luận.<br>- Đính kèm tệp tin chẩn đoán, biên bản xử lý.<br>- Chuyển đổi ticket đã giải quyết thành bản nháp Runbook tri thức mới (Ticket-to-Knowledge).<br>- Soạn thảo và cập nhật bản nháp Runbook, gửi yêu cầu phê duyệt (`pending_review`).<br>- Xem thống kê khối lượng công việc và tỷ lệ SLA cá nhân. |
+| **Quản trị viên IT (IT Administrator / Lead)** | Trưởng bộ phận CNTT hoặc Quản trị viên hệ thống. Chịu trách nhiệm bảo đảm chất lượng dịch vụ IT, chuẩn hóa kho tài liệu quy trình, quản lý nhân sự và giám sát an toàn thông tin toàn hệ thống. | - Kế thừa toàn bộ quyền hạn của Kỹ thuật viên (Agent).<br>- Phê duyệt (`published`), từ chối hoặc trả về bản nháp Runbook tri thức; quản lý phiên bản và khôi phục (Restore).<br>- Xóa mềm hoặc lưu trữ (Archive) ticket.<br>- Quản lý người dùng: tạo tài khoản mới, phân quyền (User/Agent/Admin), khóa/mở khóa tài khoản, đặt lại mật khẩu cưỡng bức (`force_password_change`).<br>- Cấu hình kênh thông báo tự động (Telegram Bot Token, Discord Webhook).<br>- Xem toàn bộ Dashboard báo cáo phân tích SLA compliance, xu hướng sự cố, xếp hạng đánh giá CSAT và xuất báo cáo CSV.<br>- Quản lý cấu hình hệ thống và nhật ký Audit Log. |
+
+---
+
+## 3. Mục tiêu Nghiệp vụ Định lượng (KPI)
+
+Nhóm cam kết 5 chỉ số định lượng xuyên suốt quá trình thực hiện và nghiệm thu đề tài:
+
+| Mã KPI | Tên chỉ số | Mục tiêu định lượng | Phương pháp đo lường & Minh chứng |
+|---|---|---|---|
+| **KPI-01** | Độ chính xác truy xuất RAG (Context Hit@3) | $\ge 90\%$ (Kỳ vọng đạt $100\%$ trên bộ test chuẩn) | Đo bằng script tự động [`scripts.evaluate_rag`](file:///E:/OpsMind-Helpdesk/scripts/evaluate_rag.py) trên bộ câu hỏi đánh giá độc lập (chứa ca có dấu, không dấu, viết tắt CNTT, câu ngoài phạm vi). |
+| **KPI-02** | Tỷ lệ tuân thủ cam kết SLA (SLA Compliance Rate) | $\ge 85\%$ | Tính toán tự động trên Dashboard Analytics: tỷ lệ ticket được giải quyết trước thời hạn `sla_deadline` trên tổng số ticket hoàn thành. |
+| **KPI-03** | Tỷ lệ từ chối an toàn thông tin ngoài phạm vi | $100\%$ | Hệ thống phát hiện và từ chối các câu hỏi không liên quan đến tài liệu kỹ thuật đã nạp, hướng dẫn người dùng tạo ticket; không sinh ảo giác (Hallucination). |
+| **KPI-04** | Thời gian phản hồi truy vấn RAG (Latency p95) | $\le 3000\text{ ms}$ (3 giây) | Đo lường độ trễ từ thời điểm gửi câu hỏi đến khi nhận kết quả truy xuất trên môi trường thử nghiệm tiêu chuẩn. |
+| **KPI-05** | Mức độ hài lòng của người dùng thực tế (CSAT / SUS) | $\ge 80/100$ điểm (Mức Tốt – Xuất sắc) | Khảo sát thực nghiệm tối thiểu 10 người dùng thật thực hiện kịch bản tác vụ và thu thập phiếu đánh giá System Usability Scale (SUS). |
+
+---
+
+## 4. Yêu cầu chức năng chi tiết
+
+| ID | Tên chức năng | Phân hệ | Mô tả nghiệp vụ chi tiết |
+|---|---|---|---|
+| **FR-01** | Xác thực & Quản trị phiên | Bảo mật | Đăng nhập bằng username/mật khẩu; cấp phát JWT token có hạn; mã hóa PBKDF2-SHA256 (180.000 vòng lặp). Kiểm tra cờ `force_password_change` và vô hiệu token khi đổi mật khẩu (`pwd_at`). |
+| **FR-02** | Chống dò quét & Timing Attack | Bảo mật | Khóa tạm thời và trả mã HTTP 429 sau 5 lần đăng nhập thất bại trong 15 phút. Sử dụng dummy password hash ngăn chặn user enumeration qua sai lệch thời gian xử lý. |
+| **FR-03** | Đổi & Đặt lại mật khẩu | Bảo mật | Cho phép người dùng tự đổi mật khẩu (bắt buộc nhập mật khẩu cũ, mật khẩu mới $\ge$ 12 ký tự). Admin có quyền đặt lại mật khẩu tạm cho nhân viên. Hỗ trợ gửi link đặt lại mật khẩu một lần qua Email. |
+| **FR-04** | Tra cứu sự cố RAG | Cổng tự phục vụ | Tìm kiếm ngữ cảnh BM25 trên 30 Runbook sự cố song ngữ; trích xuất đoạn văn phù hợp nhất kèm tên tệp nguồn tham chiếu minh bạch. |
+| **FR-05** | Cổng từ chối thông minh | Cổng tự phục vụ | Phát hiện câu hỏi ngoài phạm vi tri thức hoặc điểm tương đồng thấp; trả thông báo từ chối lịch sự và cung cấp nút bấm chuyển thành Ticket hỗ trợ. |
+| **FR-06** | Phân loại & Đề xuất ưu tiên | Cổng tự phục vụ | Phân tích nội dung sự cố để gợi ý Danh mục (Category) và Mức độ ưu tiên (Priority) theo luật tác động nghiệp vụ (diện rộng $\rightarrow$ Urgent; mất kết nối/lỗi công việc $\rightarrow$ High; lỗi thông thường $\rightarrow$ Medium/Low). Người dùng toàn quyền xác nhận hoặc điều chỉnh. |
+| **FR-07** | Chuyển tiếp ngữ cảnh (Handoff) | Cổng tự phục vụ | Điền sẵn tiêu đề và câu hỏi từ giao diện tra cứu RAG sang form tạo ticket, đính kèm nguồn tham khảo giúp nhân viên không phải gõ lại. |
+| **FR-08** | Quản lý phiên hỏi đáp RAG | Cổng tự phục vụ | Lưu trữ lịch sử hỏi đáp theo từng tài khoản cá nhân; hỗ trợ đánh giá hữu ích 👍 / 👎 để phát hiện khoảng trống tài liệu. |
+| **FR-09** | Tạo yêu cầu hỗ trợ (Ticket) | Xử lý sự cố | Nhân viên tạo ticket với tiêu đề, mô tả, danh mục, mức ưu tiên; hệ thống tự động gán mã ID tăng dần, thời điểm tạo và tính toán `sla_deadline`. |
+| **FR-10** | Hàng đợi sự cố thông minh | Xử lý sự cố | IT Support xem danh sách sự cố; bộ lọc đa chiều: mức độ khẩn cấp, quá hạn SLA, trạng thái chưa phân công hoặc ticket được giao cho tôi. |
+| **FR-11** | Quản lý vòng đời FSM | Xử lý sự cố | Kiểm soát chuyển đổi trạng thái: `new` $\rightarrow$ `in_progress` $\rightarrow$ `pending_waiting_user` / `resolved` / `escalated`. Phản hồi của người gửi tự động đưa ticket chờ về `in_progress`. Cấm chuyển đổi trái phép. |
+| **FR-12** | Phân công & Chuyển giao | Xử lý sự cố | Gán ticket cho Kỹ thuật viên phụ trách; ghi nhận người gán và thời điểm trong lịch sử xử lý. |
+| **FR-13** | Trao đổi bình luận 2 chiều | Xử lý sự cố | Nhân viên và IT trao đổi thông tin trực tiếp trên ticket; hiển thị theo trình tự thời gian kèm định danh người gửi. |
+| **FR-14** | Đính kèm tệp tin chẩn đoán | Xử lý sự cố | Cho phép tải lên tệp tin ảnh (PNG, JPG) hoặc log (TXT, LOG) $\le$ 10 MiB; lưu trữ tên ngẫu nhiên an toàn; kiểm tra quyền truy cập trước khi cho phép tải về. |
+| **FR-15** | Đóng & Mở lại ticket | Xử lý sự cố | Khi ticket được `resolved`, người tạo có quyền xác nhận `closed` hoặc mở lại nếu sự cố tái diễn. Không cho phép mở lại ticket đã ở trạng thái `closed`. |
+| **FR-16** | Đánh giá hài lòng CSAT | Xử lý sự cố | Cho phép người tạo đánh giá từ 1 đến 5 sao kèm bình luận sau khi sự cố được giải quyết; dữ liệu cập nhật tức thì vào điểm hài lòng chung. |
+| **FR-17** | RAG Assist cho Kỹ thuật viên | Hỗ trợ IT | Hỗ trợ IT tra cứu nhanh kho tri thức trực tiếp từ tiêu đề/mô tả sự cố và chèn trích dẫn vào ô bình luận với 1 cú click để phản hồi cho người dùng. |
+| **FR-18** | Soạn thảo Runbook Markdown | Quản trị tri thức | Trình soạn thảo Markdown chuyên nghiệp có khung xem trước Live Preview thời gian thực; phân loại danh mục và hệ thống thẻ từ khóa (tags). |
+| **FR-19** | Quy trình kiểm duyệt 2 lớp | Quản trị tri thức | Kỹ thuật viên soạn thảo bản nháp (`draft`) $\rightarrow$ Gửi yêu cầu phê duyệt (`pending_review`) $\rightarrow$ Admin thẩm định và xuất bản (`published`) hoặc trả về bản nháp kèm ghi chú phản hồi. Người dùng cuối chỉ tra cứu các bài đã `published`. |
+| **FR-20** | Lịch sử phiên bản & Khôi phục | Quản trị tri thức | Tự động lưu trữ lịch sử chỉnh sửa (v1, v2...) kèm tác nhân và tóm tắt thay đổi; cho phép Quản trị viên khôi phục về bất kỳ phiên bản nào trong quá khứ. |
+| **FR-21** | Đóng vòng Ticket $\rightarrow$ Runbook | Quản trị tri thức | Trích xuất trực tiếp thông tin từ ticket đã giải quyết (mô tả lỗi, các bước xử lý trong comment) thành bản nháp Runbook mới, giúp làm giàu kho tri thức từ thực tế. |
+| **FR-22** | Thông báo Telegram & Discord | Tích hợp | Tự động gửi tin nhắn thông báo về kênh Telegram hoặc Discord webhook khi có sự cố mới hoặc sự cố khẩn cấp chuyển cấp; có kiểm tra chặn SSRF. |
+| **FR-23** | Quản lý người dùng & phân quyền | Quản trị hệ thống | Admin tạo tài khoản, đổi vai trò, khóa/mở khóa tài khoản; bảo vệ tài khoản Admin cuối cùng không bị khóa hoặc hạ quyền. |
+| **FR-24** | Báo cáo SLA & Thống kê | Quản trị hệ thống | Dashboard thống kê tổng số sự cố, phân bố trạng thái, tỷ lệ tuân thủ SLA theo Kỹ thuật viên, điểm CSAT trung bình; hỗ trợ xuất báo cáo định dạng CSV. |
+| **FR-25** | Nhật ký Audit Log bất biến | Quản trị hệ thống | Ghi nhận chi tiết mọi thay đổi trạng thái, phân công, chỉnh sửa ticket kèm định danh tác nhân và dấu thời gian; không thể xóa sửa. |
+| **FR-26** | Giao diện song ngữ (Việt - Anh) | Trải nghiệm | Hỗ trợ chuyển đổi ngôn ngữ tức thì trên toàn bộ giao diện; ghi nhớ tùy chọn trong LocalStorage của trình duyệt. |
 
 ## 4. Acceptance Criteria (Given / When / Then)
 
@@ -139,6 +205,11 @@ Các con số sau là **mục tiêu dự kiến trong kế hoạch**, không ph�
 - Lựa chọn ngôn ngữ chỉ áp dụng cho giao diện, không dịch nội dung người dùng hoặc runbook.
 - PostgreSQL hỗ trợ backend demo Compose; chưa có migration dữ liệu SQLite cũ hoặc quy trình upgrade production.
 
-## 7. Ngoài phạm vi phiên bản demo
+## 7. Giới hạn học thuật và Ngoài phạm vi đề tài
 
-Email/SSO, đổi/reset mật khẩu, thông báo push/email, tự đóng ticket sau 72 giờ, lịch làm việc/cấu hình SLA, PDF/DOCX ingestion, pgvector, LLM sinh câu trả lời, antivirus scan, PDF/XLSX report, benchmark quy mô lớn, backup/monitoring production và triển khai cloud thật.
+Để tập trung sâu vào chất lượng giải thuật RAG và vòng đời quản lý sự cố chuẩn ITIL thu nhỏ trong thời gian làm đồ án, các yêu cầu sau được xác định rõ ràng nằm ngoài phạm vi thực hiện:
+- **Xác thực doanh nghiệp:** Không tích hợp SSO/SAML/OAuth2 bên ngoài (Azure AD, Google Workspace, Okta) mà sử dụng hệ thống tài khoản nội bộ bảo mật với PBKDF2-SHA256 và JWT token.
+- **An toàn tệp tin nâng cao:** Không tích hợp Antivirus engine quét mã độc thời gian thực; kiểm soát an toàn bằng allow-list định dạng (PNG, JPG, TXT, LOG) và giới hạn dung lượng 10 MiB.
+- **Tính toán SLA nâng cao:** Chưa xử lý ca làm việc linh hoạt, ngày nghỉ lễ hay múi giờ phức tạp; áp dụng SLA giờ lịch liên tục phục vụ môi trường thực nghiệm.
+- **Định dạng tri thức nâng cao:** Tập trung tối ưu Markdown chuẩn hóa cho 30 runbook; chưa hỗ trợ tự động bóc tách PDF/DOCX phức tạp có biểu bảng và hình ảnh lồng ghép.
+- **Kênh thoại & Mạng xã hội:** Không mở tổng đài VoIP hoặc tích hợp trả phí với WhatsApp Business / Viber do rào cản chi phí và thủ tục xác minh doanh nghiệp; tập trung vào Web Portal, Telegram Bot và Discord Webhook.

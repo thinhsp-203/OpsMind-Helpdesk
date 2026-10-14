@@ -38,7 +38,7 @@ Mở trình duyệt tại `http://127.0.0.1:8000`. Tài liệu API Swagger tại
 
 ---
 
-### Chạy bằng Docker Compose (PostgreSQL)
+### Chạy bằng Docker Compose (PostgreSQL cục bộ)
 
 ```powershell
 docker compose up --build
@@ -48,6 +48,38 @@ Docker Compose sẽ tự động khởi tạo:
 - Dịch vụ **PostgreSQL 16** với cơ chế bảo toàn dữ liệu qua volume `postgres_data`.
 - Ứng dụng **OpsMind Helpdesk** tại cổng `8000`.
 - Tách biệt thư mục lưu trữ tài liệu người dùng tải lên (`/app/data/storage`) với bộ tri thức gốc của hệ thống (`/app/data/knowledge`), đảm bảo dữ liệu không bị ghi đè khi mount volume.
+
+---
+
+### Tích hợp CSDL Đám mây Neon Serverless Postgres (Khuyên dùng cho Render / Cloud)
+
+Hệ thống hỗ trợ hoàn hảo **Neon Serverless Postgres** ([neon.tech](https://neon.tech)) với cơ chế tự động tương thích PgBouncer Connection Pooling (`prepare_threshold=None`) và SSL Mode:
+
+1. **Lấy chuỗi kết nối từ Neon:**
+   - Đăng nhập vào [console.neon.tech](https://console.neon.tech), chọn Project của bạn.
+   - Tại mục **Connection Details**, chọn **Pooled connection** (URL chứa `-pooler` và `sslmode=require`).
+   - Copy chuỗi kết nối dạng: `postgresql://user:password@ep-xyz-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require`
+
+2. **Kiểm tra kết nối và khởi tạo CSDL tự động:**
+   ```powershell
+   py scripts/verify_neon.py "chuoi-ket-noi-neon-cua-ban"
+   ```
+   Script sẽ tự động kiểm tra SSL, đồng bộ Schema, nạp sẵn 30 Runbook doanh nghiệp vào bảng `knowledge_documents` và chạy thử nghiệm ghi/đọc.
+
+3. **Cấu hình trên Render Cloud:**
+   - Vào Render Dashboard → Chọn Web Service `opsmind-helpdesk` → Tab **Environment**.
+   - Thêm biến môi trường:
+     - `DATABASE_URL`: Dán chuỗi kết nối Neon Pooled của bạn.
+     - `DEMO_MODE`: `false` (để bảo vệ dữ liệu sản phẩm) hoặc `true` (nếu cần tài khoản demo).
+     - `INITIAL_ADMIN_PASSWORD`: Mật khẩu quản trị viên ban đầu (ít nhất 12 ký tự).
+   - Render sẽ tự động redeploy và kết nối trực tiếp với CSDL Neon!
+
+4. **Chạy Local kết nối Neon:**
+   - Thêm vào file `.env`:
+     ```env
+     DATABASE_URL=postgresql://user:password@ep-xyz-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require
+     ```
+   - Chạy `py -m uvicorn app.main:app --reload`
 
 ---
 

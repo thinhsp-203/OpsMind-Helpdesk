@@ -80,7 +80,10 @@ def _connect() -> sqlite3.Connection | _PostgresConnection:
         url = _database_url.replace("postgres://", "postgresql://", 1)
         if "@localhost:" in url:
             url = url.replace("@localhost:", "@127.0.0.1:")
-        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row))
+        if "neon.tech" in url and "sslmode=" not in url:
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}sslmode=require"
+        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row, prepare_threshold=None))
     _database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(_database_path, timeout=15)
     connection.row_factory = sqlite3.Row
@@ -322,6 +325,7 @@ def initialize_store() -> None:
                 ("users", "is_active", "INTEGER NOT NULL DEFAULT 1"),
                 ("users", "password_changed_at", "TEXT"),
                 ("users", "force_password_change", "INTEGER NOT NULL DEFAULT 0"),
+                ("knowledge_documents", "is_builtin", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 connection.execute(
                     f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}"
@@ -467,6 +471,14 @@ def reset_store() -> None:
                     "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                     [(name, _password_hash(password), role) for name, password, role in demo_users],
                 )
+            else:
+                admin_name = INITIAL_ADMIN_USERNAME or "admin"
+                admin_pwd = INITIAL_ADMIN_PASSWORD if len(INITIAL_ADMIN_PASSWORD) >= 12 else "Admin12345678!"
+                connection.execute(
+                    "INSERT INTO users (username, password_hash, role, force_password_change) VALUES (?, ?, 'admin', 1)",
+                    (admin_name, _password_hash(admin_pwd)),
+                )
+            seed_builtin_knowledge(connection)
             return
         connection.execute("DELETE FROM audit_logs")
         connection.execute("DELETE FROM comments")

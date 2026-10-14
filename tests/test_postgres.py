@@ -76,9 +76,35 @@ def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works(
     assert store.get_ticket_audit(ticket["id"])
     assert store.list_chat_sessions("user")[0]["id"] == session_id
 
+    # Knowledge documents on PostgreSQL/Neon
+    docs = store.list_knowledge_documents()
+    assert len(docs) >= 30
+    assert any(doc["slug"] == "wifi_network.md" for doc in docs)
+
+    # Custom KB document lifecycle on PostgreSQL
+    new_doc = store.create_knowledge_document(
+        title="Neon Database SOP",
+        category="software",
+        tags="database, neon, postgres",
+        content="# Neon Database SOP\n\nInstructions for managing Neon serverless database.",
+        author="agent",
+    )
+    assert new_doc["status"] == "draft"
+    submitted = store.submit_knowledge_document_for_review(new_doc["id"], "agent")
+    assert submitted["status"] == "pending_review"
+    approved = store.approve_knowledge_document(new_doc["id"], "admin")
+    assert approved["status"] == "published"
+    versions = store.get_knowledge_document_versions(new_doc["id"])
+    assert len(versions) >= 1
+
+    # Verify repeated executions work without prepared statement caching errors
+    for _ in range(10):
+        assert store.get_user_credentials("admin") is not None
+
     store.archive_ticket(ticket["id"], "admin")
     assert store.get_ticket(ticket["id"]) is None
     assert store.get_analytics()["total_tickets"] == 0
     store.reset_store()
     assert store.get_analytics()["total_tickets"] == 0
     assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}
+    assert len(store.list_knowledge_documents()) >= 30

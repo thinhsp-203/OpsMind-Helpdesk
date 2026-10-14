@@ -96,7 +96,11 @@ function setSignedIn(user) {
   document.body.classList.add("signed-in");
   byId("workspaceSidebar").classList.remove("hidden");
   byId("workspacePageLabel").classList.remove("hidden");
-  byId("sidebarUsername").textContent = user.username;
+  const displayName = user.full_name || user.username;
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const avatarEl = byId("sidebarAvatar");
+  if (avatarEl) avatarEl.textContent = initials;
+  byId("sidebarUsername").textContent = displayName;
   byId("sidebarRole").textContent = roleLabels[user.role] || user.role;
   state.user = user;
   clearTicketFilters();
@@ -104,11 +108,12 @@ function setSignedIn(user) {
   byId("loginView").classList.add("hidden");
   byId("workspaceView").classList.remove("hidden");
   byId("logoutBtn").classList.remove("hidden");
+  byId("openProfileBtn")?.classList.remove("hidden");
   byId("changePasswordBtn").classList.remove("hidden");
   const badge = byId("userBadge");
-  badge.textContent = `${user.username} · ${roleLabels[user.role] || user.role}`;
+  badge.textContent = `${displayName} · ${roleLabels[user.role] || user.role}`;
   badge.classList.remove("hidden");
-  byId("greeting").textContent = `Xin chào, ${user.username}`;
+  byId("greeting").textContent = `Xin chào, ${displayName}`;
   byId("roleEyebrow").textContent = roleLabels[user.role].toUpperCase();
   byId("todayLabel").textContent = new Intl.DateTimeFormat(window.helpdeskI18n.locale(), {
     weekday: "long",
@@ -158,7 +163,12 @@ async function login(event) {
     });
     state.token = result.token;
     localStorage.setItem("helpdesk-token", state.token);
-    setSignedIn({ username: result.username, role: result.role });
+    try {
+      const me = await api("/auth/me");
+      setSignedIn(me);
+    } catch {
+      setSignedIn({ username: result.username, role: result.role });
+    }
     if (result.force_password_change) {
       openChangePasswordModal(true);
     }
@@ -182,8 +192,10 @@ function signOut() {
   localStorage.removeItem("helpdesk-token");
   byId("workspaceView").classList.add("hidden");
   byId("logoutBtn").classList.add("hidden");
+  byId("openProfileBtn")?.classList.add("hidden");
   byId("changePasswordBtn").classList.add("hidden");
   byId("userBadge").classList.add("hidden");
+  closeUserProfileModal();
   closeChangePasswordModal();
   closeForgotPasswordModal();
   closeResetPasswordModal();
@@ -220,6 +232,111 @@ function closeChangePasswordModal() {
   modal.classList.add("hidden");
   byId("changePasswordForm").reset();
   setMessage("changePasswordMessage", "");
+}
+
+function openUserProfileModal() {
+  const modal = byId("userProfileModal");
+  if (!modal || !state.user) return;
+  const user = state.user;
+  const displayName = user.full_name || user.username;
+  const initials = displayName.slice(0, 2).toUpperCase();
+
+  const avatarEl = byId("profileAvatarLarge");
+  if (avatarEl) avatarEl.textContent = initials;
+  const nameEl = byId("profileDisplayName");
+  if (nameEl) nameEl.textContent = displayName;
+  const tagEl = byId("profileUsernameTag");
+  if (tagEl) tagEl.textContent = `@${user.username}`;
+  const roleEl = byId("profileRoleBadge");
+  if (roleEl) roleEl.textContent = roleLabels[user.role] || user.role;
+
+  const fnInput = byId("profileFullNameInput");
+  if (fnInput) fnInput.value = user.full_name || "";
+  const emailInput = byId("profileEmailInput");
+  if (emailInput) emailInput.value = user.email || "";
+  const deptInput = byId("profileDepartmentInput");
+  if (deptInput) deptInput.value = user.department || "";
+  const phoneInput = byId("profilePhoneInput");
+  if (phoneInput) phoneInput.value = user.phone || "";
+
+  const activity = user.activity || {};
+  const statCreated = byId("profileStatCreated");
+  if (statCreated) statCreated.textContent = String(activity.tickets_created ?? 0);
+  const statAssigned = byId("profileStatAssigned");
+  if (statAssigned) statAssigned.textContent = String(activity.tickets_assigned ?? 0);
+  const statResolved = byId("profileStatResolved");
+  if (statResolved) statResolved.textContent = String(activity.tickets_resolved ?? 0);
+  byId("profileStatAssignedWrap")?.classList.toggle("hidden", user.role === "user");
+
+  const pwdEl = byId("profilePwdChangedAt");
+  if (pwdEl) {
+    const pwdAt = user.password_changed_at;
+    if (pwdAt) {
+      try {
+        pwdEl.textContent = new Intl.DateTimeFormat(window.helpdeskI18n.locale(), {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date(pwdAt));
+      } catch {
+        pwdEl.textContent = pwdAt;
+      }
+    } else {
+      pwdEl.textContent = window.helpdeskI18n.translate("Chưa cập nhật");
+    }
+  }
+
+  setMessage("userProfileMessage", "");
+  modal.classList.remove("hidden");
+  byId("profileFullNameInput")?.focus();
+}
+
+function closeUserProfileModal() {
+  const modal = byId("userProfileModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  setMessage("userProfileMessage", "");
+}
+
+async function handleProfileUpdate(event) {
+  event.preventDefault();
+  const fullName = byId("profileFullNameInput")?.value.trim() || "";
+  const email = byId("profileEmailInput")?.value.trim() || "";
+  const department = byId("profileDepartmentInput")?.value.trim() || "";
+  const phone = byId("profilePhoneInput")?.value.trim() || "";
+
+  setMessage("userProfileMessage", "Đang lưu thông tin cá nhân...", false);
+  try {
+    const result = await api("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify({
+        full_name: fullName,
+        email,
+        department,
+        phone,
+      }),
+    });
+    state.user = { ...state.user, ...result.profile };
+    const displayName = state.user.full_name || state.user.username;
+    const initials = displayName.slice(0, 2).toUpperCase();
+    const avatarEl = byId("sidebarAvatar");
+    if (avatarEl) avatarEl.textContent = initials;
+    byId("sidebarUsername").textContent = displayName;
+    const profileAvatar = byId("profileAvatarLarge");
+    if (profileAvatar) profileAvatar.textContent = initials;
+    byId("profileDisplayName").textContent = displayName;
+    byId("greeting").textContent = `Xin chào, ${displayName}`;
+    const badge = byId("userBadge");
+    badge.textContent = `${displayName} · ${roleLabels[state.user.role] || state.user.role}`;
+    setMessage("userProfileMessage", result.message || "Cập nhật thông tin cá nhân thành công.", false);
+    setTimeout(() => {
+      closeUserProfileModal();
+    }, 1200);
+  } catch (error) {
+    setMessage("userProfileMessage", error.message || "Không thể cập nhật thông tin cá nhân.");
+  }
 }
 
 async function handleChangePassword(event) {
@@ -2059,8 +2176,32 @@ if (resetPasswordModal) {
   });
 }
 
+byId("openProfileBtn")?.addEventListener("click", openUserProfileModal);
+byId("sidebarUserProfileBtn")?.addEventListener("click", openUserProfileModal);
+byId("sidebarUserProfileBtn")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    openUserProfileModal();
+  }
+});
+byId("userBadge")?.addEventListener("click", openUserProfileModal);
+byId("closeUserProfileBtn")?.addEventListener("click", closeUserProfileModal);
+byId("cancelUserProfileBtn")?.addEventListener("click", closeUserProfileModal);
+byId("userProfileForm")?.addEventListener("submit", handleProfileUpdate);
+byId("profileChangePasswordBtn")?.addEventListener("click", () => {
+  closeUserProfileModal();
+  openChangePasswordModal();
+});
+const userProfileModal = byId("userProfileModal");
+if (userProfileModal) {
+  userProfileModal.addEventListener("click", (event) => {
+    if (event.target === userProfileModal) closeUserProfileModal();
+  });
+}
+
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    closeUserProfileModal();
     closeChangePasswordModal();
     closeForgotPasswordModal();
     closeResetPasswordModal();

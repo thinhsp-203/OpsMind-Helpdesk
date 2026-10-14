@@ -13,7 +13,7 @@
   <div class="sidebar-context"><span class="eyebrow">KHÔNG GIAN LÀM VIỆC</span><strong>Hỗ trợ CNTT nội bộ</strong><span>Tri thức · Yêu cầu · Cộng tác</span></div>
   <span class="nav-caption">ĐIỀU HƯỚNG</span>
   <nav id="workspaceNav" class="workspace-nav hidden" aria-label="Điều hướng workspace"></nav>
-  <div class="sidebar-bottom"><span class="sidebar-avatar">IT</span><div><strong id="sidebarUsername">Tài khoản</strong><small id="sidebarRole"></small></div></div>
+  <div class="sidebar-bottom sidebar-bottom-clickable" id="sidebarUserProfileBtn" role="button" tabindex="0" title="Xem hồ sơ cá nhân"><span class="sidebar-avatar" id="sidebarAvatar">IT</span><div><strong id="sidebarUsername">Tài khoản</strong><small id="sidebarRole"></small></div></div>
 </aside>
 <div class="app-shell">
       <header class="topbar"><span id="workspacePageLabel" class="workspace-page-label hidden">Tổng quan</span>
@@ -24,7 +24,8 @@
         <div class="topbar-right">
           <span id="serviceStateLabel" class="service-state service-state-checking"><i></i> Đang kiểm tra dịch vụ</span>
           <button id="languageToggle" class="button button-quiet language-toggle" type="button" aria-label="Switch language">English</button>
-          <span id="userBadge" class="user-badge hidden"></span>
+          <span id="userBadge" class="user-badge user-badge-clickable hidden" title="Xem hồ sơ cá nhân"></span>
+          <button id="openProfileBtn" class="button button-quiet hidden" type="button">Hồ sơ cá nhân</button>
           <button id="changePasswordBtn" class="button button-quiet hidden" type="button">Đổi mật khẩu</button>
           <button id="logoutBtn" class="button button-quiet hidden" type="button">Đăng xuất</button>
         </div>
@@ -472,6 +473,78 @@
         </section>
       </main>
       <footer class="footer"><span>HELPDESK RAG · PROTOTYPE HỌC THUẬT</span><span>Hướng dẫn tri thức không thay thế xác nhận của IT.</span></footer>
+    </div>
+
+    <div id="userProfileModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="userProfileTitle">
+      <div class="modal-card profile-modal-card">
+        <div class="modal-header">
+          <div>
+            <h2 id="userProfileTitle">Hồ sơ cá nhân</h2>
+            <p id="userProfileSubtitle">Xem và cập nhật thông tin liên hệ trong hệ thống Helpdesk.</p>
+          </div>
+          <button id="closeUserProfileBtn" class="button button-quiet" type="button">✕ Đóng</button>
+        </div>
+
+        <div class="profile-hero">
+          <div class="profile-avatar-large" id="profileAvatarLarge">IT</div>
+          <div class="profile-hero-info">
+            <div class="profile-hero-names">
+              <h3 id="profileDisplayName">Tên người dùng</h3>
+              <span id="profileUsernameTag" class="profile-username-tag">@username</span>
+            </div>
+            <div class="profile-badge-row">
+              <span id="profileRoleBadge" class="tag tag-role">Nhân viên</span>
+              <span class="tag tag-status-resolved">Đang hoạt động</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-stats-grid">
+          <div class="profile-stat-item">
+            <span class="profile-stat-number" id="profileStatCreated">0</span>
+            <span class="profile-stat-label">Yêu cầu đã gửi</span>
+          </div>
+          <div class="profile-stat-item" id="profileStatAssignedWrap">
+            <span class="profile-stat-number" id="profileStatAssigned">0</span>
+            <span class="profile-stat-label">Đang phụ trách</span>
+          </div>
+          <div class="profile-stat-item">
+            <span class="profile-stat-number" id="profileStatResolved">0</span>
+            <span class="profile-stat-label">Đã hoàn tất</span>
+          </div>
+        </div>
+
+        <form id="userProfileForm">
+          <div class="profile-form-grid">
+            <label class="field" for="profileFullNameInput">Họ và tên <span>*</span>
+              <input id="profileFullNameInput" name="full_name" maxlength="120" placeholder="Nhập họ và tên đầy đủ" required />
+            </label>
+            <label class="field" for="profileEmailInput">Email liên hệ <span>*</span>
+              <input id="profileEmailInput" name="email" type="email" maxlength="254" placeholder="email@opsmind.internal" required />
+            </label>
+            <label class="field" for="profileDepartmentInput">Phòng ban / Bộ phận
+              <input id="profileDepartmentInput" name="department" maxlength="120" placeholder="Ví dụ: Kế toán, Kinh doanh, IT..." />
+            </label>
+            <label class="field" for="profilePhoneInput">Số điện thoại nội bộ
+              <input id="profilePhoneInput" name="phone" type="tel" maxlength="40" placeholder="Ví dụ: 0912345678 hoặc số máy lẻ" />
+            </label>
+          </div>
+
+          <p id="userProfileMessage" class="form-message" role="status"></p>
+
+          <div class="profile-actions-bar">
+            <div class="profile-security-summary">
+              <span class="muted">Mật khẩu đổi lần cuối:</span>
+              <strong id="profilePwdChangedAt">Chưa cập nhật</strong>
+              <button id="profileChangePasswordBtn" class="link-button" type="button">Đổi mật khẩu</button>
+            </div>
+            <div class="modal-actions">
+              <button id="cancelUserProfileBtn" class="button button-quiet" type="button">Hủy</button>
+              <button class="button button-primary" type="submit">Lưu thay đổi</button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
 
     <div id="changePasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">

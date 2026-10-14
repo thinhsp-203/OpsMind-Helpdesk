@@ -513,6 +513,28 @@ def get_user_credentials(username: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def get_user_activity(username: str) -> dict[str, int]:
+    with _connect() as connection:
+        created = connection.execute(
+            "SELECT COUNT(*) AS count FROM tickets WHERE requester = ? AND archived_at IS NULL",
+            (username,),
+        ).fetchone()["count"]
+        assigned = connection.execute(
+            "SELECT COUNT(*) AS count FROM tickets WHERE assignee = ? AND archived_at IS NULL",
+            (username,),
+        ).fetchone()["count"]
+        resolved = connection.execute(
+            "SELECT COUNT(*) AS count FROM tickets WHERE assignee = ? AND status IN ('resolved', 'closed') AND archived_at IS NULL",
+            (username,),
+        ).fetchone()["count"]
+    return {
+        "tickets_created": int(created),
+        "tickets_assigned": int(assigned),
+        "tickets_resolved": int(resolved),
+    }
+
+
+
 def count_active_admins() -> int:
     with _connect() as connection:
         return int(

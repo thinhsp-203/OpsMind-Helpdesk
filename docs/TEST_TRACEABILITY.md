@@ -11,7 +11,7 @@
 
 | Loại kiểm thử | Công cụ / Framework | Số lượng test cases | Trạng thái thực thi |
 |---|---|:---:|:---:|
-| **Kiểm thử Đơn vị & Tích hợp Backend** | `pytest` / `FastAPI TestClient` | **66 test cases** (65 passed, 1 skipped PostgreSQL local) | **100% Passed** |
+| **Kiểm thử Đơn vị & Tích hợp Backend** | `pytest` / `FastAPI TestClient` | **67 test cases** (66 passed, 1 skipped PostgreSQL local) | **100% Passed** |
 | **Kiểm thử Hàng đợi & Lọc sự cố Frontend** | Node.js unit runner (`test_queue.js`) | **8 assertions** | **100% Passed** |
 | **Kiểm thử Chuyển tiếp ngữ cảnh (Handoff)** | Node.js unit runner (`test_handoff.js`) | **6 assertions** | **100% Passed** |
 | **Kiểm thử Đa ngôn ngữ (i18n Coverage)** | Node.js unit runner (`test_i18n.js`) | **100% key parity** (Việt - Anh) | **100% Passed** |
@@ -50,6 +50,7 @@
 | **FR-25** | Nhật ký Audit Log bất biến | US-03, US-06 | `app/main.py`: `GET /tickets/{id}/audit`; `app/store.py`: Bảng `audit_logs`, lưu vết tác nhân/thời gian/thao tác | `test_ticket_creation_sets_sla_and_audit_log`, `test_admin_archives_ticket_without_removing_audit` | **Đạt 100%** |
 | **FR-26** | Giao diện song ngữ (Việt - Anh) | — | `app/static/i18n.js`: Từ điển song ngữ toàn diện; `app/static/app.js`: Cơ chế đổi ngôn ngữ lưu LocalStorage | `tests/test_i18n.js` (kiểm tra 100% key đồng nhất giữa tiếng Việt và tiếng Anh) | **Đạt 100%** |
 | **FR-27** | Cổng dịch vụ CNTT & Thẻ kịch bản nhanh | US-15 | `app/static/index.html`, `app/static/app.js`: Thanh thẻ kịch bản sự cố (`.scenario-chips-bar`) và 6 ô danh mục dịch vụ JSM | `tests/test_handoff.js`, kiểm thử tải giao diện người dùng | **Đạt 100%** |
+| **FR-28** | Quản lý Hồ sơ & Thông tin cá nhân | US-17 | `app/main.py`: `GET /auth/me`, `PATCH /auth/profile`; `app/store.py`: `get_user_activity`; `app/static/index.html`: `#userProfileModal` | `test_user_profile_endpoints` | **Đạt 100%** |
 
 ---
 

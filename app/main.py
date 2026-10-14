@@ -158,6 +158,31 @@ class UserUpdate(BaseModel):
         return self
 
 
+class ProfileUpdate(BaseModel):
+    full_name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=254)
+    department: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        return _validated_email(value)
+
+    @field_validator("full_name", "department", "phone", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def require_update_field(self) -> "ProfileUpdate":
+        if not any(
+            getattr(self, field_name) is not None for field_name in type(self).model_fields
+        ):
+            raise ValueError("Cần cung cấp ít nhất một trường để cập nhật.")
+        return self
+
+
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(min_length=1, max_length=200)
     new_password: str = Field(min_length=12, max_length=200)
@@ -457,9 +482,54 @@ async def change_password(request: Request, payload: ChangePasswordRequest) -> d
 
 
 @app.get("/auth/me", tags=["auth"])
-async def who_am_i(request: Request) -> dict[str, str]:
+async def who_am_i(request: Request) -> dict[str, Any]:
     user = await current_user(request)
-    return user
+    profile = store.get_user_credentials(user["username"])
+    if not profile:
+        return user
+    activity = store.get_user_activity(user["username"])
+    return {
+        "username": profile["username"],
+        "role": profile["role"],
+        "full_name": profile.get("full_name") or "",
+        "email": profile.get("email") or "",
+        "department": profile.get("department") or "",
+        "phone": profile.get("phone") or "",
+        "is_active": bool(profile.get("is_active", 1)),
+        "password_changed_at": profile.get("password_changed_at") or "",
+        "activity": activity,
+    }
+
+
+@app.patch("/auth/profile", tags=["auth"])
+async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[str, Any]:
+    actor = await current_user(request)
+    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="Cần cung cấp ít nhất một trường để cập nhật.")
+
+    safe_updates = {
+        k: v for k, v in updates.items() if k in {"full_name", "email", "department", "phone"}
+    }
+    updated = store.update_user(actor["username"], safe_updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    activity = store.get_user_activity(actor["username"])
+    return {
+        "status": "success",
+        "message": "Cập nhật thông tin cá nhân thành công.",
+        "profile": {
+            "username": updated["username"],
+            "role": updated["role"],
+            "full_name": updated.get("full_name") or "",
+            "email": updated.get("email") or "",
+            "department": updated.get("department") or "",
+            "phone": updated.get("phone") or "",
+            "is_active": bool(updated.get("is_active", 1)),
+            "password_changed_at": updated.get("password_changed_at") or "",
+            "activity": activity,
+        },
+    }
 
 
 @app.post("/auth/forgot-password", tags=["auth"])

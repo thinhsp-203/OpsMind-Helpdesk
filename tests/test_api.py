@@ -85,10 +85,11 @@ def test_login_and_token_role() -> None:
     response = client.post("/auth/login", json={"username": "agent", "password": "agent"})
     assert response.status_code == 200
     assert response.json()["role"] == "agent"
-    assert client.get("/auth/me", headers={"Authorization": f"Bearer {response.json()['token']}"}).json() == {
-        "username": "agent",
-        "role": "agent",
-    }
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {response.json()['token']}"}).json()
+    assert me["username"] == "agent"
+    assert me["role"] == "agent"
+    assert "activity" in me
+
 
 
 def test_invalid_login_and_missing_auth_are_rejected() -> None:
@@ -1079,5 +1080,60 @@ def test_knowledge_version_history_and_restoration() -> None:
 
     # Clean up
     client.delete(f"/knowledge/{slug}", headers=admin_headers)
+
+
+def test_user_profile_endpoints() -> None:
+    user_headers = auth("user")
+
+    # 1. GET /auth/me returns profile & activity
+    me = client.get("/auth/me", headers=user_headers).json()
+    assert me["username"] == "user"
+    assert me["role"] == "user"
+    assert "activity" in me
+    assert "tickets_created" in me["activity"]
+    assert "tickets_assigned" in me["activity"]
+    assert "tickets_resolved" in me["activity"]
+
+    # 2. PATCH /auth/profile updates contact info
+    res = client.patch(
+        "/auth/profile",
+        headers=user_headers,
+        json={
+            "full_name": "Nguyễn Văn Người Dùng",
+            "email": "user.test@opsmind.internal",
+            "department": "Kế toán",
+            "phone": "0912345678",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert data["profile"]["full_name"] == "Nguyễn Văn Người Dùng"
+    assert data["profile"]["email"] == "user.test@opsmind.internal"
+    assert data["profile"]["department"] == "Kế toán"
+    assert data["profile"]["phone"] == "0912345678"
+
+    # 3. GET /auth/me reflects updated contact info
+    me_after = client.get("/auth/me", headers=user_headers).json()
+    assert me_after["full_name"] == "Nguyễn Văn Người Dùng"
+    assert me_after["email"] == "user.test@opsmind.internal"
+    assert me_after["department"] == "Kế toán"
+    assert me_after["phone"] == "0912345678"
+
+    # 4. PATCH /auth/profile rejects invalid email
+    bad_email = client.patch(
+        "/auth/profile",
+        headers=user_headers,
+        json={"email": "invalid-email-address"},
+    )
+    assert bad_email.status_code == 422
+
+    # 5. PATCH /auth/profile requires at least one field
+    empty_update = client.patch("/auth/profile", headers=user_headers, json={})
+    assert empty_update.status_code == 422
+
+    # 6. Unauthenticated requests are rejected
+    assert client.patch("/auth/profile", json={"full_name": "Hacker"}).status_code == 401
+
 
 

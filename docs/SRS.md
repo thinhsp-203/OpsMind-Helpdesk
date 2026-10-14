@@ -176,6 +176,7 @@ Nhóm cam kết 5 chỉ số định lượng xuyên suốt quá trình thực h
 | **FR-25** | Nhật ký Audit Log bất biến | Quản trị hệ thống | Ghi nhận chi tiết mọi thay đổi trạng thái, phân công, chỉnh sửa ticket kèm định danh tác nhân và dấu thời gian; không thể xóa sửa. |
 | **FR-26** | Giao diện song ngữ (Việt - Anh) | Trải nghiệm | Hỗ trợ chuyển đổi ngôn ngữ tức thì trên toàn bộ giao diện; ghi nhớ tùy chọn trong LocalStorage của trình duyệt. |
 | **FR-27** | Cổng dịch vụ CNTT & Thẻ kịch bản nhanh | Cổng tự phục vụ | Cung cấp danh mục dịch vụ CNTT trực quan phân loại theo nhóm sự cố (Phần mềm, Tài khoản, Mạng/VPN, Thiết bị, Khẩn cấp) và thanh thẻ kịch bản xử lý nhanh (Lỗi VPN, Quên mật khẩu, Kẹt máy in, Cấp phần mềm, Sự cố bảo mật) kích hoạt tra cứu RAG chỉ với 1 thao tác click. |
+| **FR-28** | Quản lý Hồ sơ & Thông tin cá nhân | Người dùng & Bảo mật | Cho phép mọi người dùng đã đăng nhập (End-User, Agent, Admin) xem thông tin danh tính, vai trò, trạng thái bảo mật (ngày đổi mật khẩu gần nhất), số liệu thống kê hoạt động cá nhân (số vé đã gửi, số vé đang phụ trách, số vé đã hoàn tất) và tự cập nhật thông tin liên hệ (họ và tên, email, phòng ban, số điện thoại nội bộ) qua modal trực quan. |
 
 ---
 
@@ -276,6 +277,12 @@ Nhóm cam kết 5 chỉ số định lượng xuyên suốt quá trình thực h
 **Given** Kỹ thuật viên IT đã đăng nhập vào hệ thống\
 **When** truy cập bảng điều khiển cá nhân (`/analytics/agents/me`)\
 **Then** hệ thống chỉ hiển thị các chỉ số liên quan đến các ticket được phân công cho chính kỹ thuật viên đó (số vé đang xử lý, số vé đã giải quyết, tỷ lệ tuân thủ cam kết SLA cá nhân) và không bị lẫn với dữ liệu tổng thể của toàn đội ngũ.
+
+### US-17 — Xem và Cập nhật Hồ sơ cá nhân người dùng
+
+**Given** người dùng (Nhân viên, Kỹ thuật viên, Quản trị viên) đã đăng nhập vào hệ thống\
+**When** bấm vào nút "Hồ sơ cá nhân" trên thanh công cụ hoặc khung đại diện tài khoản ở thanh điều hướng bên\
+**Then** hệ thống hiển thị modal Hồ sơ cá nhân với đầy đủ ảnh đại diện/chữ viết tắt, tên hiển thị, tên đăng nhập, huy hiệu vai trò, trạng thái tài khoản đang hoạt động, thống kê số lượng vé cá nhân, ngày đổi mật khẩu lần cuối; người dùng có thể chỉnh sửa và lưu họ tên, email, phòng ban, số điện thoại nội bộ; hệ thống kiểm tra định dạng email và cập nhật tức thì lên thanh tiêu đề mà không cần tải lại trang.
 
 ---
 

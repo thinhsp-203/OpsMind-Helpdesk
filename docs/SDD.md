@@ -344,7 +344,8 @@ erDiagram
 |---|---|---|---|
 | GET | `/config` | Công khai | Trả cờ `demo_mode` để giao diện hiển thị thông tin mẫu hỗ trợ kiểm thử |
 | POST | `/auth/login` | Công khai | Đăng nhập; cấp JWT token; rate limit 5 lần sai/15 phút; dummy hash chống timing attack |
-| GET | `/auth/me` | Đã đăng nhập | Lấy thông tin tài khoản hiện tại; kiểm tra token còn hợp lệ so với `pwd_at` |
+| GET | `/auth/me` | Đã đăng nhập | Lấy đầy đủ hồ sơ người dùng (họ tên, email, phòng ban, điện thoại, ngày đổi MK) và thống kê hoạt động vé cá nhân |
+| PATCH | `/auth/profile` | Đã đăng nhập | Người dùng tự cập nhật thông tin liên hệ cá nhân (họ tên, email có kiểm tra cú pháp, phòng ban, số điện thoại) |
 | POST | `/auth/change-password` | Đã đăng nhập | Người dùng đổi mật khẩu chủ động; yêu cầu mật khẩu cũ, mật khẩu mới $\ge$ 12 ký tự |
 | POST | `/auth/forgot-password` | Công khai | Yêu cầu link reset mật khẩu qua email; rate limit 5 req/15m; phản hồi đồng nhất |
 | POST | `/auth/reset-password` | Công khai | Đặt lại mật khẩu bằng token email; hủy token và vô hiệu hóa JWT cũ |

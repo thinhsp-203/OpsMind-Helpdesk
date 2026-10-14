@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: opsmind-helpdesk
+    env: docker
+    plan: free
+    region: singapore
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TOKEN_EXPIRE_MINUTES
+        value: "120"

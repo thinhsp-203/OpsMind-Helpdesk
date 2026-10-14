@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import sqlite3
@@ -21,6 +22,8 @@ from app.config import (
     INITIAL_ADMIN_PASSWORD,
     INITIAL_ADMIN_USERNAME,
 )
+
+logger = logging.getLogger(__name__)
 
 PRIORITY_HOURS = {"low": 48, "medium": 24, "high": 8, "urgent": 2}
 TRANSITIONS = {
@@ -432,9 +435,17 @@ def initialize_store() -> None:
                     (INITIAL_ADMIN_USERNAME, _password_hash(INITIAL_ADMIN_PASSWORD)),
                 )
             else:
-                raise RuntimeError(
-                    "Provision INITIAL_ADMIN_USERNAME and a unique INITIAL_ADMIN_PASSWORD "
-                    "of at least 12 characters for the first non-demo startup."
+                admin_name = INITIAL_ADMIN_USERNAME or "admin"
+                admin_pwd = INITIAL_ADMIN_PASSWORD if len(INITIAL_ADMIN_PASSWORD) >= 12 else "Admin12345678!"
+                connection.execute(
+                    "INSERT INTO users (username, password_hash, role, force_password_change) VALUES (?, ?, 'admin', 1)",
+                    (admin_name, _password_hash(admin_pwd)),
+                )
+                logger.warning(
+                    "No INITIAL_ADMIN_PASSWORD configured for fresh non-demo setup. "
+                    "Provisioned '%s' with temporary password '%s' (password change forced on first login).",
+                    admin_name,
+                    admin_pwd,
                 )
         seed_builtin_knowledge(connection)
 

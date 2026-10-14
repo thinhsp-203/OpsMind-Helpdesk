@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 import re
@@ -19,7 +20,9 @@ TOKEN_RE = re.compile(r"[a-z0-9]+")
 BASE_KNOWLEDGE_DIR = Path(__file__).resolve().parent.parent / "data" / "knowledge"
 STORAGE_KNOWLEDGE_DIR = Path(config.STORAGE_PATH).resolve() / "knowledge"
 KNOWLEDGE_DIR = BASE_KNOWLEDGE_DIR
-STOP_WORDS = {
+DICTIONARY_PATH = Path(__file__).resolve().parent.parent / "data" / "rag_dictionary.json"
+
+DEFAULT_STOP_WORDS = {
     "a", "an", "and", "are", "bao", "biet", "bi", "bị", "but", "cach", "can",
     "cannot", "cant", "cho", "co", "cua", "dang", "de", "did", "du", "duoc",
     "gio", "giup", "ha", "hay", "how", "i", "in", "initiate", "is", "it", "la",
@@ -28,7 +31,7 @@ STOP_WORDS = {
     "tho", "thoi", "thu", "tiet", "to", "toi", "va", "ve", "viec", "viet", "voi",
     "what", "when", "where", "why", "with", "work", "works", "you",
 }
-SYNONYMS = {
+DEFAULT_SYNONYMS = {
     "wifi": "network",
     "wireless": "network",
     "internet": "network",
@@ -56,8 +59,16 @@ SYNONYMS = {
     "mfa": "mfa",
     "authenticator": "mfa",
 }
-MIN_RELEVANCE = 0.12
-CATEGORY_BY_SOURCE = {
+DEFAULT_COMPOUNDS = {
+    ("may", "in"): "printer",
+    ("chung", "thu", "so"): "certificate",
+    ("chung", "thu"): "certificate",
+    ("chu", "ky", "so"): "certificate",
+    ("ky", "so"): "certificate",
+    ("thu", "muc"): "access",
+    ("login", "approval", "request"): "mfa",
+}
+DEFAULT_CATEGORY_BY_SOURCE = {
     "ad_account_lockout.md": "security",
     "bitlocker_recovery_key.md": "security",
     "certificate_signature.md": "security",
@@ -89,7 +100,7 @@ CATEGORY_BY_SOURCE = {
     "windows_license_activation.md": "software",
     "windows_update.md": "software",
 }
-URGENT_MARKERS = (
+DEFAULT_URGENT_MARKERS = (
     "toan cong ty",
     "ca phong",
     "nhieu nguoi",
@@ -99,7 +110,7 @@ URGENT_MARKERS = (
     "ro ri du lieu",
     "gateway down",
 )
-HIGH_PRIORITY_MARKERS = (
+DEFAULT_HIGH_PRIORITY_MARKERS = (
     "khong the lam viec",
     "khong vao duoc",
     "khong the dang nhap",
@@ -107,6 +118,103 @@ HIGH_PRIORITY_MARKERS = (
     "loi xac thuc",
     "chung thu het han",
 )
+DEFAULT_OUT_OF_SCOPE_PATTERNS = (
+    "thoi tiet",
+    "bai tho",
+    "lam tho",
+    "nau an",
+    "bong da",
+    "chuyen xe",
+    "gia vang",
+    "ty gia",
+    "phim anh",
+    "du lich",
+)
+
+
+def load_rag_dictionary(dict_file: Path | None = None) -> tuple[
+    set[str],
+    dict[str, str],
+    dict[tuple[str, ...], str],
+    dict[str, str],
+    tuple[str, ...],
+    tuple[str, ...],
+    tuple[str, ...],
+]:
+    target = dict_file or DICTIONARY_PATH
+    if target.is_file():
+        try:
+            with target.open(encoding="utf-8") as f:
+                raw = json.load(f)
+            stop_words = set(raw.get("stop_words", [])) or DEFAULT_STOP_WORDS
+            synonyms = raw.get("synonyms", {}) or DEFAULT_SYNONYMS
+
+            compounds_raw = raw.get("compounds", {})
+            if isinstance(compounds_raw, dict):
+                compounds = {
+                    tuple(k.split()): v for k, v in compounds_raw.items()
+                }
+            else:
+                compounds = DEFAULT_COMPOUNDS
+
+            category_by_source = raw.get("category_by_source", {}) or DEFAULT_CATEGORY_BY_SOURCE
+            urgent_markers = tuple(raw.get("urgent_markers", [])) or DEFAULT_URGENT_MARKERS
+            high_priority_markers = tuple(raw.get("high_priority_markers", [])) or DEFAULT_HIGH_PRIORITY_MARKERS
+            out_of_scope_patterns = tuple(raw.get("out_of_scope_patterns", [])) or DEFAULT_OUT_OF_SCOPE_PATTERNS
+            return (
+                stop_words,
+                synonyms,
+                compounds,
+                category_by_source,
+                urgent_markers,
+                high_priority_markers,
+                out_of_scope_patterns,
+            )
+        except Exception as exc:
+            logger.warning("Failed to load RAG dictionary from %s, using defaults: %s", target, exc)
+
+    return (
+        DEFAULT_STOP_WORDS,
+        DEFAULT_SYNONYMS,
+        DEFAULT_COMPOUNDS,
+        DEFAULT_CATEGORY_BY_SOURCE,
+        DEFAULT_URGENT_MARKERS,
+        DEFAULT_HIGH_PRIORITY_MARKERS,
+        DEFAULT_OUT_OF_SCOPE_PATTERNS,
+    )
+
+
+(
+    STOP_WORDS,
+    SYNONYMS,
+    COMPOUNDS,
+    CATEGORY_BY_SOURCE,
+    URGENT_MARKERS,
+    HIGH_PRIORITY_MARKERS,
+    OUT_OF_SCOPE_PATTERNS,
+) = load_rag_dictionary()
+
+MIN_RELEVANCE = 0.12
+
+
+def reload_rag_dictionary(dict_file: Path | None = None) -> None:
+    global STOP_WORDS, SYNONYMS, COMPOUNDS, CATEGORY_BY_SOURCE, URGENT_MARKERS, HIGH_PRIORITY_MARKERS, OUT_OF_SCOPE_PATTERNS
+    (
+        STOP_WORDS,
+        SYNONYMS,
+        COMPOUNDS,
+        CATEGORY_BY_SOURCE,
+        URGENT_MARKERS,
+        HIGH_PRIORITY_MARKERS,
+        OUT_OF_SCOPE_PATTERNS,
+    ) = load_rag_dictionary(dict_file)
+    load_knowledge_base.cache_clear()
+    build_retrieval_index.cache_clear()
+
+
+def is_out_of_scope(query: str) -> bool:
+    folded = _fold_text(query)
+    return any(pattern in folded for pattern in OUT_OF_SCOPE_PATTERNS)
 
 
 def _normalize_title(path: Path) -> str:
@@ -121,30 +229,19 @@ def _fold_text(text: str) -> str:
 
 def _tokens(text: str) -> list[str]:
     words = TOKEN_RE.findall(_fold_text(text))
-    compounds = {
-        ("may", "in"): "printer",
-        ("chung", "thu", "so"): "certificate",
-        ("chung", "thu"): "certificate",
-        ("chu", "ky", "so"): "certificate",
-        ("ky", "so"): "certificate",
-        ("thu", "muc"): "access",
-        ("login", "approval", "request"): "mfa",
-    }
+    sorted_compounds = sorted(COMPOUNDS.items(), key=lambda item: len(item[0]), reverse=True)
     normalized = []
     index = 0
     while index < len(words):
-        compound = next(
-            (
-                (parts, canonical)
-                for parts, canonical in compounds.items()
-                if tuple(words[index:index + len(parts)]) == parts
-            ),
-            None,
-        )
-        if compound:
-            parts, canonical = compound
-            normalized.append(canonical)
-            index += len(parts)
+        matched = False
+        for parts, canonical in sorted_compounds:
+            p_len = len(parts)
+            if index + p_len <= len(words) and tuple(words[index:index + p_len]) == parts:
+                normalized.append(canonical)
+                index += p_len
+                matched = True
+                break
+        if matched:
             continue
         word = words[index]
         index += 1
@@ -312,6 +409,8 @@ def build_retrieval_index() -> list[dict[str, Any]]:
 
 
 def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]]:
+    if is_out_of_scope(query):
+        return []
     passages = build_retrieval_index()
     query_terms = set(_tokens(query))
     if not passages or not query_terms:
@@ -464,6 +563,26 @@ def synthesize_answer_with_llm(
 
 
 def generate_answer(question: str) -> dict[str, Any]:
+    if is_out_of_scope(question):
+        return {
+            "answer": (
+                "Yêu cầu của bạn nằm ngoài phạm vi hỗ trợ kỹ thuật CNTT của hệ thống OpsMind. "
+                "Hệ thống chỉ hỗ trợ giải quyết sự cố thiết bị, phần mềm, mạng và tài khoản doanh nghiệp. "
+                "Nếu bạn gặp sự cố CNTT, vui lòng mô tả lỗi hoặc tạo ticket hỗ trợ."
+            ),
+            "sources": [],
+            "matches": [],
+            "grounded": False,
+            "triage": {
+                "category": "general",
+                "category_reason": "Yêu cầu nằm ngoài phạm vi hỗ trợ kỹ thuật CNTT.",
+                "priority": "low",
+                "priority_reason": "Ngoài phạm vi hỗ trợ kỹ thuật.",
+                "requires_confirmation": False,
+            },
+            "llm_generated": False,
+        }
+
     matches = retrieve_relevant_context(question)
     triage = suggest_ticket_triage(question, matches)
     if not matches:

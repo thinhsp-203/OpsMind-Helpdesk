@@ -90,11 +90,19 @@ def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works(
         author="agent",
     )
     assert new_doc["status"] == "draft"
-    submitted = store.submit_knowledge_document_for_review(new_doc["id"], "agent")
-    assert submitted["status"] == "pending_review"
-    approved = store.approve_knowledge_document(new_doc["id"], "admin")
-    assert approved["status"] == "published"
-    versions = store.get_knowledge_document_versions(new_doc["id"])
+    submitted = store.update_knowledge_document(
+        new_doc["id"],
+        {"status": "pending_review"},
+        actor="agent",
+    )
+    assert submitted is not None and submitted["status"] == "pending_review"
+    approved = store.review_knowledge_document(
+        new_doc["id"],
+        action="approve",
+        reviewer="admin",
+    )
+    assert approved is not None and approved["status"] == "published"
+    versions = store.list_knowledge_versions(new_doc["id"])
     assert len(versions) >= 1
 
     # Verify repeated executions work without prepared statement caching errors

@@ -128,7 +128,7 @@ function setSignedIn(user) {
   byId("toggleUploadKnowledgeBtn").classList.toggle("hidden", user.role !== "admin");
   byId("adminUsersPanel").classList.toggle("hidden", user.role !== "admin");
   byId("adminNotificationsPanel")?.classList.toggle("hidden", user.role !== "admin");
-  byId("assistantTitle").textContent = isStaff ? "Tra cứu runbook IT" : "Tìm cách xử lý trước";
+  byId("assistantTitle").textContent = isStaff ? "Tra cứu runbook IT" : "IT Helpdesk Agent";
   byId("assistantIntro").textContent = isStaff
     ? "Tra cứu hướng dẫn nội bộ có nguồn để phản hồi nhất quán cho người gửi."
     : "Mô tả lỗi để tìm hướng dẫn nội bộ. Nếu chưa xử lý được, chuyển tiếp thành yêu cầu IT.";
@@ -404,7 +404,11 @@ function setWorkspaceView(view) {
   if (view === "notifications" && state.user?.role === "admin") loadNotificationStatus();
   document.querySelectorAll("#workspaceView .workspace-panel").forEach((panel) => {
     const views = panel.dataset.view.split(/\s+/);
-    const roleHidden = (panel.id === "employeeWorkflowNote" || panel.id === "serviceCatalogSection") && state.user.role !== "user";
+    const roleHidden = (
+      (panel.id === "employeeWorkflowNote" || panel.id === "serviceCatalogSection") && state.user.role !== "user"
+    ) || (
+      panel.id === "assistantPanel" && view === "dashboard" && state.user.role !== "user"
+    );
     panel.classList.toggle("hidden", roleHidden || !views.includes(view));
   });
   document.querySelectorAll(".workspace-nav-button").forEach((button) => {
@@ -2121,6 +2125,13 @@ byId("newChatBtn").addEventListener("click", () => {
   byId("ragResult").replaceChildren();
   byId("ragResult").classList.add("hidden");
   byId("ragQuestion").focus();
+});
+document.querySelector(".scenario-chips-bar")?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-question]");
+  if (!button) return;
+  byId("ragQuestion").value = button.dataset.question;
+  byId("ragForm").requestSubmit();
+  byId("ragResult")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 byId("popularQuestions").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-question]");

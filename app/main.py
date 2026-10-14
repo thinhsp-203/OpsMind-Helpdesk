@@ -22,7 +22,11 @@ from app.config import (
     TOKEN_EXPIRE_MINUTES,
 )
 from app import store
-from app.telegram_notify import notify_ticket_created
+from app.notifications import (
+    dispatch_ticket_notification,
+    get_notification_channels_status,
+    send_test_notification,
+)
 from app.rag import (
     BASE_KNOWLEDGE_DIR,
     STORAGE_KNOWLEDGE_DIR,
@@ -269,6 +273,10 @@ class KnowledgeReviewRequest(BaseModel):
     feedback: str | None = Field(default=None, max_length=1000)
 
 
+class NotificationTestRequest(BaseModel):
+    channel: Literal["telegram", "discord"]
+
+
 async def current_user(request: Request) -> dict[str, str]:
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
@@ -501,6 +509,32 @@ async def admin_reset_user_password(
     return {"message": f"Đã đặt lại mật khẩu cho tài khoản {username}."}
 
 
+@app.get("/admin/notifications/status", tags=["admin"])
+async def get_notifications_status(request: Request) -> dict:
+    actor = await current_user(request)
+    if actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới được xem cấu hình thông báo.")
+    return get_notification_channels_status()
+
+
+@app.post("/admin/notifications/test", tags=["admin"])
+async def test_notification_channel(request: Request, payload: NotificationTestRequest) -> dict:
+    actor = await current_user(request)
+    if actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới được gửi thông báo thử nghiệm.")
+    ok = send_test_notification(payload.channel)
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Không thể gửi thông báo tới kênh {payload.channel}. Vui lòng kiểm tra lại token/webhook và biến môi trường.",
+        )
+    return {
+        "success": True,
+        "channel": payload.channel,
+        "message": f"Đã gửi thông báo thử nghiệm thành công tới {payload.channel}.",
+    }
+
+
 @app.get("/tickets", tags=["tickets"])
 async def get_tickets(
     request: Request,
@@ -534,7 +568,7 @@ async def create_new_ticket(request: Request, payload: TicketCreate, background_
         priority=payload.priority,
         requester=user["username"],
     )
-    background_tasks.add_task(notify_ticket_created, dict(ticket))
+    background_tasks.add_task(dispatch_ticket_notification, dict(ticket))
     return {"message": "Đã tạo ticket.", "ticket": ticket}
 
 

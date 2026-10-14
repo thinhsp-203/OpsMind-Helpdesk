@@ -120,12 +120,14 @@ function setSignedIn(user) {
   const isStaff = user.role === "agent" || user.role === "admin";
   byId("createSection").classList.toggle("hidden", isStaff);
   byId("employeeWorkflowNote").classList.toggle("hidden", isStaff);
+  byId("serviceCatalogSection")?.classList.toggle("hidden", isStaff);
   byId("analyticsSection").classList.remove("hidden");
   byId("statResolutionCard").classList.toggle("hidden", !isStaff);
   byId("statRatingCard").classList.toggle("hidden", !isStaff);
   byId("knowledgePanel").classList.toggle("hidden", !isStaff);
   byId("toggleUploadKnowledgeBtn").classList.toggle("hidden", user.role !== "admin");
   byId("adminUsersPanel").classList.toggle("hidden", user.role !== "admin");
+  byId("adminNotificationsPanel")?.classList.toggle("hidden", user.role !== "admin");
   byId("assistantTitle").textContent = isStaff ? "Tra cứu runbook IT" : "Tìm cách xử lý trước";
   byId("assistantIntro").textContent = isStaff
     ? "Tra cứu hướng dẫn nội bộ có nguồn để phản hồi nhất quán cho người gửi."
@@ -183,6 +185,8 @@ function signOut() {
   byId("changePasswordBtn").classList.add("hidden");
   byId("userBadge").classList.add("hidden");
   closeChangePasswordModal();
+  closeForgotPasswordModal();
+  closeResetPasswordModal();
   byId("loginView").classList.remove("hidden");
   byId("loginMessage").textContent = "";
   byId("ticketList").replaceChildren();
@@ -256,6 +260,102 @@ async function handleChangePassword(event) {
   }
 }
 
+function openForgotPasswordModal() {
+  const modal = byId("forgotPasswordModal");
+  if (!modal) return;
+  byId("forgotPasswordForm")?.reset();
+  setMessage("forgotPasswordMessage", "");
+  modal.classList.remove("hidden");
+  byId("forgotIdentifierInput")?.focus();
+}
+
+function closeForgotPasswordModal() {
+  const modal = byId("forgotPasswordModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  byId("forgotPasswordForm")?.reset();
+  setMessage("forgotPasswordMessage", "");
+}
+
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  const input = byId("forgotIdentifierInput");
+  const identifier = input ? input.value.trim() : "";
+  if (!identifier) return;
+  setMessage("forgotPasswordMessage", "Đang gửi yêu cầu...", false);
+  try {
+    const result = await api("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ identifier }),
+    });
+    setMessage("forgotPasswordMessage", result.message, false);
+  } catch (error) {
+    setMessage("forgotPasswordMessage", error.message);
+  }
+}
+
+function openResetPasswordModal(token = "") {
+  const modal = byId("resetPasswordModal");
+  if (!modal) return;
+  byId("resetPasswordForm")?.reset();
+  setMessage("resetPasswordMessage", "");
+  if (token) {
+    byId("resetTokenInput").value = token;
+  }
+  modal.classList.remove("hidden");
+  if (token) {
+    byId("resetNewPasswordInput")?.focus();
+  } else {
+    byId("resetTokenInput")?.focus();
+  }
+}
+
+function closeResetPasswordModal() {
+  const modal = byId("resetPasswordModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  byId("resetPasswordForm")?.reset();
+  setMessage("resetPasswordMessage", "");
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const token = byId("resetTokenInput").value.trim();
+  const newPassword = byId("resetNewPasswordInput").value;
+  const confirmPassword = byId("resetConfirmPasswordInput").value;
+
+  if (newPassword !== confirmPassword) {
+    setMessage("resetPasswordMessage", "Mật khẩu xác nhận không khớp.");
+    return;
+  }
+
+  setMessage("resetPasswordMessage", "Đang cập nhật mật khẩu...", false);
+  try {
+    const result = await api("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    closeResetPasswordModal();
+    setMessage("loginMessage", result.message || "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.", false);
+    byId("password").value = "";
+    byId("password").focus();
+    if (window.location.hash.includes("reset-token")) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+  } catch (error) {
+    setMessage("resetPasswordMessage", error.message);
+  }
+}
+
+function checkResetPasswordTokenInUrl() {
+  const hash = window.location.hash || "";
+  const match = hash.match(/reset-token=([^&]+)/);
+  if (match && match[1]) {
+    const token = decodeURIComponent(match[1]);
+    openResetPasswordModal(token);
+  }
+}
+
 async function refreshWorkspace() {
   if (state.user.role !== "user") state.staff = await api("/staff");
   await Promise.all([
@@ -264,7 +364,10 @@ async function refreshWorkspace() {
   ]);
   if (state.user.role !== "user") await loadAnalytics();
   if (state.user.role === "agent") await loadAgentAnalytics();
-  if (state.user.role === "admin") await loadAdminUsers();
+  if (state.user.role === "admin") {
+    await loadAdminUsers();
+    await loadNotificationStatus();
+  }
   await loadRagSessions();
 }
 
@@ -273,7 +376,7 @@ function configureWorkspaceNavigation(role) {
     ? [["dashboard", "Tổng quan"], ["assistant", "Trợ lý IT"], ["tickets", "Ticket của tôi"], ["submit", "Tạo yêu cầu"]]
     : role === "agent"
       ? [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["personal", "Thống kê của tôi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"]]
-      : [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"], ["users", "Người dùng"], ["reports", "Báo cáo"]];
+      : [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"], ["users", "Người dùng"], ["notifications", "Kênh thông báo"], ["reports", "Báo cáo"]];
   const nav = byId("workspaceNav");
   nav.replaceChildren();
   items.forEach(([view, label]) => {
@@ -281,7 +384,7 @@ function configureWorkspaceNavigation(role) {
     button.type = "button";
     button.dataset.view = view;
     button.dataset.label = label;
-    const icons = { dashboard: "▦", assistant: "✦", tickets: "▤", submit: "+", knowledge: "▧", users: "♙", reports: "▥", personal: "◷" };
+    const icons = { dashboard: "▦", assistant: "✦", tickets: "▤", submit: "+", knowledge: "▧", users: "♙", notifications: "🔔", reports: "▥", personal: "◷" };
     const icon = node("span", "nav-icon", icons[view] || "•");
     icon.setAttribute("aria-hidden", "true");
     button.prepend(icon);
@@ -298,9 +401,10 @@ function setWorkspaceView(view) {
   const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
   byId("workspacePageLabel").textContent = window.helpdeskI18n.translate(activeButton?.dataset.label || "OpsMind");
   if (view === "assistant") loadAssistantTickets();
+  if (view === "notifications" && state.user?.role === "admin") loadNotificationStatus();
   document.querySelectorAll("#workspaceView .workspace-panel").forEach((panel) => {
     const views = panel.dataset.view.split(/\s+/);
-    const roleHidden = panel.id === "employeeWorkflowNote" && state.user.role !== "user";
+    const roleHidden = (panel.id === "employeeWorkflowNote" || panel.id === "serviceCatalogSection") && state.user.role !== "user";
     panel.classList.toggle("hidden", roleHidden || !views.includes(view));
   });
   document.querySelectorAll(".workspace-nav-button").forEach((button) => {
@@ -1620,6 +1724,53 @@ async function createAdminUser(event) {
   }
 }
 
+async function loadNotificationStatus() {
+  if (state.user?.role !== "admin") return;
+  try {
+    const data = await api("/admin/notifications/status");
+    const tg = data.telegram || {};
+    const tgBadge = byId("telegramStatusBadge");
+    const tgUser = byId("telegramBotUsername");
+    const tgChat = byId("telegramChatId");
+    if (tgBadge) {
+      tgBadge.textContent = tg.enabled ? "Đã kết nối" : "Chưa kết nối";
+      tgBadge.className = `tag ${tg.enabled ? "tag-status-published" : "tag-status-draft"}`;
+    }
+    if (tgUser) tgUser.textContent = tg.enabled ? "Đã cấu hình" : "Chưa cấu hình";
+    if (tgChat) tgChat.textContent = tg.target || "Chưa cấu hình";
+
+    const dc = data.discord || {};
+    const dcBadge = byId("discordStatusBadge");
+    const dcUrl = byId("discordWebhookUrl");
+    if (dcBadge) {
+      dcBadge.textContent = dc.enabled ? "Đã kết nối" : "Chưa kết nối";
+      dcBadge.className = `tag ${dc.enabled ? "tag-status-published" : "tag-status-draft"}`;
+    }
+    if (dcUrl) dcUrl.textContent = dc.target || "Chưa cấu hình";
+  } catch (error) {
+    console.error("Không thể tải trạng thái kênh thông báo:", error);
+  }
+}
+
+async function testNotification(channel) {
+  const messageId = channel === "telegram" ? "telegramTestMessage" : "discordTestMessage";
+  const buttonId = channel === "telegram" ? "testTelegramBtn" : "testDiscordBtn";
+  const button = byId(buttonId);
+  if (button) button.disabled = true;
+  setMessage(messageId, "Đang gửi thông báo thử nghiệm...", false);
+  try {
+    const result = await api("/admin/notifications/test", {
+      method: "POST",
+      body: JSON.stringify({ channel }),
+    });
+    setMessage(messageId, result.message || "Gửi thông báo thử nghiệm thành công.", false);
+  } catch (error) {
+    setMessage(messageId, error.message);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function loadAnalytics() {
   try {
     const analytics = await api("/analytics");
@@ -1827,9 +1978,35 @@ if (changePasswordModal) {
     }
   });
 }
+
+byId("openForgotPasswordBtn")?.addEventListener("click", openForgotPasswordModal);
+byId("cancelForgotPasswordBtn")?.addEventListener("click", closeForgotPasswordModal);
+byId("forgotPasswordForm")?.addEventListener("submit", handleForgotPassword);
+const forgotPasswordModal = byId("forgotPasswordModal");
+if (forgotPasswordModal) {
+  forgotPasswordModal.addEventListener("click", (event) => {
+    if (event.target === forgotPasswordModal) {
+      closeForgotPasswordModal();
+    }
+  });
+}
+
+byId("cancelResetPasswordBtn")?.addEventListener("click", closeResetPasswordModal);
+byId("resetPasswordForm")?.addEventListener("submit", handleResetPassword);
+const resetPasswordModal = byId("resetPasswordModal");
+if (resetPasswordModal) {
+  resetPasswordModal.addEventListener("click", (event) => {
+    if (event.target === resetPasswordModal) {
+      closeResetPasswordModal();
+    }
+  });
+}
+
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeChangePasswordModal();
+    closeForgotPasswordModal();
+    closeResetPasswordModal();
     byId("knowledgeEditorModal")?.classList.add("hidden");
     byId("knowledgeVersionsModal")?.classList.add("hidden");
   }
@@ -1850,6 +2027,24 @@ if (knowledgeVersionsModal) {
     }
   });
 }
+
+byId("refreshNotificationsBtn")?.addEventListener("click", loadNotificationStatus);
+byId("testTelegramBtn")?.addEventListener("click", () => testNotification("telegram"));
+byId("testDiscordBtn")?.addEventListener("click", () => testNotification("discord"));
+
+document.querySelectorAll(".service-tile").forEach((tile) => {
+  tile.addEventListener("click", () => {
+    const category = tile.dataset.category;
+    if (category && byId("ticketCategory")) {
+      byId("ticketCategory").value = category;
+    }
+    setWorkspaceView("submit");
+    byId("ticketTitle")?.focus();
+  });
+});
+
+checkResetPasswordTokenInUrl();
+window.addEventListener("hashchange", checkResetPasswordTokenInUrl);
 
 byId("openCreateKnowledgeBtn")?.addEventListener("click", () => openKnowledgeEditor());
 byId("toggleUploadKnowledgeBtn")?.addEventListener("click", () => {

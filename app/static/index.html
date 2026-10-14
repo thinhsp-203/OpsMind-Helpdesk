@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f3f6fb" />
     <title>Bàn hỗ trợ CNTT | Helpdesk RAG</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20261010-filter-3" />
+    <link rel="stylesheet" href="/static/styles.css?v=20261014-jsm-ui" />
   </head>
   <body>
     <aside id="workspaceSidebar" class="workspace-sidebar hidden" aria-label="Menu chính">
@@ -48,7 +48,10 @@
             <p>Đăng nhập để tiếp tục đến Helpdesk.</p>
             <label for="username">Tên đăng nhập</label>
             <input id="username" name="username" autocomplete="username" required />
-            <label for="password">Mật khẩu</label>
+            <div class="login-field-header">
+              <label for="password">Mật khẩu</label>
+              <button type="button" id="openForgotPasswordBtn" class="link-button">Quên mật khẩu?</button>
+            </div>
             <input id="password" name="password" type="password" autocomplete="current-password" required />
             <button class="button button-primary button-wide" type="submit">Đăng nhập <span>→</span></button>
             <p id="loginMessage" class="form-message" role="status"></p>
@@ -70,7 +73,34 @@
             <span class="date-chip" id="todayLabel"></span>
           </div>
 
-          
+          <div id="serviceCatalogSection" class="service-catalog-section hidden workspace-panel" data-view="dashboard">
+            <div class="service-catalog-header">
+              <span class="eyebrow">CỔNG DỊCH VỤ CNTT</span>
+              <h2>Bạn cần hỗ trợ gì hôm nay?</h2>
+            </div>
+            <div class="service-catalog-grid">
+              <button type="button" class="service-tile" data-category="network">
+                <span class="tile-icon">🌐</span>
+                <strong>Mạng & Wi-Fi / VPN</strong>
+                <small>Wi-Fi, FortiClient, OpenVPN, kết nối Internet</small>
+              </button>
+              <button type="button" class="service-tile" data-category="software">
+                <span class="tile-icon">💻</span>
+                <strong>Phần mềm & Ứng dụng</strong>
+                <small>Outlook, Windows Update, BSOD, ERP</small>
+              </button>
+              <button type="button" class="service-tile" data-category="hardware">
+                <span class="tile-icon">🖨</span>
+                <strong>Thiết bị & Phần cứng</strong>
+                <small>Máy in, Scan SMB, USB Token, màn hình</small>
+              </button>
+              <button type="button" class="service-tile" data-category="security">
+                <span class="tile-icon">🛡</span>
+                <strong>Tài khoản & Phân quyền</strong>
+                <small>Khóa tài khoản, MFA, BitLocker, cấp quyền</small>
+              </button>
+            </div>
+          </div>
 
           <div id="employeeWorkflowNote" class="workflow-note hidden workspace-panel" data-view="dashboard">
             <strong>Khác tin nhắn Zalo:</strong>
@@ -301,6 +331,90 @@
                 <div id="agentReportList" class="agent-report-list"></div>
                 <div id="recentActivity" class="recent-activity"></div>
               </section>
+              <section id="adminNotificationsPanel" class="panel knowledge-panel hidden workspace-panel" data-view="notifications">
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">CỘNG TÁC & CẢNH BÁO</span>
+                    <h2>Kênh thông báo sự cố</h2>
+                  </div>
+                  <button id="refreshNotificationsBtn" class="button button-quiet" type="button">Làm mới trạng thái</button>
+                </div>
+                <p class="muted">Tự động phát thông báo khi có ticket khẩn cấp hoặc vi phạm thời hạn cam kết SLA qua Telegram Bot và Discord Webhook.</p>
+
+                <div class="notification-channels-grid">
+                  <article class="channel-card">
+                    <div class="channel-header">
+                      <div class="channel-title-group">
+                        <span class="channel-icon channel-telegram">✈</span>
+                        <div>
+                          <strong>Telegram Bot</strong>
+                          <small>Tin nhắn thông báo trực tiếp</small>
+                        </div>
+                      </div>
+                      <span id="telegramStatusBadge" class="tag tag-status-draft">Chưa kết nối</span>
+                    </div>
+                    <div class="channel-body">
+                      <div class="channel-row">
+                        <span>Bot:</span>
+                        <strong id="telegramBotUsername">—</strong>
+                      </div>
+                      <div class="channel-row">
+                        <span>Nhóm / Kênh nhận tin:</span>
+                        <span id="telegramChatId" class="mono">—</span>
+                      </div>
+                      <div class="channel-row">
+                        <span>Sự kiện:</span>
+                        <span>Ticket khẩn cấp (Urgent), Sự cố cao (High)</span>
+                      </div>
+                    </div>
+                    <div class="channel-footer">
+                      <button id="testTelegramBtn" class="button button-soft button-wide" type="button">Gửi thông báo thử nghiệm</button>
+                      <p id="telegramTestMessage" class="form-message" role="status"></p>
+                    </div>
+                  </article>
+
+                  <article class="channel-card">
+                    <div class="channel-header">
+                      <div class="channel-title-group">
+                        <span class="channel-icon channel-discord">🎮</span>
+                        <div>
+                          <strong>Discord Webhook</strong>
+                          <small>Kênh tin nhóm IT Support</small>
+                        </div>
+                      </div>
+                      <span id="discordStatusBadge" class="tag tag-status-draft">Chưa kết nối</span>
+                    </div>
+                    <div class="channel-body">
+                      <div class="channel-row">
+                        <span>Địa chỉ Webhook:</span>
+                        <span id="discordWebhookUrl" class="mono">—</span>
+                      </div>
+                      <div class="channel-row">
+                        <span>Giao diện:</span>
+                        <span>Rich Embed đổi màu theo mức độ ưu tiên</span>
+                      </div>
+                      <div class="channel-row">
+                        <span>Bảo mật:</span>
+                        <span>Đã kích hoạt bộ lọc SSRF & Whitelist</span>
+                      </div>
+                    </div>
+                    <div class="channel-footer">
+                      <button id="testDiscordBtn" class="button button-soft button-wide" type="button">Gửi thông báo thử nghiệm</button>
+                      <p id="discordTestMessage" class="form-message" role="status"></p>
+                    </div>
+                  </article>
+                </div>
+
+                <div class="channel-setup-guide">
+                  <strong>Hướng dẫn cấu hình biến môi trường</strong>
+                  <p><span>Thiết lập các biến cấu hình thông báo:</span></p>
+                  <ul>
+                    <li><code>TELEGRAM_BOT_TOKEN</code> — <span>Token bot do @BotFather cấp.</span></li>
+                    <li><code>TELEGRAM_CHAT_ID</code> — <span>ID nhóm hoặc kênh nhận cảnh báo IT.</span></li>
+                    <li><code>DISCORD_WEBHOOK_URL</code> — <span>Đường dẫn Webhook kênh Discord của đội kỹ thuật.</span></li>
+                  </ul>
+                </div>
+              </section>
               <section id="agentStatsPanel" class="panel knowledge-panel hidden workspace-panel" data-view="personal">
                 <div class="section-heading compact-heading">
                   <div><span class="eyebrow">HIỆU SUẤT CÁ NHÂN</span><h2>Thống kê ticket của bạn</h2></div>
@@ -437,7 +551,47 @@
       </div>
     </div>
 
-    <script src="/static/i18n.js?v=20261010-filter-3"></script>
-    <script src="/static/app.js?v=20261010-filter-3"></script>
+    <div id="forgotPasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="forgotPasswordTitle">
+      <div class="modal-card">
+        <h2 id="forgotPasswordTitle">Khôi phục mật khẩu</h2>
+        <p id="forgotPasswordSubtitle">Nhập email công ty hoặc tên đăng nhập để nhận mã xác thực một lần.</p>
+        <form id="forgotPasswordForm">
+          <label class="field" for="forgotIdentifierInput">Email hoặc Tên đăng nhập
+            <input id="forgotIdentifierInput" name="identifier" minlength="3" maxlength="254" placeholder="Ví dụ: employee@opsmind.internal hoặc user" required />
+          </label>
+          <p id="forgotPasswordMessage" class="form-message" role="status"></p>
+          <div class="modal-actions">
+            <button id="cancelForgotPasswordBtn" class="button button-quiet" type="button">Hủy</button>
+            <button class="button button-primary" type="submit">Gửi hướng dẫn</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="resetPasswordModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="resetPasswordTitle">
+      <div class="modal-card">
+        <h2 id="resetPasswordTitle">Đặt lại mật khẩu mới</h2>
+        <p id="resetPasswordSubtitle">Nhập mã xác thực từ email và tạo mật khẩu mới (tối thiểu 12 ký tự).</p>
+        <form id="resetPasswordForm">
+          <label class="field" for="resetTokenInput">Mã xác thực một lần
+            <input id="resetTokenInput" name="token" minlength="16" maxlength="128" placeholder="Nhập hoặc dán mã token" required />
+          </label>
+          <label class="field" for="resetNewPasswordInput">Mật khẩu mới (tối thiểu 12 ký tự)
+            <input id="resetNewPasswordInput" name="new_password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required />
+          </label>
+          <label class="field" for="resetConfirmPasswordInput">Xác nhận mật khẩu mới
+            <input id="resetConfirmPasswordInput" name="confirm_password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required />
+          </label>
+          <p id="resetPasswordMessage" class="form-message" role="status"></p>
+          <div class="modal-actions">
+            <button id="cancelResetPasswordBtn" class="button button-quiet" type="button">Hủy</button>
+            <button class="button button-primary" type="submit">Xác nhận đổi mật khẩu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="/static/i18n.js?v=20261014-jsm-ui"></script>
+    <script src="/static/app.js?v=20261014-jsm-ui"></script>
   </body>
 </html>

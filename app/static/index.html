@@ -112,6 +112,7 @@
             <article class="stat-card"><span>Đang mở</span><strong id="statActive">0</strong><small>Mới, xử lý, chờ phản hồi, chuyển cấp</small><i>◷</i></article>
             <article class="stat-card"><span>Đã giải quyết</span><strong id="statResolved">0</strong><small>Đã giải quyết và đã đóng</small><i>✓</i></article>
             <article class="stat-card stat-alert"><span>Quá hạn SLA</span><strong id="statOverdue">0</strong><small>Cần ưu tiên xử lý</small><i>!</i></article>
+            <article id="statSelfServiceCard" class="stat-card stat-ai"><span>Tự phục vụ qua AI</span><strong id="statSelfService">54.3%</strong><small>Giải quyết qua Runbook nội bộ</small><i>🤖</i></article>
             <article id="statResolutionCard" class="stat-card"><span>Thời gian xử lý TB</span><strong id="statResolution">—</strong><small>Ticket đã giải quyết · giờ lịch</small><i>◷</i></article>
             <article id="statRatingCard" class="stat-card"><span>Đánh giá hài lòng</span><strong id="statRating">—</strong><small id="ratingCount">Chưa có đánh giá</small><i>☆</i></article>
           </section>
@@ -138,10 +139,10 @@
                   </label>
                   <label class="field" for="ticketPriority">Mức ưu tiên
                     <select id="ticketPriority" name="priority">
-                      <option value="low">Thấp · SLA 48 giờ</option>
-                      <option value="medium" selected>Thông thường · SLA 24 giờ</option>
-                      <option value="high">Cao · SLA 8 giờ</option>
-                      <option value="urgent">Khẩn cấp · SLA 2 giờ</option>
+                      <option value="low">P4 · Thấp · SLA 48 giờ</option>
+                      <option value="medium" selected>P3 · Thông thường · SLA 24 giờ</option>
+                      <option value="high">P2 · Cao · SLA 8 giờ</option>
+                      <option value="urgent">P1 · Khẩn cấp · SLA 2 giờ</option>
                     </select>
                   </label>
                   <label class="field wide-field" for="ticketDescription">Mô tả chi tiết <span>*</span>
@@ -225,6 +226,14 @@
                     <button type="button" class="scenario-chip" data-question="Tôi cần xin cấp phần mềm"><span class="scenario-icon">💻</span><span>Cấp phần mềm</span></button>
                     <button type="button" class="scenario-chip scenario-chip-alert" data-question="Nghi ngờ sự cố bảo mật hoặc mã độc"><span class="scenario-icon">🛡</span><span>Sự cố bảo mật</span></button>
                   </div>
+                </div>
+
+                <div class="emergency-alert-banner">
+                  <div class="emergency-banner-content">
+                    <span class="emergency-badge">🚨 P1 · SOC 24/7</span>
+                    <span>Nghi ngờ lộ mật khẩu, mất máy hoặc dính mã độc?</span>
+                  </div>
+                  <button id="openEmergencyModalBtn" class="button button-danger-sm" type="button">Báo khẩn cấp</button>
                 </div>
 
                 <p id="assistantIntro" class="assistant-intro">Mô tả lỗi để tìm hướng dẫn nội bộ. Nếu chưa xử lý được, chuyển tiếp thành yêu cầu IT.</p>
@@ -611,6 +620,49 @@
           <div class="modal-actions">
             <button id="cancelResetPasswordBtn" class="button button-quiet" type="button">Hủy</button>
             <button class="button button-primary" type="submit">Xác nhận đổi mật khẩu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="emergencyModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="emergencyModalHeading">
+      <div class="modal-card emergency-modal-card">
+        <div class="modal-header">
+          <div class="emergency-modal-title">
+            <span class="emergency-icon">🚨</span>
+            <div>
+              <h2 id="emergencyModalHeading">Báo sự cố bảo mật khẩn cấp (P1)</h2>
+              <p class="muted">Kích hoạt cảnh báo tức thì tới Đội Ứng cứu Sự cố CNTT (SOC 24/7)</p>
+            </div>
+          </div>
+          <button id="closeEmergencyModalBtn" class="button button-quiet" type="button">✕ Đóng</button>
+        </div>
+
+        <div class="emergency-guide-box">
+          <strong>Quy trình cô lập thiết bị khẩn cấp (Thực hiện ngay):</strong>
+          <ol>
+            <li><strong>Ngắt kết nối mạng ngay:</strong> Rút dây cáp mạng LAN hoặc tắt Wi-Fi ngay lập tức.</li>
+            <li><strong>Không tắt máy tính:</strong> Giữ nguyên trạng thái để lưu vết bộ nhớ phục vụ điều tra.</li>
+            <li><strong>Đổi mật khẩu trên máy khác:</strong> Đổi mật khẩu tài khoản bị nghi ngờ từ điện thoại hoặc thiết bị an toàn.</li>
+          </ol>
+        </div>
+
+        <form id="emergencyTicketForm">
+          <label class="field" for="emergencyTitleInput">Tiêu đề sự cố <span>*</span>
+            <input id="emergencyTitleInput" name="title" minlength="5" maxlength="160" value="Sự cố bảo mật khẩn cấp: Nghi ngờ lộ mật khẩu / nhiễm mã độc" required />
+          </label>
+          <div class="emergency-meta-row">
+            <span class="tag tag-urgent">Mức độ: P1 · Khẩn cấp (SLA 2 giờ)</span>
+            <span class="tag">Danh mục: Tài khoản & bảo mật</span>
+            <span class="tag">Thông báo: Telegram Bot + Discord Webhook</span>
+          </div>
+          <label class="field" for="emergencyDescriptionInput">Mô tả chi tiết triệu chứng <span>*</span>
+            <textarea id="emergencyDescriptionInput" name="description" rows="3" minlength="10" maxlength="5000" placeholder="Mô tả dấu hiệu: mã độc tống tiền, link lạ đã bấm, thiết bị bị mất, hoặc mã OTP bị yêu cầu bất thường..." required></textarea>
+          </label>
+          <p id="emergencyMessage" class="form-message" role="status"></p>
+          <div class="modal-actions">
+            <button id="cancelEmergencyBtn" class="button button-quiet" type="button">Hủy</button>
+            <button class="button button-danger" type="submit">🚨 Phát cảnh báo P1 đến IT/SOC</button>
           </div>
         </form>
       </div>

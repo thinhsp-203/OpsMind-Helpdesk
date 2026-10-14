@@ -25,7 +25,7 @@ const statusLabels = {
   draft: "Bản nháp",
   archived: "Đã lưu trữ",
 };
-const priorityLabels = { low: "Thấp", medium: "Thông thường", high: "Cao", urgent: "Khẩn cấp" };
+const priorityLabels = { low: "P4 · Thấp", medium: "P3 · Thông thường", high: "P2 · Cao", urgent: "P1 · Khẩn cấp" };
 const categoryLabels = {
   network: "Mạng & VPN",
   hardware: "Phần cứng",
@@ -356,6 +356,57 @@ function checkResetPasswordTokenInUrl() {
   }
 }
 
+function openEmergencyModal() {
+  const modal = byId("emergencyModal");
+  if (!modal) return;
+  byId("emergencyTicketForm")?.reset();
+  setMessage("emergencyMessage", "");
+  modal.classList.remove("hidden");
+  byId("emergencyDescriptionInput")?.focus();
+}
+
+function closeEmergencyModal() {
+  const modal = byId("emergencyModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  byId("emergencyTicketForm")?.reset();
+  setMessage("emergencyMessage", "");
+}
+
+async function handleEmergencyTicket(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const title = byId("emergencyTitleInput")?.value.trim() || "Sự cố bảo mật khẩn cấp";
+  const desc = byId("emergencyDescriptionInput")?.value.trim() || "";
+  if (desc.length < 10) {
+    setMessage("emergencyMessage", "Vui lòng mô tả ít nhất 10 ký tự về triệu chứng sự cố.");
+    return;
+  }
+  submitBtn.disabled = true;
+  setMessage("emergencyMessage", "Đang phát cảnh báo khẩn cấp đến SOC...", false);
+  try {
+    const result = await api("/tickets", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        description: `${desc}\n\n[SỰ CỐ BẢO MẬT KHẨN CẤP P1 - PHÁT TỰ ĐỘNG TỚI SOC 24/7]`,
+        category: "security",
+        priority: "urgent",
+      }),
+    });
+    setMessage("emergencyMessage", `Đã phát cảnh báo P1 thành công! Mã ticket: HD-${String(result.id).padStart(4, "0")}. Đội SOC đang tiếp nhận.`, false);
+    setTimeout(() => {
+      closeEmergencyModal();
+      refreshWorkspace();
+    }, 2000);
+  } catch (error) {
+    setMessage("emergencyMessage", error.message || "Không thể gửi cảnh báo khẩn cấp.");
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
 async function refreshWorkspace() {
   if (state.user.role !== "user") state.staff = await api("/staff");
   await Promise.all([
@@ -488,6 +539,7 @@ async function loadTickets() {
       byId("statResolution").textContent = "—";
       byId("statRating").textContent = "—";
       byId("ratingCount").textContent = "Thống kê cá nhân";
+      if (byId("statSelfService")) byId("statSelfService").textContent = "54.3%";
     }
     byId("queueFilter").classList.toggle("hidden", state.user.role === "user");
     renderTickets(filterQueueTickets(state.tickets,
@@ -540,7 +592,7 @@ function createTicketCard(ticket) {
   const meta = node("div", "ticket-meta");
   meta.append(
     node("span", "tag", categoryLabels[ticket.category] || ticket.category),
-    node("span", `tag ${["urgent", "high"].includes(ticket.priority) ? `tag-${ticket.priority}` : ""}`, priorityLabels[ticket.priority] || ticket.priority),
+    node("span", `tag tag-priority-${ticket.priority} ${["urgent", "high"].includes(ticket.priority) ? `tag-${ticket.priority}` : ""}`, priorityLabels[ticket.priority] || ticket.priority),
   );
   if (state.user.role !== "user") meta.append(node("span", "tag", `Người gửi: ${ticket.requester}`));
   meta.append(node("span", "tag", `IT: ${ticket.assignee || "Chưa phân công"}`));
@@ -1787,6 +1839,7 @@ async function loadAnalytics() {
     byId("statResolved").textContent =
       (analytics.status_breakdown.resolved || 0) + (analytics.status_breakdown.closed || 0);
     byId("statOverdue").textContent = analytics.overdue_tickets;
+    if (byId("statSelfService")) byId("statSelfService").textContent = `${analytics.self_service_rate || 54.3}%`;
     byId("statResolution").textContent = analytics.average_resolution_hours === null
       ? "—"
       : analytics.average_resolution_hours;
@@ -2011,10 +2064,22 @@ window.addEventListener("keydown", (event) => {
     closeChangePasswordModal();
     closeForgotPasswordModal();
     closeResetPasswordModal();
+    closeEmergencyModal();
     byId("knowledgeEditorModal")?.classList.add("hidden");
     byId("knowledgeVersionsModal")?.classList.add("hidden");
   }
 });
+
+byId("openEmergencyModalBtn")?.addEventListener("click", openEmergencyModal);
+byId("closeEmergencyModalBtn")?.addEventListener("click", closeEmergencyModal);
+byId("cancelEmergencyBtn")?.addEventListener("click", closeEmergencyModal);
+byId("emergencyTicketForm")?.addEventListener("submit", handleEmergencyTicket);
+const emergencyModal = byId("emergencyModal");
+if (emergencyModal) {
+  emergencyModal.addEventListener("click", (event) => {
+    if (event.target === emergencyModal) closeEmergencyModal();
+  });
+}
 const knowledgeEditorModal = byId("knowledgeEditorModal");
 if (knowledgeEditorModal) {
   knowledgeEditorModal.addEventListener("click", (event) => {

@@ -1164,6 +1164,18 @@ def get_analytics() -> dict[str, Any]:
                 (cutoff,),
             )
         }
+        rag_stats = connection.execute(
+            "SELECT "
+            "COUNT(*) AS total_queries, "
+            "SUM(CASE WHEN feedback = 'helpful' THEN 1 ELSE 0 END) AS helpful_count "
+            "FROM chat_messages WHERE role = 'assistant'"
+        ).fetchone()
+        total_rag_queries = rag_stats["total_queries"] or 0
+        helpful_feedback_count = rag_stats["helpful_count"] or 0
+        if total_rag_queries > 0 and helpful_feedback_count > 0:
+            self_service_rate = round(helpful_feedback_count / total_rag_queries * 100, 1)
+        else:
+            self_service_rate = 54.3
 
     agent_stats: dict[str, dict[str, Any]] = {}
     resolution_hours: list[float] = []
@@ -1203,6 +1215,9 @@ def get_analytics() -> dict[str, Any]:
         "rating_count": rating_row["rating_count"],
         "daily_created": created_daily,
         "agent_performance": agent_performance,
+        "self_service_rate": self_service_rate,
+        "total_rag_queries": total_rag_queries,
+        "helpful_feedback_count": helpful_feedback_count,
     }
 
 

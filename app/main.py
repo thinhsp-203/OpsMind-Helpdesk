@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -21,7 +22,7 @@ from app.config import (
     STORAGE_PATH,
     TOKEN_EXPIRE_MINUTES,
 )
-from app import store
+from app import config, email_sender, store
 from app.notifications import (
     dispatch_ticket_notification,
     get_notification_channels_status,
@@ -37,10 +38,34 @@ from app.rag import (
     save_knowledge_document,
 )
 
+logger = logging.getLogger(__name__)
+
 DUMMY_PASSWORD_HASH = store._password_hash("dummy_fallback_timing_attack_mitigation")
 FAILED_LOGIN_LIMIT = 5
 FAILED_LOGIN_WINDOW_SECONDS = 900
 _failed_logins: dict[str, list[float]] = {}
+
+FORGOT_PASSWORD_LIMIT = 5
+FORGOT_PASSWORD_WINDOW_SECONDS = 900
+_forgot_password_attempts: dict[str, list[float]] = {}
+
+
+def _check_forgot_password_rate_limit(key: str) -> None:
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in _forgot_password_attempts.get(key, []) if now - t < FORGOT_PASSWORD_WINDOW_SECONDS]
+    _forgot_password_attempts[key] = attempts
+    if len(attempts) >= FORGOT_PASSWORD_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Bạn đã yêu cầu đặt lại mật khẩu quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+        )
+
+
+def _record_forgot_password_attempt(key: str) -> None:
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in _forgot_password_attempts.get(key, []) if now - t < FORGOT_PASSWORD_WINDOW_SECONDS]
+    attempts.append(now)
+    _forgot_password_attempts[key] = attempts
 
 
 def _check_login_rate_limit(key: str) -> None:
@@ -141,6 +166,25 @@ class ChangePasswordRequest(BaseModel):
 class AdminResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=12, max_length=200)
     force_change: bool = True
+
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str = Field(min_length=3, max_length=254)
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def trim_identifier(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=128)
+    new_password: str = Field(min_length=12, max_length=200)
+
+    @field_validator("token", "new_password", mode="before")
+    @classmethod
+    def trim_fields(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class TicketCreate(BaseModel):
@@ -416,6 +460,74 @@ async def change_password(request: Request, payload: ChangePasswordRequest) -> d
 async def who_am_i(request: Request) -> dict[str, str]:
     user = await current_user(request)
     return user
+
+
+@app.post("/auth/forgot-password", tags=["auth"])
+async def forgot_password(
+    request: Request,
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+) -> dict[str, str]:
+    client_ip = request.client.host if request.client else "unknown"
+    ip_key = f"ip:{client_ip}"
+    target_key = f"target:{payload.identifier.lower()}"
+
+    _check_forgot_password_rate_limit(ip_key)
+    _check_forgot_password_rate_limit(target_key)
+    _record_forgot_password_attempt(ip_key)
+    _record_forgot_password_attempt(target_key)
+
+    uniform_message = (
+        "Nếu thông tin khớp với tài khoản trong hệ thống, hướng dẫn đặt lại mật khẩu "
+        "đã được gửi đến email đăng ký của bạn."
+    )
+
+    user = store.find_user_for_password_reset(payload.identifier)
+    if user is None or not user.get("is_active"):
+        return {"status": "success", "message": uniform_message}
+
+    user_email = user.get("email", "").strip()
+    if not user_email:
+        logger.warning(
+            "Password reset requested for user %s but no email is configured.",
+            user["username"],
+        )
+        return {"status": "success", "message": uniform_message}
+
+    token = store.create_password_reset_token(
+        user["username"],
+        expires_minutes=config.RESET_TOKEN_EXPIRE_MINUTES,
+    )
+
+    base_url = str(request.base_url).rstrip("/")
+    background_tasks.add_task(
+        email_sender.send_password_reset_email,
+        to_email=user_email,
+        username=user["username"],
+        reset_token=token,
+        base_url=base_url,
+    )
+
+    return {"status": "success", "message": uniform_message}
+
+
+@app.post("/auth/reset-password", tags=["auth"])
+async def reset_password(payload: ResetPasswordRequest) -> dict[str, str]:
+    if len(payload.new_password) < 12:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Mật khẩu mới phải có ít nhất 12 ký tự.",
+        )
+    username = store.reset_password_with_token(payload.token, payload.new_password)
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mã xác thực không hợp lệ, đã được sử dụng hoặc đã hết hạn.",
+        )
+    return {
+        "status": "success",
+        "message": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại với mật khẩu mới.",
+    }
 
 
 @app.get("/admin/users", tags=["admin"])

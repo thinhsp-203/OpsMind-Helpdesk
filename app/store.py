@@ -294,6 +294,14 @@ def initialize_store() -> None:
                 author TEXT NOT NULL DEFAULT 'admin',
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at TEXT NOT NULL,
+                used INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1)),
+                created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_tickets_requester ON tickets(requester);
             CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
             CREATE INDEX IF NOT EXISTS idx_comments_ticket ON comments(ticket_id);
@@ -305,6 +313,8 @@ def initialize_store() -> None:
             CREATE INDEX IF NOT EXISTS idx_knowledge_documents_status ON knowledge_documents(status);
             CREATE INDEX IF NOT EXISTS idx_knowledge_documents_category ON knowledge_documents(category);
             CREATE INDEX IF NOT EXISTS idx_knowledge_versions_doc ON knowledge_versions(document_id, version_number);
+            CREATE INDEX IF NOT EXISTS idx_reset_token_hash ON password_reset_tokens(token_hash);
+            CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(username);
             """
         if _database_url:
             schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
@@ -574,6 +584,76 @@ def admin_reset_password(
     force_password_change: int = 1,
 ) -> None:
     update_user_password(username, new_password, force_password_change=force_password_change)
+
+
+def find_user_for_password_reset(identifier: str) -> dict[str, Any] | None:
+    clean = identifier.strip()
+    if not clean:
+        return None
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT username, role, full_name, email, is_active FROM users "
+            "WHERE LOWER(username) = LOWER(?) OR (email != '' AND LOWER(email) = LOWER(?)) LIMIT 1",
+            (clean, clean),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def create_password_reset_token(username: str, expires_minutes: int = 15) -> str:
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    now_dt = datetime.now(timezone.utc)
+    expires_dt = now_dt + timedelta(minutes=expires_minutes)
+    created_at = now_dt.isoformat()
+    expires_at = expires_dt.isoformat()
+
+    with _connect() as connection:
+        connection.execute(
+            "UPDATE password_reset_tokens SET used = 1 WHERE username = ? AND used = 0",
+            (username,),
+        )
+        connection.execute(
+            "INSERT INTO password_reset_tokens (username, token_hash, expires_at, used, created_at) "
+            "VALUES (?, ?, ?, 0, ?)",
+            (username, token_hash, expires_at, created_at),
+        )
+    return raw_token
+
+
+def verify_and_consume_reset_token(raw_token: str) -> str | None:
+    if not raw_token or len(raw_token) < 16:
+        return None
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    now_dt = datetime.now(timezone.utc)
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT username, expires_at, used FROM password_reset_tokens WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return None
+        if row["used"] == 1:
+            return None
+        try:
+            exp_time = datetime.fromisoformat(row["expires_at"])
+            if exp_time < now_dt:
+                return None
+        except Exception:
+            return None
+
+        connection.execute(
+            "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
+            (token_hash,),
+        )
+        return str(row["username"])
+
+
+def reset_password_with_token(raw_token: str, new_password: str) -> str | None:
+    username = verify_and_consume_reset_token(raw_token)
+    if not username:
+        return None
+    update_user_password(username, new_password, force_password_change=0)
+    return username
 
 
 def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None:

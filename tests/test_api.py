@@ -14,8 +14,9 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clean_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    from app.main import _failed_logins
+    from app.main import _failed_logins, _forgot_password_attempts
     _failed_logins.clear()
+    _forgot_password_attempts.clear()
     monkeypatch.setattr(store, "_database_path", tmp_path / "test-helpdesk.sqlite3")
     monkeypatch.setattr(store, "_database_url", "")
     store.initialize_store()
@@ -24,6 +25,7 @@ def clean_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Non
     build_retrieval_index.cache_clear()
     yield
     _failed_logins.clear()
+    _forgot_password_attempts.clear()
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
 

@@ -564,6 +564,7 @@ def synthesize_answer_with_llm(
 
 def generate_answer(question: str) -> dict[str, Any]:
     if is_out_of_scope(question):
+        triage = suggest_ticket_triage(question, [])
         return {
             "answer": (
                 "Yêu cầu của bạn nằm ngoài phạm vi hỗ trợ kỹ thuật CNTT của hệ thống OpsMind. "
@@ -573,13 +574,7 @@ def generate_answer(question: str) -> dict[str, Any]:
             "sources": [],
             "matches": [],
             "grounded": False,
-            "triage": {
-                "category": "general",
-                "category_reason": "Yêu cầu nằm ngoài phạm vi hỗ trợ kỹ thuật CNTT.",
-                "priority": "low",
-                "priority_reason": "Ngoài phạm vi hỗ trợ kỹ thuật.",
-                "requires_confirmation": False,
-            },
+            "triage": triage,
             "llm_generated": False,
         }
 

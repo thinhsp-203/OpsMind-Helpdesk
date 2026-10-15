@@ -35,7 +35,7 @@ if env_file.is_file():
 
 os.environ.setdefault("DEMO_MODE", "true")
 
-from app import store  # noqa: E402
+from app import config, store  # noqa: E402
 from app.config import STORAGE_PATH  # noqa: E402
 
 
@@ -53,6 +53,11 @@ def main() -> int:
 
     with store._connect() as conn:
         if reset_data:
+            if config.DATABASE_URL and "--force" not in sys.argv and "--yes" not in sys.argv:
+                print("\n[CẢNH BÁO BẢO MẬT] Phát hiện cấu hình DATABASE_URL (CSDL từ xa/Postgres).")
+                print("Lệnh --reset sẽ xóa sạch toàn bộ ticket, comment và chat session.")
+                print("Để xác nhận thực hiện trên CSDL này, hãy chạy lại kèm cờ --yes hoặc --force.")
+                return 1
             print("[*] Đang làm sạch dữ liệu cũ (--reset)...")
             conn.execute("DELETE FROM comments")
             conn.execute("DELETE FROM audit_logs")
@@ -88,10 +93,10 @@ def main() -> int:
             else:
                 conn.execute(
                     """
-                    UPDATE users SET role = ?, full_name = ?, email = ?, department = ?, phone = ?, is_active = 1
+                    UPDATE users SET password_hash = ?, role = ?, full_name = ?, email = ?, department = ?, phone = ?, is_active = 1
                     WHERE username = ?
                     """,
-                    (role, fn, mail, dept, ph, u),
+                    (store._password_hash(pwd), role, fn, mail, dept, ph, u),
                 )
                 print(f"    * Cập nhật: {u:12} [{role:5}] - {fn}")
 

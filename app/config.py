@@ -6,6 +6,17 @@ logger = logging.getLogger(__name__)
 
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in {"1", "true", "yes"}
 SECRET_KEY = os.getenv("SECRET_KEY")
+INSECURE_SECRET_KEYS = {
+    "change-this-to-a-secure-random-secret-key-at-least-32-chars",
+    "secret",
+    "secretkey",
+    "your-secret-key",
+}
+if not DEMO_MODE and SECRET_KEY in INSECURE_SECRET_KEYS:
+    raise RuntimeError(
+        "Insecure placeholder SECRET_KEY detected in production/non-demo environment. "
+        "Please configure a unique cryptographically random SECRET_KEY in your environment variables."
+    )
 if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(48)
     if not DEMO_MODE:
@@ -17,6 +28,7 @@ ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "60"))
 if TOKEN_EXPIRE_MINUTES < 1:
     raise RuntimeError("TOKEN_EXPIRE_MINUTES must be positive.")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 INITIAL_ADMIN_USERNAME = os.getenv("INITIAL_ADMIN_USERNAME", "").strip()
 INITIAL_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()

@@ -1210,6 +1210,9 @@ button:disabled { cursor: wait; opacity: .65; }
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.profile-form-full {
+  grid-column: 1 / -1;
+}
 @media (max-width: 500px) {
   .profile-form-grid {
     grid-template-columns: 1fr;

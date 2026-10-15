@@ -212,9 +212,42 @@ def reload_rag_dictionary(dict_file: Path | None = None) -> None:
     build_retrieval_index.cache_clear()
 
 
+IT_DOMAIN_WORDS: set[str] = {
+    "windows", "macos", "linux", "office", "word", "excel", "outlook", "email", "mail",
+    "erp", "misa", "sap", "fast", "bravo", "chrome", "edge", "firefox",
+    "vpn", "forticlient", "openvpn", "wifi", "wireless", "lan", "internet", "ip", "dhcp", "dns",
+    "proxy", "pac", "ping", "router", "switch", "gateway", "server", "pc", "laptop",
+    "printer", "scanner", "scan", "usb", "ram", "cpu", "ssd", "bios", "driver",
+    "mfa", "otp", "authenticator", "bitlocker", "smb", "rdp", "login", "password", "auth",
+    "account", "apps", "app", "approval", "certificate", "signature", "quota", "share",
+    "bsod", "spooler", "helpdesk", "ticket",
+    "access", "permission", "permissions", "remote", "network", "print", "printing",
+    "queue", "crash", "reboot", "restart", "connect", "connection", "folder", "file",
+}
+
+IT_DOMAIN_PHRASES: tuple[str, ...] = (
+    "wi-fi", "wi fi", "may tinh", "may chu", "may in", "man hinh", "chuot", "ban phim", "o dia", "day mang",
+    "phan mem", "ung dung", "cai dat", "cap nhat", "ban quyen", "kich hoat",
+    "ket noi", "mat mang", "cham mang", "rot mang", "duong truyen", "mat ket noi",
+    "tai khoan", "mat khau", "dang nhap", "khoa tai khoan", "doi mat khau",
+    "chung thu", "chu ky", "ky so", "quyen truy cap", "truy cap", "thu muc", "chia se file",
+    "login approval", "approval request",
+    "man hinh xanh", "treo may", "do may", "ket lenh", "lenh in", "ket giay", "het muc", "in an",
+    "khong the", "khong vao duoc", "khong nhan", "khong in duoc", "khong gui duoc",
+    "khong ket noi", "bi loi", "bao loi", "khoi dong",
+)
+
+
 def is_out_of_scope(query: str) -> bool:
     folded = _fold_text(query)
-    return any(pattern in folded for pattern in OUT_OF_SCOPE_PATTERNS)
+    words = set(TOKEN_RE.findall(folded))
+    has_it = bool(words & IT_DOMAIN_WORDS) or any(phrase in folded for phrase in IT_DOMAIN_PHRASES)
+    has_oos = any(pattern in folded for pattern in OUT_OF_SCOPE_PATTERNS)
+    if has_oos:
+        return not has_it
+    if not has_it:
+        return True
+    return False
 
 
 def _normalize_title(path: Path) -> str:

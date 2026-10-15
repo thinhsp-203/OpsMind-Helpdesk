@@ -447,17 +447,9 @@ def initialize_store() -> None:
                     (INITIAL_ADMIN_USERNAME, _password_hash(INITIAL_ADMIN_PASSWORD)),
                 )
             else:
-                admin_name = INITIAL_ADMIN_USERNAME or "admin"
-                admin_pwd = INITIAL_ADMIN_PASSWORD if len(INITIAL_ADMIN_PASSWORD) >= 12 else "Admin12345678!"
-                connection.execute(
-                    "INSERT INTO users (username, password_hash, role, force_password_change) VALUES (?, ?, 'admin', 1)",
-                    (admin_name, _password_hash(admin_pwd)),
-                )
-                logger.warning(
-                    "No INITIAL_ADMIN_PASSWORD configured for fresh non-demo setup. "
-                    "Provisioned '%s' with temporary password '%s' (password change forced on first login).",
-                    admin_name,
-                    admin_pwd,
+                raise RuntimeError(
+                    "INITIAL_ADMIN_PASSWORD (at least 12 characters) and INITIAL_ADMIN_USERNAME "
+                    "must be configured in environment variables for fresh non-demo setup."
                 )
         seed_builtin_knowledge(connection)
 
@@ -850,10 +842,13 @@ def update_ticket_fields(
         timestamp = _now()
         values = dict(updates)
         values["updated_at"] = timestamp
-        if "priority" in updates:
+        if "priority" in updates and updates["priority"] != row["priority"]:
+            created_at = datetime.fromisoformat(row["created_at"])
             values["sla_deadline"] = (
-                datetime.now(timezone.utc) + timedelta(hours=PRIORITY_HOURS[updates["priority"]])
+                created_at + timedelta(hours=PRIORITY_HOURS[updates["priority"]])
             ).isoformat()
+        elif "priority" in updates:
+            values.pop("sla_deadline", None)
         set_clause = ", ".join(f"{field} = ?" for field in values)
         connection.execute(
             f"UPDATE tickets SET {set_clause} WHERE id = ?",  # noqa: S608
@@ -1021,7 +1016,7 @@ def get_attachment(attachment_id: str) -> dict[str, Any] | None:
 def rate_ticket(ticket_id: int, rating: int, comment: str | None, actor: str) -> dict[str, Any]:
     with _connect() as connection:
         row = connection.execute(
-            "SELECT status, requester FROM tickets WHERE id = ? AND archived_at IS NULL",
+            "SELECT status, requester, rating FROM tickets WHERE id = ? AND archived_at IS NULL",
             (ticket_id,),
         ).fetchone()
         if row is None:
@@ -1030,6 +1025,8 @@ def rate_ticket(ticket_id: int, rating: int, comment: str | None, actor: str) ->
             raise ValueError("Only resolved tickets can be rated")
         if row["requester"] != actor:
             raise PermissionError("Only the requester can rate this ticket")
+        if row["rating"] is not None:
+            raise ValueError("Ticket has already been rated")
         connection.execute(
             "UPDATE tickets SET rating = ?, rating_comment = ?, updated_at = ? WHERE id = ?",
             (rating, comment, _now(), ticket_id),
@@ -1189,15 +1186,18 @@ def get_analytics() -> dict[str, Any]:
         rag_stats = connection.execute(
             "SELECT "
             "COUNT(*) AS total_queries, "
-            "SUM(CASE WHEN feedback = 'helpful' THEN 1 ELSE 0 END) AS helpful_count "
+            "SUM(CASE WHEN feedback = 'up' THEN 1 ELSE 0 END) AS helpful_count, "
+            "SUM(CASE WHEN feedback = 'down' THEN 1 ELSE 0 END) AS unhelpful_count "
             "FROM chat_messages WHERE role = 'assistant'"
         ).fetchone()
         total_rag_queries = rag_stats["total_queries"] or 0
         helpful_feedback_count = rag_stats["helpful_count"] or 0
-        if total_rag_queries > 0 and helpful_feedback_count > 0:
-            self_service_rate = round(helpful_feedback_count / total_rag_queries * 100, 1)
+        unhelpful_feedback_count = rag_stats["unhelpful_count"] or 0
+        total_feedback = helpful_feedback_count + unhelpful_feedback_count
+        if total_feedback > 0:
+            self_service_rate = round(helpful_feedback_count / total_feedback * 100, 1)
         else:
-            self_service_rate = 54.3
+            self_service_rate = None
 
     agent_stats: dict[str, dict[str, Any]] = {}
     resolution_hours: list[float] = []

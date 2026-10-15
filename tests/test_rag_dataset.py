@@ -55,3 +55,32 @@ def test_out_of_scope_guardrail_refusal() -> None:
     assert ans["triage"]["category"] == "general"
     assert "ngoài phạm vi" in ans["answer"].lower()
 
+
+def test_holdout_evaluation_set_quality_gate() -> None:
+    holdout_file = Path(__file__).resolve().parents[1] / "data" / "evaluation" / "rag_holdout.csv"
+    with holdout_file.open(encoding="utf-8-sig", newline="") as file:
+        questions = list(csv.DictReader(file))
+
+    assert len(questions) == 25
+    in_scope = [q for q in questions if q["scope"] == "in_scope"]
+    out_of_scope = [q for q in questions if q["scope"] == "out_of_scope"]
+
+    hit3 = 0
+    for q in in_scope:
+        matches = retrieve_relevant_context(q["question"], top_k=3)
+        if any(m["source"] == q["expected_source"] for m in matches):
+            hit3 += 1
+
+    refusals = 0
+    for q in out_of_scope:
+        matches = retrieve_relevant_context(q["question"], top_k=3)
+        if not matches and is_out_of_scope(q["question"]):
+            refusals += 1
+
+    hit3_rate = hit3 / len(in_scope)
+    refusal_rate = refusals / len(out_of_scope)
+
+    assert hit3_rate >= 0.90, f"Holdout Hit@3 rate too low: {hit3_rate:.2%}"
+    assert refusal_rate >= 0.90, f"Holdout Refusal rate too low: {refusal_rate:.2%}"
+
+

@@ -42,52 +42,104 @@ logger = logging.getLogger(__name__)
 
 DUMMY_PASSWORD_HASH = store._password_hash("dummy_fallback_timing_attack_mitigation")
 FAILED_LOGIN_LIMIT = 5
+FAILED_LOGIN_LIMIT = 5
 FAILED_LOGIN_WINDOW_SECONDS = 900
 _failed_logins: dict[str, list[float]] = {}
 
 FORGOT_PASSWORD_LIMIT = 5
 FORGOT_PASSWORD_WINDOW_SECONDS = 900
 _forgot_password_attempts: dict[str, list[float]] = {}
+_forgot_password_target_cooldown: dict[str, float] = {}
+
+CHANGE_PASSWORD_LIMIT = 5
+CHANGE_PASSWORD_WINDOW_SECONDS = 900
+_change_password_attempts: dict[str, list[float]] = {}
 
 
-def _check_forgot_password_rate_limit(key: str) -> None:
+def _cleanup_rate_limits(store_dict: dict[str, list[float]], window_seconds: float) -> None:
     now = datetime.now(timezone.utc).timestamp()
-    attempts = [t for t in _forgot_password_attempts.get(key, []) if now - t < FORGOT_PASSWORD_WINDOW_SECONDS]
-    _forgot_password_attempts[key] = attempts
-    if len(attempts) >= FORGOT_PASSWORD_LIMIT:
+    expired = [k for k, timestamps in store_dict.items() if not timestamps or (now - timestamps[-1] >= window_seconds)]
+    for k in expired:
+        store_dict.pop(k, None)
+
+
+def _check_rate_limit(
+    store_dict: dict[str, list[float]],
+    key: str,
+    limit: int,
+    window_seconds: float,
+    error_message: str,
+) -> None:
+    _cleanup_rate_limits(store_dict, window_seconds)
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in store_dict.get(key, []) if now - t < window_seconds]
+    store_dict[key] = attempts
+    if len(attempts) >= limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Bạn đã yêu cầu đặt lại mật khẩu quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+            detail=error_message,
         )
 
 
-def _record_forgot_password_attempt(key: str) -> None:
+def _record_attempt(
+    store_dict: dict[str, list[float]],
+    key: str,
+    window_seconds: float,
+) -> None:
     now = datetime.now(timezone.utc).timestamp()
-    attempts = [t for t in _forgot_password_attempts.get(key, []) if now - t < FORGOT_PASSWORD_WINDOW_SECONDS]
+    attempts = [t for t in store_dict.get(key, []) if now - t < window_seconds]
     attempts.append(now)
-    _forgot_password_attempts[key] = attempts
+    store_dict[key] = attempts
 
 
-def _check_login_rate_limit(key: str) -> None:
-    now = datetime.now(timezone.utc).timestamp()
-    attempts = [t for t in _failed_logins.get(key, []) if now - t < FAILED_LOGIN_WINDOW_SECONDS]
-    _failed_logins[key] = attempts
-    if len(attempts) >= FAILED_LOGIN_LIMIT:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.",
-        )
+def _check_login_rate_limit(key: str, limit: int = FAILED_LOGIN_LIMIT) -> None:
+    _check_rate_limit(
+        _failed_logins,
+        key,
+        limit,
+        FAILED_LOGIN_WINDOW_SECONDS,
+        "Đã thử đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+    )
 
 
 def _record_failed_login(key: str) -> None:
-    now = datetime.now(timezone.utc).timestamp()
-    attempts = [t for t in _failed_logins.get(key, []) if now - t < FAILED_LOGIN_WINDOW_SECONDS]
-    attempts.append(now)
-    _failed_logins[key] = attempts
+    _record_attempt(_failed_logins, key, FAILED_LOGIN_WINDOW_SECONDS)
 
 
 def _clear_failed_login(key: str) -> None:
     _failed_logins.pop(key, None)
+
+
+def _check_forgot_password_rate_limit(key: str) -> None:
+    _check_rate_limit(
+        _forgot_password_attempts,
+        key,
+        FORGOT_PASSWORD_LIMIT,
+        FORGOT_PASSWORD_WINDOW_SECONDS,
+        "Bạn đã yêu cầu đặt lại mật khẩu quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+    )
+
+
+def _record_forgot_password_attempt(key: str) -> None:
+    _record_attempt(_forgot_password_attempts, key, FORGOT_PASSWORD_WINDOW_SECONDS)
+
+
+def _check_change_password_rate_limit(key: str) -> None:
+    _check_rate_limit(
+        _change_password_attempts,
+        key,
+        CHANGE_PASSWORD_LIMIT,
+        CHANGE_PASSWORD_WINDOW_SECONDS,
+        "Bạn đã nhập sai mật khẩu hiện tại quá nhiều lần. Vui lòng thử lại sau 15 phút.",
+    )
+
+
+def _record_change_password_attempt(key: str) -> None:
+    _record_attempt(_change_password_attempts, key, CHANGE_PASSWORD_WINDOW_SECONDS)
+
+
+def _clear_change_password_attempts(key: str) -> None:
+    _change_password_attempts.pop(key, None)
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -163,6 +215,7 @@ class ProfileUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     department: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
+    current_password: str | None = Field(default=None, max_length=128)
 
     @field_validator("email")
     @classmethod
@@ -176,9 +229,8 @@ class ProfileUpdate(BaseModel):
 
     @model_validator(mode="after")
     def require_update_field(self) -> "ProfileUpdate":
-        if not any(
-            getattr(self, field_name) is not None for field_name in type(self).model_fields
-        ):
+        fields = [f for f in type(self).model_fields if f != "current_password"]
+        if not any(getattr(self, field_name) is not None for field_name in fields):
             raise ValueError("Cần cung cấp ít nhất một trường để cập nhật.")
         return self
 
@@ -368,7 +420,15 @@ async def current_user(request: Request) -> dict[str, str]:
                 detail="Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.",
             )
 
-    return {"username": username, "role": user["role"]}
+    if user.get("force_password_change"):
+        allowed_paths = {"/auth/change-password", "/auth/me", "/auth/logout"}
+        if request.url.path not in allowed_paths:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Quản trị viên yêu cầu bạn đổi mật khẩu trước khi tiếp tục.",
+            )
+
+    return {"username": username, "role": user["role"], "force_password_change": bool(user.get("force_password_change"))}
 
 
 def require_staff(user: dict[str, str]) -> None:
@@ -416,26 +476,25 @@ async def health() -> dict[str, str]:
 @app.post("/auth/login", tags=["auth"])
 async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
     client_ip = request.client.host if request.client else "unknown"
-    user_key = f"user:{payload.username.lower()}"
+    combo_key = f"attempt:{client_ip}:{payload.username.lower()}"
     ip_key = f"ip:{client_ip}"
 
-    _check_login_rate_limit(user_key)
-    _check_login_rate_limit(ip_key)
+    _check_login_rate_limit(combo_key, limit=5)
+    _check_login_rate_limit(ip_key, limit=20)
 
     user = store.get_user_credentials(payload.username)
     if user is None or not user["is_active"]:
         store.verify_password(payload.password, DUMMY_PASSWORD_HASH)
-        _record_failed_login(user_key)
+        _record_failed_login(combo_key)
         _record_failed_login(ip_key)
         raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không đúng.")
 
     if not store.verify_password(payload.password, user["password_hash"]):
-        _record_failed_login(user_key)
+        _record_failed_login(combo_key)
         _record_failed_login(ip_key)
         raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không đúng.")
 
-    _clear_failed_login(user_key)
-    _clear_failed_login(ip_key)
+    _clear_failed_login(combo_key)
 
     issued_at = datetime.now(timezone.utc)
     token = jwt.encode(
@@ -461,11 +520,15 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 @app.post("/auth/change-password", tags=["auth"])
 async def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, str]:
     actor = await current_user(request)
+    user_key = f"user:{actor['username'].lower()}"
+    _check_change_password_rate_limit(user_key)
+
     user = store.get_user_credentials(actor["username"])
     if user is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
 
     if not store.verify_password(payload.old_password, user["password_hash"]):
+        _record_change_password_attempt(user_key)
         raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác.")
 
     if len(payload.new_password) < 12:
@@ -477,6 +540,7 @@ async def change_password(request: Request, payload: ChangePasswordRequest) -> d
     if payload.new_password == payload.old_password:
         raise HTTPException(status_code=400, detail="Mật khẩu mới không được trùng với mật khẩu hiện tại.")
 
+    _clear_change_password_attempts(user_key)
     store.update_user_password(actor["username"], payload.new_password, force_password_change=0)
     return {"message": "Đổi mật khẩu thành công. Vui lòng sử dụng mật khẩu mới cho các lần đăng nhập tiếp theo."}
 
@@ -504,9 +568,28 @@ async def who_am_i(request: Request) -> dict[str, Any]:
 @app.patch("/auth/profile", tags=["auth"])
 async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[str, Any]:
     actor = await current_user(request)
+    user = store.get_user_credentials(actor["username"])
+    if user is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+
     updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    updates.pop("current_password", None)
     if not updates:
         raise HTTPException(status_code=400, detail="Cần cung cấp ít nhất một trường để cập nhật.")
+
+    new_email = updates.get("email")
+    current_email = user.get("email") or ""
+    if new_email is not None and new_email.strip().lower() != current_email.strip().lower():
+        if not payload.current_password:
+            raise HTTPException(
+                status_code=400,
+                detail="Cần nhập mật khẩu hiện tại để thay đổi địa chỉ email bảo mật.",
+            )
+        if not store.verify_password(payload.current_password, user["password_hash"]):
+            raise HTTPException(
+                status_code=403,
+                detail="Mật khẩu hiện tại không chính xác. Không thể đổi email.",
+            )
 
     safe_updates = {
         k: v for k, v in updates.items() if k in {"full_name", "email", "department", "phone"}
@@ -540,12 +623,9 @@ async def forgot_password(
 ) -> dict[str, str]:
     client_ip = request.client.host if request.client else "unknown"
     ip_key = f"ip:{client_ip}"
-    target_key = f"target:{payload.identifier.lower()}"
 
     _check_forgot_password_rate_limit(ip_key)
-    _check_forgot_password_rate_limit(target_key)
     _record_forgot_password_attempt(ip_key)
-    _record_forgot_password_attempt(target_key)
 
     uniform_message = (
         "Nếu thông tin khớp với tài khoản trong hệ thống, hướng dẫn đặt lại mật khẩu "
@@ -564,12 +644,23 @@ async def forgot_password(
         )
         return {"status": "success", "message": uniform_message}
 
+    now = datetime.now(timezone.utc).timestamp()
+    target_key = f"target:{user['username'].lower()}"
+    last_sent = _forgot_password_target_cooldown.get(target_key, 0.0)
+    if now - last_sent < 60.0:
+        logger.info("Password reset request for user %s is throttled by cooldown.", user["username"])
+        return {"status": "success", "message": uniform_message}
+
+    _forgot_password_target_cooldown[target_key] = now
+    if len(_forgot_password_target_cooldown) > 1000:
+        _forgot_password_target_cooldown.clear()
+
     token = store.create_password_reset_token(
         user["username"],
         expires_minutes=config.RESET_TOKEN_EXPIRE_MINUTES,
     )
 
-    base_url = str(request.base_url).rstrip("/")
+    base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
     background_tasks.add_task(
         email_sender.send_password_reset_email,
         to_email=user_email,
@@ -937,7 +1028,8 @@ async def rate_resolved_ticket(
     try:
         rated = store.rate_ticket(ticket_id, payload.rating, payload.comment, user["username"])
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail="Chỉ đánh giá được ticket đã giải quyết.") from exc
+        msg = "Yêu cầu này đã được đánh giá trước đó." if "already been rated" in str(exc) else "Chỉ đánh giá được ticket đã giải quyết."
+        raise HTTPException(status_code=409, detail=msg) from exc
     return {"message": "Cảm ơn bạn đã đánh giá.", "ticket": rated}
 
 
@@ -1043,7 +1135,9 @@ async def edit_knowledge_document(
     if user["role"] == "agent":
         if doc["author"] != user["username"] and doc["status"] == "draft":
             raise HTTPException(status_code=403, detail="Chỉ tác giả hoặc Admin mới được sửa bản nháp này.")
-        if payload.status == "published":
+        if payload.status == "archived":
+            raise HTTPException(status_code=403, detail="Chỉ Quản trị viên (Admin) mới có quyền lưu trữ (archive) tài liệu tri thức.")
+        if doc["status"] == "published" or payload.status == "published":
             payload.status = "pending_review"
 
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}

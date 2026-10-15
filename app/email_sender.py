@@ -7,10 +7,12 @@ from typing import Any
 
 from app import config
 
+from collections import deque
+
 logger = logging.getLogger(__name__)
 
-# Outbox buffer for mock/testing inspection
-_outbox: list[dict[str, Any]] = []
+# Bounded outbox buffer for mock/testing inspection (limited to 50 records)
+_outbox: deque[dict[str, Any]] = deque(maxlen=50)
 
 
 def get_outbox() -> list[dict[str, Any]]:
@@ -44,7 +46,7 @@ def send_password_reset_email(
         return False
 
     minutes = config.RESET_TOKEN_EXPIRE_MINUTES
-    clean_base = base_url.rstrip("/") if base_url else "http://localhost:8000"
+    clean_base = config.PUBLIC_BASE_URL or (base_url.rstrip("/") if base_url else "http://localhost:8000")
     reset_link = f"{clean_base}/#reset-token={reset_token}"
 
     subject = "[OpsMind Helpdesk] Hướng dẫn đặt lại mật khẩu tài khoản"
@@ -62,17 +64,16 @@ def send_password_reset_email(
         f"Bộ phận Hỗ trợ CNTT (IT Support Team)"
     )
 
-    msg_record = {
-        "to": to_email,
-        "username": username,
-        "subject": subject,
-        "body": body_text,
-        "token": reset_token,
-        "link": reset_link,
-    }
-    _outbox.append(msg_record)
-
     if not config.SMTP_ENABLED:
+        msg_record = {
+            "to": to_email,
+            "username": username,
+            "subject": subject,
+            "body": body_text,
+            "token": reset_token,
+            "link": reset_link,
+        }
+        _outbox.append(msg_record)
         logger.info(
             "Mock email dispatched to %s for user %s (token: %s)",
             to_email,

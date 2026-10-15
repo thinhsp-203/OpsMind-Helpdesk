@@ -1094,7 +1094,21 @@ def test_user_profile_endpoints() -> None:
     assert "tickets_assigned" in me["activity"]
     assert "tickets_resolved" in me["activity"]
 
-    # 2. PATCH /auth/profile updates contact info
+    # 2. PATCH /auth/profile requires current_password to change email
+    no_pwd = client.patch(
+        "/auth/profile",
+        headers=user_headers,
+        json={"email": "user.test@opsmind.internal"},
+    )
+    assert no_pwd.status_code == 400
+
+    wrong_pwd = client.patch(
+        "/auth/profile",
+        headers=user_headers,
+        json={"email": "user.test@opsmind.internal", "current_password": "wrongpassword123"},
+    )
+    assert wrong_pwd.status_code == 403
+
     res = client.patch(
         "/auth/profile",
         headers=user_headers,
@@ -1103,6 +1117,7 @@ def test_user_profile_endpoints() -> None:
             "email": "user.test@opsmind.internal",
             "department": "Kế toán",
             "phone": "0912345678",
+            "current_password": "user",
         },
     )
     assert res.status_code == 200

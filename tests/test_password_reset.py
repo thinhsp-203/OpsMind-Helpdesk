@@ -14,9 +14,10 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clean_test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    from app.main import _failed_logins, _forgot_password_attempts
+    from app.main import _failed_logins, _forgot_password_attempts, _forgot_password_target_cooldown
     _failed_logins.clear()
     _forgot_password_attempts.clear()
+    _forgot_password_target_cooldown.clear()
     email_sender.clear_outbox()
 
     monkeypatch.setattr(store, "_database_path", tmp_path / "test-helpdesk.sqlite3")
@@ -30,6 +31,7 @@ def clean_test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
 
     _failed_logins.clear()
     _forgot_password_attempts.clear()
+    _forgot_password_target_cooldown.clear()
     email_sender.clear_outbox()
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()

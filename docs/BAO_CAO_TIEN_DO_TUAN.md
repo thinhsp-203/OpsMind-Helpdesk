@@ -45,11 +45,11 @@ Nhóm phân định rõ ràng giữa **Phần làm (In-scope)** và **Phần kh�
 
 - **26 Yêu cầu chức năng (FR-01 $\rightarrow$ FR-26):** Đã được chi tiết hóa trong [mục 4 của tài liệu SRS.md](file:///E:/OpsMind-Helpdesk/docs/SRS.md#4-yêu-cầu-chức-năng-chi-tiết), gắn với từng phân hệ cụ thể và có Acceptance Criteria (Given/When/Then) truy vết được.
 - **5 KPI nghiệp vụ định lượng (Cam kết trước mốc 50% theo Quy tắc G1 của Rubric):**
-  - **KPI-01:** Độ chính xác truy xuất RAG (Context Hit@3) $\ge 90\%$ (Thực nghiệm hiện tại đạt $100\%$ trên bộ test 30 câu).
-  - **KPI-02:** Tỷ lệ tuân thủ cam kết SLA $\ge 85\%$ trên tổng số ticket giải quyết.
-  - **KPI-03:** Tỷ lệ từ chối an toàn các câu hỏi ngoài phạm vi tri thức đạt $100\%$ (không bịa thông tin).
-  - **KPI-04:** Thời gian phản hồi truy vấn RAG (Latency p95) $\le 3000\text{ ms}$ (Hiện tại đạt $\approx 4.5\text{ ms}$ cho phần retrieval).
-  - **KPI-05:** Điểm đánh giá mức độ hài lòng người dùng thực tế (CSAT / SUS) $\ge 80/100$ điểm.
+  - **KPI-01:** Độ chính xác truy xuất RAG (Context Hit@3) $\ge 90\%$ trên tập kiểm thử độc lập (Holdout set).
+  - **KPI-02:** Tỷ lệ tuân thủ cam kết SLA $\ge 85\%$ trên tổng số ticket giải quyết (chuẩn ITIL, bảo lưu deadline khi cập nhật ticket).
+  - **KPI-03:** Tỷ lệ từ chối an toàn các câu hỏi ngoài phạm vi $\ge 80\%$ trên tập Holdout, tỷ lệ chặn nhầm $\le 5\%$ (không bịa thông tin và không chặn nhầm câu hỏi IT).
+  - **KPI-04:** Thời gian phản hồi truy vấn RAG (Latency p95): Truy xuất BM25 $\le 100\text{ ms}$; toàn trình qua LLM $\le 3000\text{ ms}$.
+  - **KPI-05:** Điểm đánh giá mức độ hài lòng người dùng thực tế (CSAT / SUS) $\ge 70/100$ điểm (Mức Khá/Chấp nhận được theo thang chuẩn Brooke 1996).
 
 ---
 
@@ -62,7 +62,7 @@ Nhóm phân định rõ ràng giữa **Phần làm (In-scope)** và **Phần kh�
    - Hoàn thiện cơ chế nạp tri thức dạng **UPSERT độc lập theo slug**, cho phép bổ sung thêm Runbook mới bất kỳ lúc nào mà không bị gián đoạn.
    - Xây dựng script nạp tự động dữ liệu demo mô phỏng doanh nghiệp ([`scripts/seed_demo_data.py`](file:///E:/OpsMind-Helpdesk/scripts/seed_demo_data.py)) gồm 6 tài khoản phòng ban và 20 ticket đa dạng trạng thái, sẵn sàng cho buổi bảo vệ.
 3. **Chất lượng Phần mềm (Đạt chuẩn Rubric TC2.4, TC2.5, TC2.6):**
-   - 100% test case tự động pass (51/51 pytest backend + 3/3 Node.js frontend).
+   - 100% test case tự động pass (68/68 pytest backend hợp lệ, 1 skipped + 3/3 Node.js frontend).
    - 0 lỗi lint (Ruff pass 100%), 0 secret bị lộ trong mã nguồn.
 
 ---

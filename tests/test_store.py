@@ -125,3 +125,16 @@ def test_seed_builtin_knowledge_upserts_newly_added_runbooks(
     with store._connect() as conn:
         store.seed_builtin_knowledge(conn)
     assert len(store.list_knowledge_documents()) == len(initial_docs)
+
+
+def test_non_demo_startup_requires_initial_admin_password(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "")
+
+    with pytest.raises(RuntimeError, match="INITIAL_ADMIN_PASSWORD.*must be configured"):
+        store.initialize_store()
+

@@ -557,6 +557,8 @@
     "Ví dụ: 0912345678 hoặc số máy lẻ": "For example: 0912345678 or ext",
     "Mật khẩu đổi lần cuối:": "Password last changed:",
     "Chưa cập nhật": "Not updated",
+    "Mật khẩu xác nhận (chỉ khi đổi email)": "Current password (only when changing email)",
+    "Nhập mật khẩu hiện tại nếu thay đổi email": "Enter current password if changing email",
     "Lưu thay đổi": "Save changes",
     "Xem hồ sơ cá nhân": "View user profile",
     "Đang lưu thông tin cá nhân...": "Saving personal information...",

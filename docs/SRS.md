@@ -137,11 +137,11 @@ Nhóm cam kết 5 chỉ số định lượng xuyên suốt quá trình thực h
 
 | Mã KPI | Tên chỉ số | Mục tiêu định lượng | Phương pháp đo lường & Minh chứng |
 |---|---|---|---|
-| **KPI-01** | Độ chính xác truy xuất RAG (Context Hit@3) | $\ge 90\%$ (Kỳ vọng đạt $100\%$ trên bộ test chuẩn) | Đo bằng script tự động [`scripts.evaluate_rag`](file:///E:/OpsMind-Helpdesk/scripts/evaluate_rag.py) trên bộ câu hỏi đánh giá độc lập (chứa ca có dấu, không dấu, viết tắt CNTT, câu ngoài phạm vi). |
-| **KPI-02** | Tỷ lệ tuân thủ cam kết SLA (SLA Compliance Rate) | $\ge 85\%$ | Tính toán tự động trên Dashboard Analytics: tỷ lệ ticket được giải quyết trước thời hạn `sla_deadline` trên tổng số ticket hoàn thành. |
-| **KPI-03** | Tỷ lệ từ chối an toàn thông tin ngoài phạm vi | $100\%$ | Hệ thống phát hiện và từ chối các câu hỏi không liên quan đến tài liệu kỹ thuật đã nạp, hướng dẫn người dùng tạo ticket; không sinh ảo giác (Hallucination). |
-| **KPI-04** | Thời gian phản hồi truy vấn RAG (Latency p95) | $\le 3000\text{ ms}$ (3 giây) | Đo lường độ trễ từ thời điểm gửi câu hỏi đến khi nhận kết quả truy xuất trên môi trường thử nghiệm tiêu chuẩn. |
-| **KPI-05** | Mức độ hài lòng của người dùng thực tế (CSAT / SUS) | $\ge 80/100$ điểm (Mức Tốt – Xuất sắc) | Khảo sát thực nghiệm tối thiểu 10 người dùng thật thực hiện kịch bản tác vụ và thu thập phiếu đánh giá System Usability Scale (SUS). |
+| **KPI-01** | Độ chính xác truy xuất RAG (Context Hit@3) | $\ge 90\%$ trên tập kiểm thử độc lập (Holdout set) | Đo bằng script tự động [`scripts.evaluate_rag`](file:///E:/OpsMind-Helpdesk/scripts/evaluate_rag.py) trên bộ câu hỏi đánh giá độc lập (chứa ca có dấu, không dấu, viết tắt CNTT, câu ngoài phạm vi). |
+| **KPI-02** | Tỷ lệ tuân thủ cam kết SLA (SLA Compliance Rate) | $\ge 85\%$ | Tính toán tự động trên Dashboard Analytics theo chuẩn ITIL: tỷ lệ ticket được giải quyết trước thời hạn `sla_deadline` gốc trên tổng số ticket hoàn thành (bảo lưu deadline khi sửa mô tả). |
+| **KPI-03** | Tỷ lệ từ chối an toàn thông tin ngoài phạm vi | $\ge 80\%$ trên tập ngoài phạm vi (Holdout), tỷ lệ từ chối nhầm $\le 5\%$ | Hệ thống phát hiện và từ chối các câu hỏi không liên quan đến CNTT qua Cổng thuật ngữ miền (Domain Guardrail), không chặn nhầm câu hỏi nghiệp vụ hợp lệ; hướng dẫn người dùng tạo ticket. |
+| **KPI-04** | Thời gian phản hồi truy vấn RAG (Latency p95) | Truy xuất: $p95 \le 100\text{ ms}$; Toàn trình LLM: $p95 \le 3000\text{ ms}$ | Phân định rõ độ trễ truy xuất nội bộ (BM25 lexical index) và độ trễ sinh phản hồi toàn trình khi bật mô hình ngôn ngữ lớn (LLM timeout 5.0s). |
+| **KPI-05** | Mức độ hài lòng của người dùng thực tế (CSAT / SUS) | $\ge 70/100$ điểm (Mức Khá/Chấp nhận được theo chuẩn Brooke 1996) | Khảo sát thực nghiệm tối thiểu 10 người dùng thật thực hiện kịch bản tác vụ và thu thập phiếu đánh giá System Usability Scale (SUS). |
 
 ---
 

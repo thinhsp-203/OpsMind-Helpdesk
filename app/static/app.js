@@ -296,6 +296,8 @@ function openUserProfileModal() {
   if (deptInput) deptInput.value = user.department || "";
   const phoneInput = byId("profilePhoneInput");
   if (phoneInput) phoneInput.value = user.phone || "";
+  const pwdConfirmInput = byId("profileCurrentPasswordInput");
+  if (pwdConfirmInput) pwdConfirmInput.value = "";
 
   const activity = user.activity || {};
   const statCreated = byId("profileStatCreated");
@@ -335,6 +337,8 @@ function closeUserProfileModal() {
   const modal = byId("userProfileModal");
   if (!modal) return;
   modal.classList.add("hidden");
+  const pwdConfirmInput = byId("profileCurrentPasswordInput");
+  if (pwdConfirmInput) pwdConfirmInput.value = "";
   setMessage("userProfileMessage", "");
 }
 
@@ -344,19 +348,26 @@ async function handleProfileUpdate(event) {
   const email = byId("profileEmailInput")?.value.trim() || "";
   const department = byId("profileDepartmentInput")?.value.trim() || "";
   const phone = byId("profilePhoneInput")?.value.trim() || "";
+  const currentPassword = byId("profileCurrentPasswordInput")?.value || "";
 
   setMessage("userProfileMessage", "Đang lưu thông tin cá nhân...", false);
   try {
+    const payload = {
+      full_name: fullName,
+      email,
+      department,
+      phone,
+    };
+    if (currentPassword) {
+      payload.current_password = currentPassword;
+    }
     const result = await api("/auth/profile", {
       method: "PATCH",
-      body: JSON.stringify({
-        full_name: fullName,
-        email,
-        department,
-        phone,
-      }),
+      body: JSON.stringify(payload),
     });
     state.user = { ...state.user, ...result.profile };
+    const pwdConfirmInput = byId("profileCurrentPasswordInput");
+    if (pwdConfirmInput) pwdConfirmInput.value = "";
     const displayName = state.user.full_name || state.user.username;
     const initials = displayName.slice(0, 2).toUpperCase();
     const avatarEl = byId("sidebarAvatar");
@@ -702,7 +713,7 @@ async function loadTickets() {
       byId("statResolution").textContent = "—";
       byId("statRating").textContent = "—";
       byId("ratingCount").textContent = "Thống kê cá nhân";
-      if (byId("statSelfService")) byId("statSelfService").textContent = "54.3%";
+      if (byId("statSelfService")) byId("statSelfService").textContent = "—";
     }
     byId("queueFilter").classList.toggle("hidden", state.user.role === "user");
     renderTickets(filterQueueTickets(state.tickets,
@@ -2002,7 +2013,12 @@ async function loadAnalytics() {
     byId("statResolved").textContent =
       (analytics.status_breakdown.resolved || 0) + (analytics.status_breakdown.closed || 0);
     byId("statOverdue").textContent = analytics.overdue_tickets;
-    if (byId("statSelfService")) byId("statSelfService").textContent = `${analytics.self_service_rate || 54.3}%`;
+    if (byId("statSelfService")) {
+      byId("statSelfService").textContent =
+        analytics.self_service_rate !== null && analytics.self_service_rate !== undefined
+          ? `${analytics.self_service_rate}%`
+          : "—";
+    }
     byId("statResolution").textContent = analytics.average_resolution_hours === null
       ? "—"
       : analytics.average_resolution_hours;

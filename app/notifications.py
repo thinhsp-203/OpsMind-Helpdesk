@@ -198,9 +198,7 @@ def get_notification_channels_status() -> dict[str, dict[str, str | bool]]:
     discord_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
 
     masked_chat = f"...{tg_chat[-4:]}" if len(tg_chat) >= 4 else ("Bật" if tg_chat else "Chưa cấu hình")
-    masked_discord = (
-        f"...{discord_url[-8:]}" if len(discord_url) >= 8 else ("Bật" if discord_url else "Chưa cấu hình")
-    )
+    masked_discord = f"...{discord_url[-8:]}" if len(discord_url) >= 8 else ("Bật" if discord_url else "Chưa cấu hình")
 
     return {
         "telegram": {

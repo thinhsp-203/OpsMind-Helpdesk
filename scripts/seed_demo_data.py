@@ -2,10 +2,12 @@
 """Seed realistic demo dataset for OpsMind Helpdesk thesis defense.
 
 Usage:
-    py scripts/seed_demo_data.py [--reset]
+    py scripts/seed_demo_data.py [--reset] [--overwrite-passwords] [--yes]
 
 Options:
-    --reset    Clear existing tickets/comments/audit logs before seeding (preserves schema & KB)
+    --reset                Clear existing tickets/comments/audit logs before seeding (preserves schema & KB)
+    --overwrite-passwords  Overwrite existing users' passwords with demo passwords (default: keep existing passwords)
+    --yes, --force         Confirm running against remote DATABASE_URL (e.g. Neon Postgres)
 """
 
 from __future__ import annotations
@@ -51,13 +53,20 @@ def main() -> int:
 
     base_time = datetime.now(timezone.utc)
 
+    if config.DATABASE_URL and "--force" not in sys.argv and "--yes" not in sys.argv:
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(config.DATABASE_URL)
+            db_host = parsed.hostname or "remote-host"
+        except Exception:
+            db_host = "remote-host"
+        print(f"\n[CẢNH BÁO BẢO MẬT] Phát hiện cấu hình DATABASE_URL trỏ tới cơ sở dữ liệu từ xa: {db_host}")
+        print("Script seed_demo_data.py sẽ thao tác trực tiếp trên CSDL này.")
+        print("Để tiếp tục, vui lòng chạy lại kèm cờ --yes hoặc --force (Ví dụ: py scripts/seed_demo_data.py --yes)")
+        return 1
+
     with store._connect() as conn:
         if reset_data:
-            if config.DATABASE_URL and "--force" not in sys.argv and "--yes" not in sys.argv:
-                print("\n[CẢNH BÁO BẢO MẬT] Phát hiện cấu hình DATABASE_URL (CSDL từ xa/Postgres).")
-                print("Lệnh --reset sẽ xóa sạch toàn bộ ticket, comment và chat session.")
-                print("Để xác nhận thực hiện trên CSDL này, hãy chạy lại kèm cờ --yes hoặc --force.")
-                return 1
             print("[*] Đang làm sạch dữ liệu cũ (--reset)...")
             conn.execute("DELETE FROM comments")
             conn.execute("DELETE FROM audit_logs")
@@ -69,6 +78,7 @@ def main() -> int:
 
         # 1. Seed Users with strong passwords
         print("\n[1/4] Khởi tạo tài khoản người dùng chuẩn...")
+        overwrite_passwords = "--overwrite-passwords" in sys.argv
         demo_users = [
             # (username, password, role, full_name, email, dept, phone)
             ("admin", "OpsMindAdmin2026!", "admin", "Nguyễn Hoàng Minh (Admin)", "admin@opsmind.vn", "IT Operations", "0901234567"),
@@ -90,7 +100,7 @@ def main() -> int:
                     (u, store._password_hash(pwd), role, fn, mail, dept, ph),
                 )
                 print(f"    + Tạo mới: {u:12} [{role:5}] - {fn}")
-            else:
+            elif overwrite_passwords:
                 conn.execute(
                     """
                     UPDATE users SET password_hash = ?, role = ?, full_name = ?, email = ?, department = ?, phone = ?, is_active = 1
@@ -98,7 +108,16 @@ def main() -> int:
                     """,
                     (store._password_hash(pwd), role, fn, mail, dept, ph, u),
                 )
-                print(f"    * Cập nhật: {u:12} [{role:5}] - {fn}")
+                print(f"    * Cập nhật (ghi đè mật khẩu demo): {u:12} [{role:5}] - {fn}")
+            else:
+                conn.execute(
+                    """
+                    UPDATE users SET role = ?, full_name = ?, email = ?, department = ?, phone = ?, is_active = 1
+                    WHERE username = ?
+                    """,
+                    (role, fn, mail, dept, ph, u),
+                )
+                print(f"    * Cập nhật thông tin (giữ mật khẩu hiện tại): {u:12} [{role:5}] - {fn}")
 
     # Ensure KB is initialized
     store.initialize_store()

@@ -45,6 +45,12 @@ def send_password_reset_email(
         logger.warning("Không thể gửi email đặt lại mật khẩu: địa chỉ email không hợp lệ.")
         return False
 
+    if not config.DEMO_MODE and not config.PUBLIC_BASE_URL:
+        logger.error(
+            "PUBLIC_BASE_URL is not configured in non-demo environment. Refusing to send reset email with untrusted host."
+        )
+        return False
+
     minutes = config.RESET_TOKEN_EXPIRE_MINUTES
     clean_base = config.PUBLIC_BASE_URL or (base_url.rstrip("/") if base_url else "http://localhost:8000")
     reset_link = f"{clean_base}/#reset-token={reset_token}"

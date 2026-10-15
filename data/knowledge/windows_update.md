@@ -1,5 +1,7 @@
 # Windows Update and Software Patching
 
+**Từ khóa:** cập nhật Windows, Windows Update, lỗi update, cài đặt bản vá, update bị treo, update fail, cập nhật hệ điều hành.
+
 ## Symptoms
 - Updates fail repeatedly.
 - Device shows update pending for hours.

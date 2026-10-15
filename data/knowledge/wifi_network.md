@@ -1,5 +1,7 @@
 # Wi-Fi and LAN Connectivity
 
+**Từ khóa:** Wi-Fi, wifi, mạng không dây, sóng wifi, kết nối wifi, mất kết nối wifi, SSID, wifi chập chờn, adapter wifi, mạng văn phòng.
+
 ## Common issues
 - Device cannot join the Wi-Fi network.
 - Laptop loses connectivity after waking from sleep.

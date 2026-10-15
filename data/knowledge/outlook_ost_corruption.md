@@ -1,5 +1,7 @@
 # Outlook Data File (.OST / .PST) Corruption and Repair
 
+**Từ khóa:** tệp OST, file OST hỏng, lỗi dữ liệu Outlook, sửa lỗi OST, tạo lại profile Outlook, lỗi mở hòm thư, SCANPST.
+
 ## Symptoms
 - Outlook displays startup error: 'Cannot start Microsoft Outlook. Cannot open the Outlook window. The set of folders cannot be opened'.
 - Error: 'Errors have been detected in the file C:\Users\...\AppData\Local\Microsoft\Outlook\user@company.com.ost'.

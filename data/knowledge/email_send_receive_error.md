@@ -1,5 +1,7 @@
 # Outlook Send and Receive Errors 0x800CCC0E and 0x80042108
 
+**Từ khóa:** gửi email, nhận email, lỗi gửi mail, lỗi nhận mail, không gửi được thư, không nhận được thư, SMTP, IMAP, POP3, mailbox.
+
 ## Symptoms
 - Outlook Send/Receive Progress dialog reports errors: `Task 'user@company.com - Sending' reported error (0x800CCC0E): 'Cannot connect to the network server'`.
 - Error `0x80042108`: 'The operation timed out waiting for a response from the sending (SMTP) server'.

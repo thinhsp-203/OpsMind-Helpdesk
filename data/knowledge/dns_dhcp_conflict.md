@@ -1,5 +1,7 @@
 # DHCP IP Address Conflict and DNS Troubleshooting
 
+**Từ khóa:** DNS, DHCP, xung đột IP, trùng IP, lỗi phân giải tên miền, không vào được mạng, ipconfig, flushdns, renew IP, network conflict.
+
 ## Symptoms
 - Device reports 'No Internet, secured' or 'Unidentified network'.
 - Windows error popup: 'There is an IP address conflict with another system on the network' (Event ID 4199).

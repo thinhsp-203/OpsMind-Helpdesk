@@ -193,6 +193,14 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
                 (doc_row["id"], title, category, tags, content, now),
             )
 
+INSECURE_ADMIN_PASSWORDS: set[str] = {
+    "adminsecurepassword123!",
+    "admin12345678!",
+    "password123456!",
+    "changeme123456!",
+    "opsmindadmin2026!",
+}
+
 
 def initialize_store() -> None:
     with _connect() as connection:
@@ -440,6 +448,7 @@ def initialize_store() -> None:
             elif (
                 INITIAL_ADMIN_USERNAME
                 and len(INITIAL_ADMIN_PASSWORD) >= 12
+                and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
                 and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
             ):
                 connection.execute(
@@ -448,8 +457,8 @@ def initialize_store() -> None:
                 )
             else:
                 raise RuntimeError(
-                    "INITIAL_ADMIN_PASSWORD (at least 12 characters) and INITIAL_ADMIN_USERNAME "
-                    "must be configured in environment variables for fresh non-demo setup."
+                    "INITIAL_ADMIN_PASSWORD (at least 12 characters, not using known placeholder passwords) "
+                    "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
         seed_builtin_knowledge(connection)
 
@@ -837,6 +846,8 @@ def update_ticket_fields(
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] in {"resolved", "closed"} and "priority" in updates and updates["priority"] != row["priority"]:
+            raise ValueError("Không thể thay đổi mức độ ưu tiên trên ticket đã giải quyết hoặc đã đóng.")
         if row["status"] == "closed":
             raise ValueError("Closed tickets cannot be edited")
         timestamp = _now()

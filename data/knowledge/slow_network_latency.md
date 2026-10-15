@@ -1,5 +1,7 @@
 # High Network Latency and Packet Loss Troubleshooting
 
+**Từ khóa:** mạng chậm, mạng lag, độ trễ cao, ping cao, nghẽn mạng, đường truyền chậm, giật lag, mất gói tin, packet loss.
+
 ## Symptoms
 - High ping times (> 150ms) to internal servers or gateways.
 - Video calls (Teams/Zoom) lag, drop audio, or disconnect frequently.

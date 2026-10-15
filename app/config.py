@@ -12,11 +12,12 @@ INSECURE_SECRET_KEYS = {
     "secretkey",
     "your-secret-key",
 }
-if not DEMO_MODE and SECRET_KEY in INSECURE_SECRET_KEYS:
-    raise RuntimeError(
-        "Insecure placeholder SECRET_KEY detected in production/non-demo environment. "
-        "Please configure a unique cryptographically random SECRET_KEY in your environment variables."
-    )
+if not DEMO_MODE and SECRET_KEY:
+    if SECRET_KEY in INSECURE_SECRET_KEYS or len(SECRET_KEY) < 32:
+        raise RuntimeError(
+            "Insecure or short SECRET_KEY detected in production/non-demo environment (minimum 32 characters required). "
+            "Please configure a unique cryptographically random SECRET_KEY in your environment variables."
+        )
 if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(48)
     if not DEMO_MODE:

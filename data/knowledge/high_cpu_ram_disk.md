@@ -1,5 +1,7 @@
 # High CPU, RAM, and 100% Disk Usage Performance Fix
 
+**Từ khóa:** quạt kêu to, máy nóng, đơ máy, treo máy, chậm máy, CPU cao, 100% disk, đầy ổ cứng, RAM đầy, SysMain, Task Manager, hiệu năng kém.
+
 ## Symptoms
 - PC response is sluggish; applications take over 30 seconds to launch or freeze with 'Not Responding'.
 - Laptop cooling fans run at maximum speed continuously even when idle.

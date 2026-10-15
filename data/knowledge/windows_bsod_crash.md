@@ -1,5 +1,7 @@
 # Windows Blue Screen of Death (BSOD) Crash Triage
 
+**Từ khóa:** màn hình xanh, BSOD, blue screen, máy tính bị sập, crash máy, dump file, tự khởi động lại, WinRE, lỗi hệ điều hành.
+
 ## Symptoms
 - System crashes abruptly to a blue screen displaying 'Your PC ran into a problem and needs to restart'.
 - Stop codes: `CRITICAL_PROCESS_DIED`, `PAGE_FAULT_IN_NONPAGED_AREA`, `IRQL_NOT_LESS_OR_EQUAL`, `KERNEL_SECURITY_CHECK_FAILURE`.

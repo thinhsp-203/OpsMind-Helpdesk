@@ -1,5 +1,7 @@
 # BitLocker Recovery Key Prompt at Startup
 
+**Từ khóa:** BitLocker, recovery key, khóa bitlocker, mã khôi phục, 48 chữ số, mã hóa ổ đĩa, BitLocker recovery, recovery key id.
+
 ## Symptoms
 - Workstation boots into blue screen prompting: 'BitLocker - Enter the recovery key for this drive (Keyboard Layout: US)'.
 - Screen displays Recovery Key ID (first 8 characters: e.g., `A1B2C3D4-...`).

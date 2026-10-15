@@ -1,5 +1,7 @@
 # Printer Queue and Print Spooler
 
+**Từ khóa:** kẹt lệnh in, lệnh in bị kẹt, hàng đợi máy in, Print Spooler, kẹt giấy máy in, xóa lệnh in, hủy lệnh in, không in được.
+
 ## Symptoms
 - Jobs remain stuck in queue.
 - Printer status is offline or paused.

@@ -1,5 +1,7 @@
 # Ethernet Disconnected and Cable Unplugged Error
 
+**Từ khóa:** cáp mạng, dây mạng, ethernet, ngắt kết nối, cáp mạng báo chưa cắm, cắm dây mạng, cổng RJ45, mất mạng dây, card mạng LAN, cable unplugged, biểu tượng quả cầu gạch chéo.
+
 ## Symptoms
 - Windows taskbar displays globe icon or red X with 'Network cable unplugged'.
 - Ethernet adapter alternates rapidly between 'Identifying...' and 'Network cable unplugged'.

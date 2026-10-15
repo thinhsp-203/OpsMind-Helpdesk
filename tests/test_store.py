@@ -138,3 +138,15 @@ def test_non_demo_startup_requires_initial_admin_password(
     with pytest.raises(RuntimeError, match="INITIAL_ADMIN_PASSWORD.*must be configured"):
         store.initialize_store()
 
+
+def test_non_demo_startup_rejects_insecure_placeholder_password(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "AdminSecurePassword123!")
+
+    with pytest.raises(RuntimeError, match="not using known placeholder passwords"):
+        store.initialize_store()
+

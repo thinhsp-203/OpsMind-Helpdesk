@@ -1,5 +1,7 @@
 # Network Shared Folder Access Denied and NTFS Permissions
 
+**Từ khóa:** phân quyền thư mục, quyền truy cập, shared folder, cấp quyền folder, permission denied, không mở được thư mục mạng, ổ đĩa chia sẻ.
+
 ## Symptoms
 - User opens network share path (e.g., `\\fileserver\Finance`) and receives error: 'Windows cannot access \\fileserver\Finance. You do not have permission to access... Contact your network administrator'.
 - Error code: `0x80070005` (Access Denied).

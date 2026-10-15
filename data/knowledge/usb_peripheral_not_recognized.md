@@ -1,5 +1,7 @@
 # USB Peripheral and Smart Card Token Recognition Fix
 
+**Từ khóa:** USB không nhận, không nhận chuột, không nhận bàn phím, cổng USB lỗi, cắm USB không nhận, thiết bị ngoại vi, USB driver.
+
 ## Symptoms
 - Windows notification: 'USB device not recognized. The last USB device you connected to this computer malfunctioned'.
 - Digital signature USB Token, mouse, or keyboard fails to respond or shows yellow exclamation mark in Device Manager.

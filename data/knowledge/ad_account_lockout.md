@@ -1,5 +1,7 @@
 # Active Directory Account Lockout and Password Reset
 
+**Từ khóa:** Active Directory, khóa tài khoản, mở khóa tài khoản, đăng nhập sai, account lockout, mật khẩu AD, domain controller, tài khoản bị khóa.
+
 ## Symptoms
 - Windows login screen displays: 'The referenced account is currently locked out and may not be logged on to'.
 - User is suddenly locked out after changing corporate password on another device (e.g., mobile phone or tablet).

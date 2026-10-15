@@ -580,16 +580,20 @@ async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[st
     new_email = updates.get("email")
     current_email = user.get("email") or ""
     if new_email is not None and new_email.strip().lower() != current_email.strip().lower():
+        user_key = f"user:{actor['username'].lower()}"
+        _check_change_password_rate_limit(user_key)
         if not payload.current_password:
             raise HTTPException(
                 status_code=400,
                 detail="Cần nhập mật khẩu hiện tại để thay đổi địa chỉ email bảo mật.",
             )
         if not store.verify_password(payload.current_password, user["password_hash"]):
+            _record_change_password_attempt(user_key)
             raise HTTPException(
                 status_code=403,
                 detail="Mật khẩu hiện tại không chính xác. Không thể đổi email.",
             )
+        _clear_change_password_attempts(user_key)
 
     safe_updates = {
         k: v for k, v in updates.items() if k in {"full_name", "email", "department", "phone"}
@@ -659,6 +663,12 @@ async def forgot_password(
         user["username"],
         expires_minutes=config.RESET_TOKEN_EXPIRE_MINUTES,
     )
+
+    if not config.DEMO_MODE and not config.PUBLIC_BASE_URL:
+        logger.error(
+            "Password reset request rejected: PUBLIC_BASE_URL must be configured in non-demo environment."
+        )
+        return {"status": "success", "message": uniform_message}
 
     base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
     background_tasks.add_task(
@@ -887,6 +897,11 @@ async def update_ticket(request: Request, ticket_id: int, payload: TicketUpdate)
             raise HTTPException(status_code=409, detail="Chỉ có thể sửa ticket khi còn ở trạng thái Mới.")
     else:
         require_staff(user)
+        if ticket["status"] in {"resolved", "closed"} and payload.priority and payload.priority != ticket["priority"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Không thể thay đổi mức độ ưu tiên trên ticket đã giải quyết hoặc đã đóng.",
+            )
     try:
         updated = store.update_ticket_fields(
             ticket_id,

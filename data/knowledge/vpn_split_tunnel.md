@@ -1,5 +1,7 @@
 # VPN Split Tunneling and Internal Subnet Routing
 
+**Từ khóa:** VPN Split Tunnel, mất mạng cục bộ khi bật VPN, không vào được máy in nội bộ khi bật VPN, định tuyến VPN, split tunneling.
+
 ## Symptoms
 - User is connected to corporate VPN but cannot open internal intranet websites (10.x.x.x or 192.168.x.x).
 - Public internet traffic is extremely slow because all traffic routes through company gateway.

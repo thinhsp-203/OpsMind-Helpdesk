@@ -1,5 +1,7 @@
 # Remote Desktop (RDP) Connection and NLA Troubleshooting
 
+**Từ khóa:** Remote Desktop, RDP, mstsc, kết nối máy chủ, máy tính từ xa, điều khiển từ xa, màn hình từ xa, lỗi kết nối RDP.
+
 ## Symptoms
 - Remote Desktop Connection displays: 'Remote Desktop can\'t connect to the remote computer for one of these reasons' (Error code 0x204 or 0x104).
 - Error popup: 'An authentication error has occurred. The function requested is not supported' (CredSSP / NLA error).

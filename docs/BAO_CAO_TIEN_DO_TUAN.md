@@ -62,7 +62,7 @@ Nhóm phân định rõ ràng giữa **Phần làm (In-scope)** và **Phần kh�
    - Hoàn thiện cơ chế nạp tri thức dạng **UPSERT độc lập theo slug**, cho phép bổ sung thêm Runbook mới bất kỳ lúc nào mà không bị gián đoạn.
    - Xây dựng script nạp tự động dữ liệu demo mô phỏng doanh nghiệp ([`scripts/seed_demo_data.py`](file:///E:/OpsMind-Helpdesk/scripts/seed_demo_data.py)) gồm 6 tài khoản phòng ban và 20 ticket đa dạng trạng thái, sẵn sàng cho buổi bảo vệ.
 3. **Chất lượng Phần mềm (Đạt chuẩn Rubric TC2.4, TC2.5, TC2.6):**
-   - 100% test case tự động pass (68/68 pytest backend hợp lệ, 1 skipped + 3/3 Node.js frontend).
+   - 100% test case tự động pass (71/71 pytest backend hợp lệ, 1 skipped + 3/3 Node.js frontend; RAG Holdout 60 câu độc lập đạt Hit@1 66.7%, Hit@3 100%, MRR@3 0.817, OOS 100%).
    - 0 lỗi lint (Ruff pass 100%), 0 secret bị lộ trong mã nguồn.
 
 ---

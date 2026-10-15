@@ -1,5 +1,7 @@
 # Network Printer Offline Status and SNMP Port Fix
 
+**Từ khóa:** máy in offline, máy in ngoại tuyến, máy in không nhận, mất kết nối máy in, bật máy in, kiểm tra cáp máy in, offline printer.
+
 ## Symptoms
 - Network printer displays status 'Offline' in Windows Settings and Devices and Printers, even though physical printer is powered on and display screen shows Ready.
 - Print jobs enter queue with status 'Error - Printing' or 'Paused'.

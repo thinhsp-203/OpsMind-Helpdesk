@@ -1,5 +1,7 @@
 # Corporate Web Proxy and PAC Script Configuration
 
+**Từ khóa:** Proxy, tệp PAC, không tải được trang web nội bộ, bypass proxy, cấu hình proxy, máy chủ proxy, web nội bộ.
+
 ## Symptoms
 - Browser displays 'The proxy server is not responding' or HTTP 407 Proxy Authentication Required.
 - Internal intranet portals load, but external websites or cloud SaaS tools fail to connect.

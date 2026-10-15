@@ -1,5 +1,7 @@
 # Windows and Office Volume License (KMS) Activation Fix
 
+**Từ khóa:** bản quyền Windows, kích hoạt Windows, license key, Windows hết hạn bản quyền, activate Windows, KMS, bản quyền hệ điều hành.
+
 ## Symptoms
 - Desktop background turns black; watermark displays 'Activate Windows - Go to Settings to activate Windows'.
 - Microsoft Office applications (Word, Excel) display yellow banner: 'Product Notice: Word hasn\'t been activated. Most features will be disabled'.

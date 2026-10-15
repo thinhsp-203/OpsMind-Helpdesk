@@ -1,5 +1,7 @@
 # OpenVPN Client TLS Handshake and Certificate Errors
 
+**Từ khóa:** OpenVPN, lỗi openvpn, kết nối openvpn, TLS error, chứng chỉ TLS, file ovpn, đồng bộ thời gian, đồng hồ máy tính, client certificate.
+
 ## Symptoms
 - OpenVPN client icon stays yellow or disconnects with red icon.
 - Log error: 'TLS Error: TLS key negotiation failed to occur within 60 seconds (check your network connectivity)'.

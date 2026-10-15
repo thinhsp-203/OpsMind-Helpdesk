@@ -1,5 +1,7 @@
 # Outlook Mailbox Storage Quota Exceeded and Cleanup
 
+**Từ khóa:** hộp thư đầy, đầy hòm thư, dung lượng email, quá hạn ngạch, full mailbox, lưu trữ email, archive mail, xóa bớt thư.
+
 ## Symptoms
 - User receives bounce message (NDR): '554 5.2.2 mailbox full; message size 30000000 bytes exceeds size limit'.
 - Outlook displays warning bar: 'Mailbox Cleanup: Your mailbox is full. You cannot send or receive new messages'.

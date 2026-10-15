@@ -32,24 +32,36 @@ DEFAULT_STOP_WORDS = {
     "what", "when", "where", "why", "with", "work", "works", "you",
 }
 DEFAULT_SYNONYMS = {
-    "wifi": "network",
-    "wireless": "network",
-    "internet": "network",
-    "lan": "network",
+    "wifi": "wifi",
+    "wireless": "wifi",
+    "internet": "internet",
+    "lan": "lan",
+    "dns": "dns",
+    "dhcp": "dhcp",
+    "ethernet": "ethernet",
     "vpn": "vpn",
     "forticlient": "forticlient",
     "openvpn": "openvpn",
     "printer": "printer",
     "printing": "printer",
     "spooler": "printer",
-    "outlook": "email",
+    "scanner": "scanner",
+    "scan": "scanner",
+    "outlook": "outlook",
     "mail": "email",
     "email": "email",
+    "autodiscover": "autodiscover",
     "chungthu": "certificate",
     "certificate": "certificate",
     "folder": "access",
     "permission": "access",
     "quyen": "access",
+    "smb": "smb",
+    "offline": "offline",
+    "status": "status",
+    "quota": "quota",
+    "sync": "sync",
+    "driver": "driver",
     "erp": "erp",
     "accounting": "erp",
     "update": "update",
@@ -67,6 +79,31 @@ DEFAULT_COMPOUNDS = {
     ("ky", "so"): "certificate",
     ("thu", "muc"): "access",
     ("login", "approval", "request"): "mfa",
+    ("login", "approval"): "mfa",
+    ("phe", "duyet"): "approval",
+    ("quet", "tai", "lieu"): "scanner",
+    ("may", "da", "chuc", "nang"): "scanner",
+    ("may", "scan"): "scanner",
+    ("may", "quet"): "scanner",
+    ("scan", "to", "folder"): "scanner",
+    ("cau", "hinh", "tu", "dong"): "autodiscover",
+    ("them", "tai", "khoan"): "autodiscover",
+    ("hop", "thu"): "email",
+    ("hom", "thu"): "email",
+    ("han", "ngach"): "quota",
+    ("dung", "luong"): "quota",
+    ("vuot", "qua"): "quota",
+    ("khong", "cap", "nhat"): "sync",
+    ("khong", "dong", "bo"): "sync",
+    ("dong", "bo"): "sync",
+    ("xung", "dot"): "conflict",
+    ("trung", "ip"): "conflict",
+    ("dia", "chi", "ip"): "ip",
+    ("cai", "dat", "driver"): "driver",
+    ("trang", "thai"): "status",
+    ("bat", "nguon"): "power",
+    ("binh", "thuong"): "",
+    ("van", "phong"): "",
 }
 DEFAULT_CATEGORY_BY_SOURCE = {
     "ad_account_lockout.md": "security",
@@ -129,6 +166,46 @@ DEFAULT_OUT_OF_SCOPE_PATTERNS = (
     "ty gia",
     "phim anh",
     "du lich",
+    "may giat",
+    "xe may",
+    "o to",
+    "xe hoi",
+    "tu lanh",
+    "dieu hoa",
+    "bep gas",
+    "bep tu",
+    "noi com",
+    "may say",
+    "may loc nuoc",
+    "binh nong lanh",
+    "ngu duoc",
+    "mat ngu",
+    "suc khoe",
+    "uong thuoc",
+    "benh vien",
+    "kham benh",
+    "lan ho diep",
+    "cay canh",
+    "trong cay",
+    "thu cung",
+    "cho meo",
+    "tai khoan ngan hang",
+    "so tiet kiem",
+    "the tin dung",
+    "the atm",
+    "facebook ca nhan",
+    "tiktok",
+    "instagram",
+    "bat dong san",
+    "vneid",
+    "dinh danh dien tu",
+    "ngay ram",
+    "cam hoa",
+    "ban tho",
+    "tap gym",
+    "giam mo",
+    "hoa hong",
+    "chuyen nhuong",
 )
 
 
@@ -215,7 +292,7 @@ def reload_rag_dictionary(dict_file: Path | None = None) -> None:
 IT_DOMAIN_WORDS: set[str] = {
     "windows", "macos", "linux", "office", "word", "excel", "outlook", "email", "mail",
     "erp", "misa", "sap", "fast", "bravo", "chrome", "edge", "firefox",
-    "vpn", "forticlient", "openvpn", "wifi", "wireless", "lan", "internet", "ip", "dhcp", "dns",
+    "vpn", "forticlient", "openvpn", "wifi", "wireless", "internet", "ip", "dhcp", "dns",
     "proxy", "pac", "ping", "router", "switch", "gateway", "server", "pc", "laptop",
     "printer", "scanner", "scan", "usb", "ram", "cpu", "ssd", "bios", "driver",
     "mfa", "otp", "authenticator", "bitlocker", "smb", "rdp", "login", "password", "auth",
@@ -223,18 +300,20 @@ IT_DOMAIN_WORDS: set[str] = {
     "bsod", "spooler", "helpdesk", "ticket",
     "access", "permission", "permissions", "remote", "network", "print", "printing",
     "queue", "crash", "reboot", "restart", "connect", "connection", "folder", "file",
+    "ethernet", "ipconfig", "flushdns",
 }
 
 IT_DOMAIN_PHRASES: tuple[str, ...] = (
-    "wi-fi", "wi fi", "may tinh", "may chu", "may in", "man hinh", "chuot", "ban phim", "o dia", "day mang",
-    "phan mem", "ung dung", "cai dat", "cap nhat", "ban quyen", "kich hoat",
-    "ket noi", "mat mang", "cham mang", "rot mang", "duong truyen", "mat ket noi",
-    "tai khoan", "mat khau", "dang nhap", "khoa tai khoan", "doi mat khau",
+    "wi-fi", "wi fi", "may tinh", "may chu", "may in", "man hinh", "chuot", "ban phim", "o dia", "o cung",
+    "day mang", "cap mang", "cong mang", "mang lan", "cong lan", "mang noi bo", "duong truyen", "mat mang", "cham mang", "rot mang",
+    "mat wifi", "song wifi", "mang wifi", "ket noi wifi",
+    "phan mem", "ung dung", "ban quyen", "kich hoat",
+    "tai khoan", "mat khau", "dang nhap", "khoa tai khoan", "mo khoa tai khoan", "doi mat khau", "quen mat khau", "reset mat khau",
     "chung thu", "chu ky", "ky so", "quyen truy cap", "truy cap", "thu muc", "chia se file",
     "login approval", "approval request",
     "man hinh xanh", "treo may", "do may", "ket lenh", "lenh in", "ket giay", "het muc", "in an",
-    "khong the", "khong vao duoc", "khong nhan", "khong in duoc", "khong gui duoc",
-    "khong ket noi", "bi loi", "bao loi", "khoi dong",
+    "khong nhan usb", "khong in duoc", "khong gui duoc mail", "khong nhan duoc mail",
+    "khong vao duoc mang", "khong vao duoc vpn", "khong ket noi duoc vpn",
 )
 
 
@@ -244,7 +323,12 @@ def is_out_of_scope(query: str) -> bool:
     has_it = bool(words & IT_DOMAIN_WORDS) or any(phrase in folded for phrase in IT_DOMAIN_PHRASES)
     has_oos = any(pattern in folded for pattern in OUT_OF_SCOPE_PATTERNS)
     if has_oos:
-        return not has_it
+        strong_it_terms = {"misa", "sap", "erp", "vpn", "bitlocker", "bsod", "outlook", "excel", "word", "printer"}
+        strong_it_phrases = ("wi-fi", "wi fi", "wifi", "may tinh", "may in", "cap mang", "day mang", "phan mem ke toan", "thu muc chia se")
+        strong_it = bool(words & strong_it_terms) or any(p in folded for p in strong_it_phrases) or (len(words & IT_DOMAIN_WORDS) >= 2)
+        if not strong_it:
+            return True
+        return False
     if not has_it:
         return True
     return False
@@ -270,7 +354,8 @@ def _tokens(text: str) -> list[str]:
         for parts, canonical in sorted_compounds:
             p_len = len(parts)
             if index + p_len <= len(words) and tuple(words[index:index + p_len]) == parts:
-                normalized.append(canonical)
+                if canonical:
+                    normalized.append(canonical)
                 index += p_len
                 matched = True
                 break

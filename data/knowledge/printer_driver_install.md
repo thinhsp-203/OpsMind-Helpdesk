@@ -1,5 +1,7 @@
 # Network Printer Driver Installation via Standard TCP/IP Port
 
+**Từ khóa:** cài đặt driver máy in, thêm máy in, kết nối máy in mới, driver máy in, cài máy in văn phòng, add printer, driver print.
+
 ## Symptoms
 - User receives new PC or moves to a new department and needs access to shared floor printer.
 - Windows auto-discovery fails to find network printer, or installs generic driver without duplex/color options.

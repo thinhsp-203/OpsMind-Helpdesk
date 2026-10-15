@@ -1151,4 +1151,35 @@ def test_user_profile_endpoints() -> None:
     assert client.patch("/auth/profile", json={"full_name": "Hacker"}).status_code == 401
 
 
+def test_profile_email_change_rate_limits_after_five_failed_attempts() -> None:
+    user_headers = auth("user")
+    for _ in range(5):
+        resp = client.patch(
+            "/auth/profile",
+            headers=user_headers,
+            json={"email": "new.email@opsmind.internal", "current_password": "badpassword!"},
+        )
+        assert resp.status_code == 403
+
+    blocked = client.patch(
+        "/auth/profile",
+        headers=user_headers,
+        json={"email": "new.email@opsmind.internal", "current_password": "badpassword!"},
+    )
+    assert blocked.status_code == 429
+
+
+def test_cannot_change_priority_on_resolved_or_closed_ticket() -> None:
+    admin_headers = auth("admin")
+    ticket = make_ticket(auth("user"), title="Test SLA freeze")
+    t_id = ticket["id"]
+
+    client.patch(f"/tickets/{t_id}", headers=admin_headers, json={"status": "in_progress"})
+    client.patch(f"/tickets/{t_id}", headers=admin_headers, json={"status": "resolved"})
+
+    res = client.put(f"/tickets/{t_id}", headers=admin_headers, json={"priority": "low"})
+    assert res.status_code == 409
+    assert "Không thể thay đổi mức độ ưu tiên" in res.json()["detail"]
+
+
 

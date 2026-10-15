@@ -1,5 +1,7 @@
 # Exchange Autodiscover and New Profile Setup Failure
 
+**Từ khóa:** Outlook, Autodiscover, cấu hình mail, thêm tài khoản email, máy chủ Exchange, lỗi autodiscover, đồng bộ tài khoản mail.
+
 ## Symptoms
 - Setting up a new corporate email account stops at: 'Searching for your mail server settings...' and fails.
 - Error popup: 'An encrypted connection to your mail server is not available' or 'We couldn\'t connect to the incoming server'.

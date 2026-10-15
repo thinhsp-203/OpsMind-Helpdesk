@@ -1,5 +1,7 @@
 # Multifunction Printer Scan to Folder (SMB) Error Troubleshooting
 
+**Từ khóa:** máy scan, máy quét, scan to folder, quét tài liệu, thư mục scan, giao thức SMB, scan tài liệu văn phòng, lỗi scan.
+
 ## Symptoms
 - User scans document on office photocopier/MFP, but scanned PDF never arrives in their shared PC folder.
 - Printer LCD displays error: 'Server connection error', 'SMB Transmission failed (Code 0x0C)', or 'Authentication failed'.

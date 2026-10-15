@@ -16,3 +16,5 @@ services:
         generateValue: true
       - key: TOKEN_EXPIRE_MINUTES
         value: "120"
+      - key: PUBLIC_BASE_URL
+        value: "https://opsmind-helpdesk-a7ke.onrender.com"

@@ -372,7 +372,7 @@ body { font-size:14px; }
 }
 
 /* Staff layout: single column or dedicated views */
-#workspaceView:is([data-role="agent"],[data-role="admin"]):not([data-view="assistant"]) .side-column {
+#workspaceView:is([data-role="agent"],[data-role="admin"]):is([data-view="dashboard"],[data-view="tickets"],[data-view="submit"]) .side-column {
   display: none;
 }
 /* Dedicated lookup view: remove the empty ticket column and use the full width. */
@@ -391,7 +391,7 @@ body { font-size:14px; }
   }
 }
 #workspaceView:is([data-role="agent"],[data-role="admin"]):is([data-view="knowledge"],[data-view="users"],[data-view="reports"],[data-view="personal"],[data-view="notifications"]) .main-column {
-  display: grid;
+  display: none;
 }
 #workspaceView[data-role] .side-column { order:0; grid-row:auto; }
 .assistant-context { display:grid; gap:20px; min-width:0; }

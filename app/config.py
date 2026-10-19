@@ -49,11 +49,22 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/"
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "5.0"))
 
+def _get_env_case_insensitive(key: str, default: str = "") -> str:
+    val = os.getenv(key)
+    if val is not None:
+        return val
+    key_upper = key.upper()
+    for k, v in os.environ.items():
+        if k.upper() == key_upper:
+            return v
+    return default
+
+
 # Email settings (Multi-provider support: SMTP, Resend API, Brevo API, Webhook, Mock/Console)
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "").strip().lower()
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
-BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
-EMAIL_WEBHOOK_URL = os.getenv("EMAIL_WEBHOOK_URL", "").strip()
+EMAIL_PROVIDER = _get_env_case_insensitive("EMAIL_PROVIDER", "").strip().lower()
+RESEND_API_KEY = _get_env_case_insensitive("RESEND_API_KEY", "").strip()
+BREVO_API_KEY = _get_env_case_insensitive("BREVO_API_KEY", "").strip()
+EMAIL_WEBHOOK_URL = _get_env_case_insensitive("EMAIL_WEBHOOK_URL", "").strip()
 
 # SMTP Email settings
 SMTP_ENABLED = os.getenv("SMTP_ENABLED", "false").lower() in {"1", "true", "yes"}
@@ -66,7 +77,7 @@ SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes"}
 SMTP_SSL_VERIFY = os.getenv("SMTP_SSL_VERIFY", "true").lower() in {"1", "true", "yes"}
 
 # Effective Sender Address: prefer explicit EMAIL_FROM or SMTP_FROM_EMAIL, or fallback to SMTP_USER if it's an email
-EMAIL_FROM = os.getenv("EMAIL_FROM", "").strip() or SMTP_FROM_EMAIL
+EMAIL_FROM = _get_env_case_insensitive("EMAIL_FROM", "").strip() or SMTP_FROM_EMAIL
 if (not EMAIL_FROM or EMAIL_FROM == "noreply@opsmind.internal") and SMTP_USER and "@" in SMTP_USER:
     EMAIL_FROM = SMTP_USER
 

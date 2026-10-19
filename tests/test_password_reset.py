@@ -368,6 +368,10 @@ def test_email_sender_brevo_api(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import config
     import httpx
 
+    # Verify case-insensitive env resolution
+    monkeypatch.setenv("Brevo_API_KEY", "xkeysib-case-test-12345678")
+    assert config._get_env_case_insensitive("BREVO_API_KEY") == "xkeysib-case-test-12345678"
+
     monkeypatch.setattr(config, "EMAIL_PROVIDER", "brevo")
     monkeypatch.setattr(config, "BREVO_API_KEY", "xkeysib-test-12345678")
     monkeypatch.setattr(config, "EMAIL_FROM", "test@domain.com")

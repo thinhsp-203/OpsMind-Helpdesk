@@ -84,7 +84,24 @@ async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers });
   const data = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
-    const error = new Error(data?.detail || `Yêu cầu thất bại (${response.status}).`);
+    let detailMsg = data?.detail;
+    if (Array.isArray(detailMsg)) {
+      detailMsg = detailMsg
+        .map((err) => {
+          if (err && typeof err === "object" && err.msg) {
+            if (err.msg.includes("at least 12 characters")) return "Mật khẩu mới phải có ít nhất 12 ký tự.";
+            if (err.msg.includes("at least 16 characters")) return "Mã xác thực phải có ít nhất 16 ký tự.";
+            if (err.msg.includes("at least 3 characters")) return "Vui lòng nhập tối thiểu 3 ký tự.";
+            if (err.msg === "Field required") return "Vui lòng điền đầy đủ các trường bắt buộc.";
+            return err.msg;
+          }
+          return typeof err === "string" ? err : JSON.stringify(err);
+        })
+        .join("; ");
+    } else if (typeof detailMsg === "object" && detailMsg !== null) {
+      detailMsg = detailMsg.message || JSON.stringify(detailMsg);
+    }
+    const error = new Error(detailMsg || `Yêu cầu thất bại (${response.status}).`);
     error.status = response.status;
     throw error;
   }
@@ -435,6 +452,7 @@ async function handleChangePassword(event) {
 }
 
 function openForgotPasswordModal() {
+  signOut();
   const modal = byId("forgotPasswordModal");
   if (!modal) return;
   byId("forgotPasswordForm")?.reset();
@@ -469,6 +487,7 @@ async function handleForgotPassword(event) {
 }
 
 function openResetPasswordModal(token = "") {
+  signOut();
   const modal = byId("resetPasswordModal");
   if (!modal) return;
   byId("resetPasswordForm")?.reset();
@@ -503,6 +522,11 @@ async function handleResetPassword(event) {
     return;
   }
 
+  if (newPassword.length < 12) {
+    setMessage("resetPasswordMessage", "Mật khẩu mới phải có ít nhất 12 ký tự.");
+    return;
+  }
+
   setMessage("resetPasswordMessage", "Đang cập nhật mật khẩu...", false);
   try {
     const result = await api("/auth/reset-password", {
@@ -510,6 +534,7 @@ async function handleResetPassword(event) {
       body: JSON.stringify({ token, new_password: newPassword }),
     });
     closeResetPasswordModal();
+    signOut();
     setMessage("loginMessage", result.message || "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.", false);
     byId("password").value = "";
     byId("password").focus();
@@ -525,6 +550,7 @@ function checkResetPasswordTokenInUrl() {
   const hash = window.location.hash || "";
   const match = hash.match(/reset-token=([^&]+)/);
   if (match && match[1]) {
+    signOut();
     const token = decodeURIComponent(match[1]);
     openResetPasswordModal(token);
   }
@@ -2528,10 +2554,24 @@ function parseJwt(token) {
   }
 }
 
+if (window.location.hash.includes("reset-token")) {
+  localStorage.removeItem("helpdesk-token");
+  state.token = "";
+  state.user = null;
+}
+
 if (state.token) {
   const payload = parseJwt(state.token);
   api("/auth/me")
     .then((user) => {
+      if (
+        window.location.hash.includes("reset-token") ||
+        !byId("resetPasswordModal")?.classList.contains("hidden") ||
+        !byId("forgotPasswordModal")?.classList.contains("hidden")
+      ) {
+        signOut();
+        return;
+      }
       setSignedIn(user);
       if (payload && payload.force_pwd) {
         openChangePasswordModal(true);

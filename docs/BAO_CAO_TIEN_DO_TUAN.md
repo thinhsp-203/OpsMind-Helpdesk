@@ -55,21 +55,20 @@ Nhóm phân định rõ ràng giữa **Phần làm (In-scope)** và **Phần kh�
 
 ## 2. Tiến độ Triển khai Kỹ thuật Tuần này
 
-1. **Hạ tầng CSDL & Triển khai Đám mây:**
+2. **Hạ tầng CSDL, Email & Triển khai Đám mây:**
    - Tích hợp thành công CSDL **Neon Serverless Postgres** (Singapore) tương thích connection pooling PgBouncer (`prepare_threshold=None`) và SSL Mode.
-   - Triển khai dịch vụ Web thành công lên **Render Cloud** tại: `https://opsmind-helpdesk-a7ke.onrender.com` (Đã pass health check tự động).
-2. **Quản trị Tri thức & Dữ liệu Thực nghiệm:**
-   - Hoàn thiện cơ chế nạp tri thức dạng **UPSERT độc lập theo slug**, cho phép bổ sung thêm Runbook mới bất kỳ lúc nào mà không bị gián đoạn.
-   - Xây dựng script nạp tự động dữ liệu demo mô phỏng doanh nghiệp ([`scripts/seed_demo_data.py`](file:///E:/OpsMind-Helpdesk/scripts/seed_demo_data.py)) gồm 6 tài khoản phòng ban và 20 ticket đa dạng trạng thái, sẵn sàng cho buổi bảo vệ.
+   - Triển khai dịch vụ Web thành công lên **Render Cloud** (Live, pass health check tự động).
+   - **Xử lý điểm nghẽn gửi email trên Render Free:** Render chặn cổng SMTP đi ra (25/465/587); đã xây dựng kiến trúc gửi email đa nhà cung cấp qua HTTPS API (Brevo API, Resend API, Webhook, Mock/Console) tại cổng 443 và Mailpit trong Docker Compose cho local. Gửi thành công email đặt lại mật khẩu và email tài khoản mới có mật khẩu tạm.
+   - Sửa lỗi hiển thị và lọc danh mục tại trang Kho tri thức & Runbook (bổ sung CSS select, `autocomplete="off"`, đồng bộ DOM state).
+   - Xử lý lỗi tự động đăng nhập khi đang khôi phục mật khẩu (xóa sạch session cũ khi vào luồng reset, ngăn browser sleep reload gây auto-login).
 3. **Chất lượng Phần mềm (Đạt chuẩn Rubric TC2.4, TC2.5, TC2.6):**
-   - 100% test case tự động pass (71/71 pytest backend hợp lệ, 1 skipped + 3/3 Node.js frontend; RAG Holdout 60 câu độc lập đạt Hit@1 66.7%, Hit@3 100%, MRR@3 0.817, OOS 100%).
+   - 100% test case tự động pass (81/81 pytest backend pass, 3/3 bộ test Node.js frontend pass, GitHub Actions CI pass 100%).
+   - Chuẩn hóa song ngữ Anh - Việt cho toàn bộ thông báo xác thực và lỗi validation của hệ thống.
    - 0 lỗi lint (Ruff pass 100%), 0 secret bị lộ trong mã nguồn.
 
 ---
 
 ## 3. Kế hoạch Tuần Tiếp Theo
 
-1. Hoàn thiện **Khung kênh thông báo đa kênh** (Telegram Bot + Discord Webhook) có cơ chế phòng chống SSRF.
-2. Tách bộ từ điển thuật ngữ CNTT song ngữ ra tệp dữ liệu độc lập và nâng cấp bộ dataset đánh giá RAG (tập Dev 36 câu và Holdout 30 câu).
-3. Triển khai chức năng Quên mật khẩu gửi liên kết bảo mật qua Email (Lớp 2).
-4. Tổ chức thử nghiệm người dùng nội bộ đợt 1 để thu thập phiếu khảo sát SUS phục vụ minh chứng cho Tiêu chí TC2.7 của Rubric.
+1. Tổ chức thử nghiệm người dùng nội bộ đợt 1 để thu thập phiếu khảo sát SUS phục vụ minh chứng cho Tiêu chí TC2.7 của Rubric.
+2. Hoàn thiện các ca kiểm thử E2E giao diện người dùng (User / Agent / Admin) và chuẩn bị slide báo cáo tiến độ giữa kỳ.

@@ -893,6 +893,13 @@ async def test_notification_channel(request: Request, payload: NotificationTestR
     actor = await current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được gửi thông báo thử nghiệm.")
+    if payload.channel == "email":
+        target = (payload.target_email or "").strip() or config.EMAIL_FROM
+        ok, msg = email_sender.send_test_email(target)
+        if not ok:
+            raise HTTPException(status_code=400, detail=msg)
+        return {"success": True, "channel": "email", "message": msg}
+
     ok = send_test_notification(payload.channel, target_email=payload.target_email or "")
     if not ok:
         raise HTTPException(

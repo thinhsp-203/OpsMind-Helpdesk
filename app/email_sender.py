@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 # Bounded outbox buffer for mock/testing inspection (limited to 50 records)
 _outbox: deque[dict[str, Any]] = deque(maxlen=50)
+_last_send_error: str = ""
+
+
+def get_last_send_error() -> str:
+    """Trả về chi tiết lỗi gửi email gần nhất nếu có."""
+    return _last_send_error
 
 
 def get_outbox() -> list[dict[str, Any]]:
@@ -125,31 +131,45 @@ def _send_via_smtp(to_email: str, subject: str, body_text: str) -> bool:
 
 
 def _send_via_resend(to_email: str, subject: str, body_text: str) -> bool:
+    global _last_send_error
     api_key = config.RESEND_API_KEY
     if not api_key:
-        logger.error("RESEND_API_KEY is not configured.")
+        _last_send_error = "RESEND_API_KEY chưa được cấu hình."
+        logger.error(_last_send_error)
         return False
     from_addr = config.EMAIL_FROM
     if not from_addr or "opsmind.internal" in from_addr:
         from_addr = "onboarding@resend.dev"
 
     html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{body_text.replace(chr(10), '<br>')}</div>"
-    resp = httpx.post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "from": from_addr,
-            "to": [to_email],
-            "subject": subject,
-            "text": body_text,
-            "html": html_content,
-        },
-        timeout=10.0,
-    )
-    if resp.is_success:
-        return True
-    logger.error("Resend API failed: %s - %s", resp.status_code, resp.text)
-    return False
+    try:
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "from": from_addr,
+                "to": [to_email],
+                "subject": subject,
+                "text": body_text,
+                "html": html_content,
+            },
+            timeout=10.0,
+        )
+        if resp.is_success:
+            _last_send_error = ""
+            return True
+        try:
+            err_json = resp.json()
+            err_msg = err_json.get("message") or resp.text
+        except Exception:
+            err_msg = resp.text
+        _last_send_error = f"Resend API (mã {resp.status_code}): {err_msg}"
+        logger.error("Resend API failed: %s - %s", resp.status_code, err_msg)
+        return False
+    except Exception as exc:
+        _last_send_error = f"Lỗi gọi Resend API: {exc}"
+        logger.error(_last_send_error)
+        return False
 
 
 def _send_via_brevo(to_email: str, subject: str, body_text: str) -> bool:
@@ -232,6 +252,8 @@ def dispatch_email(
             logger.info("Email sent successfully via %s to %s", provider, to_email)
         return ok
     except Exception as exc:
+        global _last_send_error
+        _last_send_error = str(exc)
         logger.error("Failed to send email via %s to %s: %s", provider, to_email, exc)
         return False
 
@@ -340,4 +362,5 @@ def send_test_email(to_email: str) -> tuple[bool, str]:
     ok = dispatch_email(to_email, subject, body_text)
     if ok:
         return True, f"Đã gửi email thử nghiệm thành công qua {provider.upper()} tới {to_email}."
-    return False, f"Không thể gửi email qua {provider.upper()}. Vui lòng kiểm tra lại cấu hình biến môi trường và log máy chủ."
+    err_detail = _last_send_error or "Vui lòng kiểm tra lại cấu hình biến môi trường và log máy chủ."
+    return False, f"Không thể gửi email qua {provider.upper()}: {err_detail}"

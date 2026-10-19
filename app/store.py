@@ -6,6 +6,7 @@ import logging
 import re
 import secrets
 import sqlite3
+import time
 import unicodedata
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -464,6 +465,7 @@ def initialize_store() -> None:
 
 
 def reset_store() -> None:
+    _failed_login_attempts.clear()
     with _connect() as connection:
         if _database_url:
             connection.execute(
@@ -677,6 +679,36 @@ def reset_password_with_token(raw_token: str, new_password: str) -> str | None:
         return None
     update_user_password(username, new_password, force_password_change=0)
     return username
+
+
+_failed_login_attempts: dict[str, list[float]] = {}
+FAILED_LOGIN_LIMIT: int = 5
+FAILED_LOGIN_WINDOW_SECONDS: float = 900.0
+
+
+def record_failed_login(key: str) -> None:
+    now = time.time()
+    attempts = [t for t in _failed_login_attempts.get(key, []) if now - t < FAILED_LOGIN_WINDOW_SECONDS]
+    attempts.append(now)
+    _failed_login_attempts[key] = attempts
+
+
+def get_lockout_remaining_seconds(
+    key: str,
+    limit: int = FAILED_LOGIN_LIMIT,
+    window_seconds: float = FAILED_LOGIN_WINDOW_SECONDS,
+) -> int:
+    now = time.time()
+    attempts = [t for t in _failed_login_attempts.get(key, []) if now - t < window_seconds]
+    if len(attempts) < limit:
+        return 0
+    earliest_in_window = attempts[0]
+    remaining = int(window_seconds - (now - earliest_in_window))
+    return max(0, remaining)
+
+
+def reset_failed_logins(key: str) -> None:
+    _failed_login_attempts.pop(key, None)
 
 
 def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None:

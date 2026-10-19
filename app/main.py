@@ -685,6 +685,10 @@ async def forgot_password(
 
     user = store.find_user_for_password_reset(payload.identifier)
     if user is None or not user.get("is_active"):
+        logger.warning(
+            "Password reset requested for '%s' but no matching active user was found in database.",
+            payload.identifier,
+        )
         return {"status": "success", "message": uniform_message}
 
     user_email = user.get("email", "").strip()

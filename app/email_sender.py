@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from email.header import Header
 from email.mime.text import MIMEText
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate, make_msgid, parseaddr
 import logging
 import smtplib
 import ssl
@@ -173,26 +173,50 @@ def _send_via_resend(to_email: str, subject: str, body_text: str) -> bool:
 
 
 def _send_via_brevo(to_email: str, subject: str, body_text: str) -> bool:
+    global _last_send_error
     api_key = config.BREVO_API_KEY
     if not api_key:
-        logger.error("BREVO_API_KEY is not configured.")
+        _last_send_error = "BREVO_API_KEY chưa được cấu hình."
+        logger.error(_last_send_error)
         return False
     from_addr = config.EMAIL_FROM
-    resp = httpx.post(
-        "https://api.brevo.com/v3/smtp/email",
-        headers={"api-key": api_key, "Content-Type": "application/json"},
-        json={
-            "sender": {"email": from_addr},
-            "to": [{"email": to_email}],
-            "subject": subject,
-            "textContent": body_text,
-        },
-        timeout=10.0,
-    )
-    if resp.is_success:
-        return True
-    logger.error("Brevo API failed: %s - %s", resp.status_code, resp.text)
-    return False
+    sender_name, sender_email = parseaddr(from_addr)
+    if not sender_email:
+        sender_email = from_addr
+    sender_payload: dict[str, str] = {"email": sender_email}
+    if sender_name:
+        sender_payload["name"] = sender_name
+
+    html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{body_text.replace(chr(10), '<br>')}</div>"
+
+    try:
+        resp = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": api_key, "Content-Type": "application/json"},
+            json={
+                "sender": sender_payload,
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "textContent": body_text,
+                "htmlContent": html_content,
+            },
+            timeout=10.0,
+        )
+        if resp.is_success:
+            _last_send_error = ""
+            return True
+        try:
+            err_json = resp.json()
+            err_msg = err_json.get("message") or resp.text
+        except Exception:
+            err_msg = resp.text
+        _last_send_error = f"Brevo API (mã {resp.status_code}): {err_msg}"
+        logger.error("Brevo API failed: %s - %s", resp.status_code, err_msg)
+        return False
+    except Exception as exc:
+        _last_send_error = f"Lỗi gọi Brevo API: {exc}"
+        logger.error(_last_send_error)
+        return False
 
 
 def _send_via_webhook(to_email: str, subject: str, body_text: str) -> bool:

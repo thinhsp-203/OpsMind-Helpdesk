@@ -9,10 +9,13 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="DATABASE_URL is not configured")
 
 
-def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.fixture(autouse=True)
+def setup_postgres_test(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(store, "_database_url", DATABASE_URL)
+    monkeypatch.setattr(store, "DEMO_MODE", True)
+
+
+def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works() -> None:
     store.initialize_store()
     store.initialize_store()
     store.reset_store()

@@ -45,6 +45,7 @@ jobs:
       - name: Test PostgreSQL backend
         env:
           DATABASE_URL: postgresql://helpdesk:test_password@127.0.0.1:5432/helpdesk_test
+          DEMO_MODE: "true"
         run: python -m pytest tests/test_postgres.py -q
       - name: Evaluate RAG retrieval baseline
         run: python -m scripts.evaluate_rag

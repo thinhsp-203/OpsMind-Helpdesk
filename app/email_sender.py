@@ -129,11 +129,21 @@ def _send_via_resend(to_email: str, subject: str, body_text: str) -> bool:
     if not api_key:
         logger.error("RESEND_API_KEY is not configured.")
         return False
-    from_addr = config.EMAIL_FROM or "onboarding@resend.dev"
+    from_addr = config.EMAIL_FROM
+    if not from_addr or "opsmind.internal" in from_addr:
+        from_addr = "onboarding@resend.dev"
+
+    html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{body_text.replace(chr(10), '<br>')}</div>"
     resp = httpx.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"from": from_addr, "to": [to_email], "subject": subject, "text": body_text},
+        json={
+            "from": from_addr,
+            "to": [to_email],
+            "subject": subject,
+            "text": body_text,
+            "html": html_content,
+        },
         timeout=10.0,
     )
     if resp.is_success:

@@ -49,7 +49,13 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/"
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "5.0"))
 
-# SMTP Email settings for Password Reset (Layer 2)
+# Email settings (Multi-provider support: SMTP, Resend API, Brevo API, Webhook, Mock/Console)
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "").strip().lower()
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+EMAIL_WEBHOOK_URL = os.getenv("EMAIL_WEBHOOK_URL", "").strip()
+
+# SMTP Email settings
 SMTP_ENABLED = os.getenv("SMTP_ENABLED", "false").lower() in {"1", "true", "yes"}
 SMTP_HOST = os.getenv("SMTP_HOST", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -57,6 +63,13 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "noreply@opsmind.internal")
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes"}
+SMTP_SSL_VERIFY = os.getenv("SMTP_SSL_VERIFY", "true").lower() in {"1", "true", "yes"}
+
+# Effective Sender Address: prefer explicit EMAIL_FROM or SMTP_FROM_EMAIL, or fallback to SMTP_USER if it's an email
+EMAIL_FROM = os.getenv("EMAIL_FROM", "").strip() or SMTP_FROM_EMAIL
+if (not EMAIL_FROM or EMAIL_FROM == "noreply@opsmind.internal") and SMTP_USER and "@" in SMTP_USER:
+    EMAIL_FROM = SMTP_USER
+
 RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "15"))
 if RESET_TOKEN_EXPIRE_MINUTES < 1:
     raise RuntimeError("RESET_TOKEN_EXPIRE_MINUTES must be positive.")

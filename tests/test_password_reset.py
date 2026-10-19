@@ -180,3 +180,319 @@ def test_forgot_password_rate_limiting() -> None:
     blocked = client.post("/auth/forgot-password", json={"identifier": "user"})
     assert blocked.status_code == 429
     assert "quá nhiều lần" in blocked.json()["detail"]
+
+
+def test_admin_create_user_sends_welcome_email_and_enforces_password_change() -> None:
+    # 1. Login as admin
+    admin_login = client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    assert admin_login.status_code == 200
+    admin_token = admin_login.json()["token"]
+
+    # 2. Admin creates a new user with email
+    create_resp = client.post(
+        "/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "username": "new.employee",
+            "password": "TempPassword1234!",
+            "role": "user",
+            "full_name": "New Employee",
+            "email": "new.employee@opsmind.internal",
+            "department": "Engineering",
+        },
+    )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["username"] == "new.employee"
+
+    # 3. Check outbox for welcome email
+    outbox = email_sender.get_outbox()
+    assert len(outbox) == 1
+    welcome_email = outbox[0]
+    assert welcome_email["to"] == "new.employee@opsmind.internal"
+    assert "TempPassword1234!" in welcome_email["body"]
+    assert "đổi mật khẩu ngay trong lần đăng nhập đầu tiên" in welcome_email["body"]
+
+    # 4. User logs in with temporary password
+    user_login = client.post("/auth/login", json={"username": "new.employee", "password": "TempPassword1234!"})
+    assert user_login.status_code == 200
+    user_data = user_login.json()
+    assert user_data["force_password_change"] is True
+    emp_token = user_data["token"]
+
+    # 5. Accessing protected endpoint returns 403 because password must be changed first
+    blocked_resp = client.get("/tickets", headers={"Authorization": f"Bearer {emp_token}"})
+    assert blocked_resp.status_code == 403
+    assert "yêu cầu bạn đổi mật khẩu" in blocked_resp.json()["detail"]
+
+    # 6. Change password succeeds
+    change_resp = client.post(
+        "/auth/change-password",
+        headers={"Authorization": f"Bearer {emp_token}"},
+        json={"old_password": "TempPassword1234!", "new_password": "PermanentSecurePass2026!"},
+    )
+    assert change_resp.status_code == 200
+
+    # 7. Relogin with new password - force_password_change is now False and user can access tickets
+    relogin = client.post("/auth/login", json={"username": "new.employee", "password": "PermanentSecurePass2026!"})
+    assert relogin.status_code == 200
+    assert relogin.json()["force_password_change"] is False
+    new_token = relogin.json()["token"]
+    assert client.get("/tickets", headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
+
+
+def test_admin_generate_reset_token_endpoint_and_usage() -> None:
+    admin_login = client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    admin_token = admin_login.json()["token"]
+
+    # Non-admin cannot generate reset token
+    user_login = client.post("/auth/login", json={"username": "user", "password": "user"})
+    user_token = user_login.json()["token"]
+    forbidden = client.post(
+        "/admin/users/user/create-reset-token",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert forbidden.status_code == 403
+
+    # Admin generates reset token for 'user'
+    token_resp = client.post(
+        "/admin/users/user/create-reset-token",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert token_resp.status_code == 200
+    data = token_resp.json()
+    assert data["status"] == "success"
+    assert data["username"] == "user"
+    assert len(data["token"]) >= 32
+    assert "#reset-token=" in data["reset_link"]
+
+    # Use the token to reset user's password
+    reset_resp = client.post(
+        "/auth/reset-password",
+        json={"token": data["token"], "new_password": "NewAdminIssuedPass2026!"},
+    )
+    assert reset_resp.status_code == 200
+
+    # Login works with new password
+    login_resp = client.post("/auth/login", json={"username": "user", "password": "NewAdminIssuedPass2026!"})
+    assert login_resp.status_code == 200
+
+
+def test_email_sender_smtp_dispatch_and_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "smtp")
+    monkeypatch.setattr(config, "SMTP_ENABLED", True)
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.test.com")
+    monkeypatch.setattr(config, "SMTP_PORT", 587)
+    monkeypatch.setattr(config, "SMTP_USER", "mailer@test.com")
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(config, "EMAIL_FROM", "mailer@test.com")
+    monkeypatch.setattr(config, "SMTP_USE_TLS", True)
+    monkeypatch.setattr(config, "SMTP_SSL_VERIFY", True)
+
+    mock_server = MagicMock()
+    mock_server_cm = MagicMock()
+    mock_server_cm.__enter__.return_value = mock_server
+    mock_server_cm.__exit__.return_value = None
+
+    import smtplib
+    monkeypatch.setattr(smtplib, "SMTP", lambda host, port, timeout: mock_server_cm)
+
+    sent = email_sender.dispatch_email(
+        "recipient@example.com",
+        "[OpsMind Helpdesk] Hướng dẫn đặt lại mật khẩu tài khoản",
+        "Nội dung email thử nghiệm.",
+    )
+    assert sent is True
+    assert mock_server.starttls.called
+    assert mock_server.login.called
+    assert mock_server.send_message.called
+
+    sent_msg = mock_server.send_message.call_args[0][0]
+    assert sent_msg["To"] == "recipient@example.com"
+    assert sent_msg["From"] == "mailer@test.com"
+    assert sent_msg["Date"] is not None
+    assert sent_msg["Message-ID"] is not None
+    assert sent_msg["Message-ID"].endswith("test.com>")
+
+
+def test_email_sender_smtp_ssl_port_465(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    from unittest.mock import MagicMock
+    import smtplib
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "smtp")
+    monkeypatch.setattr(config, "SMTP_ENABLED", True)
+    monkeypatch.setattr(config, "SMTP_PORT", 465)
+    monkeypatch.setattr(config, "SMTP_USER", "ssl@test.com")
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+
+    mock_server = MagicMock()
+    mock_server_cm = MagicMock()
+    mock_server_cm.__enter__.return_value = mock_server
+    mock_server_cm.__exit__.return_value = None
+
+    monkeypatch.setattr(smtplib, "SMTP_SSL", lambda host, port, timeout, context: mock_server_cm)
+
+    sent = email_sender.dispatch_email("recipient@example.com", "Test Subject", "Body")
+    assert sent is True
+    assert mock_server.login.called
+    assert mock_server.send_message.called
+
+
+def test_email_sender_resend_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    import httpx
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "resend")
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_test_key_123456789")
+    monkeypatch.setattr(config, "EMAIL_FROM", "test@domain.com")
+
+    def mock_post(url, headers, json, timeout):
+        assert "api.resend.com" in url
+        assert headers["Authorization"] == "Bearer re_test_key_123456789"
+        assert json["to"] == ["target@example.com"]
+        return httpx.Response(200, json={"id": "email_123"})
+
+    monkeypatch.setattr(httpx, "post", mock_post)
+
+    assert email_sender.dispatch_email("target@example.com", "Subject", "Body") is True
+
+    # Test error response
+    monkeypatch.setattr(httpx, "post", lambda url, headers, json, timeout: httpx.Response(400, text="Bad Request"))
+    assert email_sender.dispatch_email("target@example.com", "Subject", "Body") is False
+
+
+def test_email_sender_brevo_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    import httpx
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "brevo")
+    monkeypatch.setattr(config, "BREVO_API_KEY", "xkeysib-test-12345678")
+    monkeypatch.setattr(config, "EMAIL_FROM", "test@domain.com")
+
+    def mock_post(url, headers, json, timeout):
+        assert "api.brevo.com" in url
+        assert headers["api-key"] == "xkeysib-test-12345678"
+        return httpx.Response(201, json={"messageId": "msg_123"})
+
+    monkeypatch.setattr(httpx, "post", mock_post)
+    assert email_sender.dispatch_email("target@example.com", "Subject", "Body") is True
+
+
+def test_email_sender_webhook_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    import httpx
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "webhook")
+    monkeypatch.setattr(config, "EMAIL_WEBHOOK_URL", "https://hooks.example.com/email")
+
+    monkeypatch.setattr(httpx, "post", lambda url, json, timeout: httpx.Response(200, json={"ok": True}))
+    assert email_sender.dispatch_email("target@example.com", "Subject", "Body") is True
+
+
+def test_email_sender_status_and_admin_test_endpoint() -> None:
+    admin_login = client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    admin_token = admin_login.json()["token"]
+
+    # Test notification channels status includes email
+    status_resp = client.get("/admin/notifications/status", headers={"Authorization": f"Bearer {admin_token}"})
+    assert status_resp.status_code == 200
+    channels = status_resp.json()
+    assert "email" in channels
+    assert "provider" in channels["email"]
+    assert "target" in channels["email"]
+
+    # Test admin test notification with email channel
+    test_resp = client.post(
+        "/admin/notifications/test",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"channel": "email", "target_email": "admin.test@opsmind.internal"},
+    )
+    assert test_resp.status_code == 200
+    assert test_resp.json()["success"] is True
+    assert test_resp.json()["channel"] == "email"
+
+
+def test_email_sender_invalid_email_and_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+    assert email_sender.dispatch_email("", "Subject", "Body") is False
+    assert email_sender.dispatch_email("invalid-email-no-at", "Subject", "Body") is False
+    assert email_sender.send_account_created_email("", "user", "pass") is False
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "smtp")
+    monkeypatch.setattr(config, "SMTP_ENABLED", True)
+    import smtplib
+    monkeypatch.setattr(smtplib, "SMTP", lambda *a, **k: (_ for _ in ()).throw(smtplib.SMTPConnectError(421, b"Connection refused")))
+    assert email_sender.dispatch_email("user@example.com", "Subject", "Body") is False
+
+
+def test_email_sender_edge_cases_and_branch_coverage(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+
+    # 1. _mask_token
+    assert email_sender._mask_token("abc") == "***"
+    assert email_sender._mask_token("1234567890abcdef") == "1234...cdef"
+
+    # 2. resolve_email_provider fallbacks
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "")
+    monkeypatch.setattr(config, "RESEND_API_KEY", "resend_key")
+    assert email_sender.resolve_email_provider() == "resend"
+
+    monkeypatch.setattr(config, "RESEND_API_KEY", "")
+    monkeypatch.setattr(config, "BREVO_API_KEY", "brevo_key")
+    assert email_sender.resolve_email_provider() == "brevo"
+
+    monkeypatch.setattr(config, "BREVO_API_KEY", "")
+    monkeypatch.setattr(config, "SMTP_ENABLED", True)
+    assert email_sender.resolve_email_provider() == "smtp"
+
+    monkeypatch.setattr(config, "SMTP_ENABLED", False)
+    assert email_sender.resolve_email_provider() == "console"
+
+    # 3. get_email_status across providers
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "resend")
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_12345")
+    st = email_sender.get_email_status()
+    assert st["provider"] == "resend"
+    assert "Resend API" in st["target"]
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "brevo")
+    monkeypatch.setattr(config, "BREVO_API_KEY", "xkeysib_12345")
+    st = email_sender.get_email_status()
+    assert st["provider"] == "brevo"
+    assert "Brevo API" in st["target"]
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "webhook")
+    monkeypatch.setattr(config, "EMAIL_WEBHOOK_URL", "https://hook.io/email-target-endpoint")
+    st = email_sender.get_email_status()
+    assert st["provider"] == "webhook"
+
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "unknown_custom")
+    assert email_sender.dispatch_email("user@example.com", "Subject", "Body") is True
+
+    # 4. Missing API keys for direct helper calls
+    monkeypatch.setattr(config, "RESEND_API_KEY", "")
+    assert email_sender._send_via_resend("user@example.com", "Subject", "Body") is False
+
+    monkeypatch.setattr(config, "BREVO_API_KEY", "")
+    assert email_sender._send_via_brevo("user@example.com", "Subject", "Body") is False
+
+    monkeypatch.setattr(config, "EMAIL_WEBHOOK_URL", "")
+    assert email_sender._send_via_webhook("user@example.com", "Subject", "Body") is False
+
+    # 5. Non-demo untrusted host rejection
+    monkeypatch.setattr(config, "DEMO_MODE", False)
+    monkeypatch.setattr(config, "PUBLIC_BASE_URL", "")
+    assert email_sender.send_password_reset_email("user@example.com", "user", "token_123") is False
+
+    # 6. send_test_email edge cases
+    assert email_sender.send_test_email("")[0] is False
+    monkeypatch.setattr(config, "EMAIL_PROVIDER", "resend")
+    monkeypatch.setattr(config, "RESEND_API_KEY", "")
+    fail_res, fail_msg = email_sender.send_test_email("admin@example.com")
+    assert fail_res is False
+    assert "Không thể gửi email" in fail_msg
+
+

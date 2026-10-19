@@ -18,3 +18,33 @@ services:
         value: "120"
       - key: PUBLIC_BASE_URL
         value: "https://opsmind-helpdesk-a7ke.onrender.com"
+      # Neon PostgreSQL connection string (khuyên dùng endpoint -pooler trên cùng region Singapore)
+      - key: DATABASE_URL
+        sync: false
+      # Kênh gửi Email trên Render Free: khuyên dùng 'resend' hoặc 'brevo' qua HTTPS API cổng 443
+      - key: EMAIL_PROVIDER
+        value: "resend"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: "onboarding@resend.dev"
+      # Hoặc SMTP dự phòng (gói trả phí mở cổng 587/465, hoặc cổng thay thế 2525)
+      - key: SMTP_ENABLED
+        value: "false"
+      - key: SMTP_HOST
+        value: "smtp.resend.com"
+      - key: SMTP_PORT
+        value: "2525"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      # Kênh thông báo sự cố Telegram Bot & Discord Webhook
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false

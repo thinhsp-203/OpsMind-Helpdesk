@@ -698,6 +698,23 @@ button:disabled { cursor: wait; opacity: .65; }
 .knowledge-filters .knowledge-search {
   flex: 1;
 }
+.knowledge-filters select {
+  height: 38px;
+  min-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 28px 0 12px;
+  background: #fbfcfe;
+  color: var(--ink);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.knowledge-filters select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(49, 93, 231, 0.12);
+}
 .knowledge-document {
   display: flex;
   align-items: flex-start;

@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+from typing import Any
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -172,7 +173,7 @@ def dispatch_ticket_notification(ticket: dict) -> dict[str, bool]:
     return results
 
 
-def send_test_notification(channel: str) -> bool:
+def send_test_notification(channel: str, target_email: str = "") -> bool:
     """Gửi thông báo kiểm tra kết nối tới kênh được chỉ định (Dành cho Admin)."""
     test_ticket = {
         "id": "TEST",
@@ -188,11 +189,18 @@ def send_test_notification(channel: str) -> bool:
         return notify_telegram(test_ticket)
     if channel == "discord":
         return notify_discord(test_ticket)
+    if channel == "email":
+        from app import email_sender, config
+        target = target_email.strip() or config.EMAIL_FROM
+        ok, _ = email_sender.send_test_email(target)
+        return ok
     return False
 
 
-def get_notification_channels_status() -> dict[str, dict[str, str | bool]]:
+def get_notification_channels_status() -> dict[str, dict[str, Any]]:
     """Trả về trạng thái bật/tắt của các kênh thông báo (ẩn token nhạy cảm)."""
+    from app import email_sender
+
     tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     discord_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -209,4 +217,5 @@ def get_notification_channels_status() -> dict[str, dict[str, str | bool]]:
             "enabled": bool(discord_url),
             "target": masked_discord,
         },
+        "email": email_sender.get_email_status(),
     }

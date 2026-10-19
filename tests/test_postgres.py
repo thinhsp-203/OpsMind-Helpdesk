@@ -116,3 +116,131 @@ def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works(
     assert store.get_analytics()["total_tickets"] == 0
     assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}
     assert len(store.list_knowledge_documents()) >= 30
+
+
+def test_postgres_password_reset_tokens_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "_database_url", DATABASE_URL)
+    store.initialize_store()
+    store.reset_store()
+
+    # 1. Update user email on PostgreSQL
+    store.update_user("user", {"email": "postgres.user@opsmind.internal"})
+    found = store.find_user_for_password_reset("postgres.user@opsmind.internal")
+    assert found is not None
+    assert found["username"] == "user"
+
+    # 2. Create password reset token on PostgreSQL
+    token = store.create_password_reset_token("user", expires_minutes=15)
+    assert len(token) >= 32
+
+    # 3. Reset password using the token
+    new_pass = "PostgresNewSecurePass2026!"  # noqa: S105
+    reset_username = store.reset_password_with_token(token, new_pass)
+    assert reset_username == "user"
+
+    # 4. Verify new password works
+    creds = store.get_user_credentials("user")
+    assert creds is not None
+    assert store.verify_password(new_pass, creds["password_hash"])
+
+    # 5. Token reuse must fail (single-use enforcement)
+    reused = store.reset_password_with_token(token, "AnotherPassword123!")
+    assert reused is None
+
+
+def test_postgres_login_lockouts_and_security(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "_database_url", DATABASE_URL)
+    store.initialize_store()
+    store.reset_store()
+
+    test_ip = "192.0.2.1"
+    # Initially no lockout
+    assert store.get_lockout_remaining_seconds(test_ip) == 0
+
+    # Record 4 failed attempts
+    for _ in range(4):
+        store.record_failed_login(test_ip)
+    assert store.get_lockout_remaining_seconds(test_ip) == 0
+
+    # 5th failed attempt triggers lockout
+    store.record_failed_login(test_ip)
+    remaining = store.get_lockout_remaining_seconds(test_ip)
+    assert remaining > 0
+
+    # Reset clears lockout
+    store.reset_failed_logins(test_ip)
+    assert store.get_lockout_remaining_seconds(test_ip) == 0
+
+
+def test_postgres_knowledge_version_history_and_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "_database_url", DATABASE_URL)
+    store.initialize_store()
+    store.reset_store()
+
+    # Create document
+    doc = store.create_knowledge_document(
+        title="PostgreSQL SOP",
+        category="software",
+        tags="database, postgresql",
+        content="Version 1 content for PostgreSQL.",
+        author="agent",
+    )
+    doc_id = doc["id"]
+
+    # Update document creates version 2
+    store.update_knowledge_document(
+        doc_id,
+        {"content": "Version 2 updated content with new guidelines."},
+        actor="agent",
+        change_summary="Update guidelines",
+    )
+
+    versions = store.list_knowledge_versions(doc_id)
+    assert len(versions) >= 2
+
+    # Restore version 1
+    restored = store.restore_knowledge_version(doc_id, version_number=1, actor="admin")
+    assert restored is not None
+    updated_doc = store.get_knowledge_document(doc_id)
+    assert updated_doc is not None
+    assert "Version 1 content" in updated_doc["content"]
+
+
+def test_postgres_user_profile_and_force_password_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "_database_url", DATABASE_URL)
+    store.initialize_store()
+    store.reset_store()
+
+    # Create new user with force_password_change=1
+    user = store.create_user(
+        username="pg.tester",
+        password="InitialPassword123!",  # noqa: S106
+        role="user",
+        full_name="Postgres Tester",
+        email="pg.tester@opsmind.internal",
+        department="QA",
+        phone="0901234567",
+        force_password_change=1,
+    )
+    assert user["username"] == "pg.tester"
+
+    creds = store.get_user_credentials("pg.tester")
+    assert creds is not None
+    assert creds["force_password_change"] == 1
+    assert creds["department"] == "QA"
+
+    # Update password and clear force_password_change
+    store.update_user_password("pg.tester", "UpdatedPassword123!", force_password_change=0)
+    updated_creds = store.get_user_credentials("pg.tester")
+    assert updated_creds is not None
+    assert updated_creds["force_password_change"] == 0
+    assert store.verify_password("UpdatedPassword123!", updated_creds["password_hash"])
+

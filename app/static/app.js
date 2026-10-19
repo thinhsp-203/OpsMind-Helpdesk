@@ -582,6 +582,12 @@ async function handleEmergencyTicket(event) {
 }
 
 async function refreshWorkspace() {
+  if (byId("knowledgeCategoryFilter")) {
+    state.knowledgeCategory = byId("knowledgeCategoryFilter").value;
+  }
+  if (byId("knowledgeSearch")) {
+    state.knowledgeSearch = byId("knowledgeSearch").value.trim();
+  }
   if (state.user.role !== "user") state.staff = await api("/staff");
   await Promise.all([
     loadTickets(),
@@ -1391,6 +1397,15 @@ function showRagResult(message) {
 
 async function loadKnowledge() {
   try {
+    const catEl = byId("knowledgeCategoryFilter");
+    if (catEl && typeof catEl.value === "string") {
+      state.knowledgeCategory = catEl.value;
+    }
+    const searchEl = byId("knowledgeSearch");
+    if (searchEl && typeof searchEl.value === "string" && !state.knowledgeSearch && searchEl.value.trim()) {
+      state.knowledgeSearch = searchEl.value.trim();
+    }
+
     const params = new URLSearchParams();
     if (state.knowledgeStatus) params.set("status", state.knowledgeStatus);
     if (state.knowledgeCategory) params.set("category", state.knowledgeCategory);
@@ -1856,10 +1871,31 @@ async function loadAdminUsers() {
       forceCheckbox.checked = true;
       forceLabel.append(forceCheckbox, node("span", "", "Buộc đổi khi đăng nhập"));
 
-      const resetBtn = node("button", "button button-soft", "Lưu mật khẩu mới");
-      resetBtn.type = "submit";
+      const generateLinkBtn = node("button", "button button-quiet", "Tạo mã khôi phục (IT cấp mã)");
+      generateLinkBtn.type = "button";
+      generateLinkBtn.style.marginTop = "4px";
+      generateLinkBtn.addEventListener("click", async () => {
+        try {
+          const res = await api(`/admin/users/${encodeURIComponent(user.username)}/create-reset-token`, {
+            method: "POST",
+          });
+          const info = `Liên kết đặt lại mật khẩu cho ${user.username} (hiệu lực ${res.expires_minutes} phút):\n\n${res.reset_link}\n\nMã token: ${res.token}`;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+              await navigator.clipboard.writeText(res.reset_link);
+              alertUser(`${info}\n\n(Đã sao chép liên kết vào clipboard)`);
+              return;
+            } catch {
+              // fallback to alert
+            }
+          }
+          alertUser(info);
+        } catch (error) {
+          alertUser(error.message);
+        }
+      });
 
-      resetForm.append(resetInput, forceLabel, resetBtn);
+      resetForm.append(resetInput, forceLabel, resetBtn, generateLinkBtn);
       resetForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
@@ -1977,21 +2013,53 @@ async function loadNotificationStatus() {
       dcBadge.className = `tag ${dc.enabled ? "tag-status-published" : "tag-status-draft"}`;
     }
     if (dcUrl) dcUrl.textContent = dc.target || "Chưa cấu hình";
+
+    const em = data.email || {};
+    const emBadge = byId("emailStatusBadge");
+    const emProvider = byId("emailProviderName");
+    const emServer = byId("emailServerTarget");
+    const emSender = byId("emailSenderFrom");
+    if (emBadge) {
+      if (!em.enabled) {
+        emBadge.textContent = "Chưa kết nối";
+        emBadge.className = "tag tag-status-draft";
+      } else if (em.is_mock) {
+        emBadge.textContent = "Mock Outbox (RAM)";
+        emBadge.className = "tag tag-status-pending";
+      } else {
+        emBadge.textContent = "Đang hoạt động";
+        emBadge.className = "tag tag-status-published";
+      }
+    }
+    if (emProvider) emProvider.textContent = (em.provider || "none").toUpperCase();
+    if (emServer) emServer.textContent = em.target || "Chưa cấu hình";
+    if (emSender) emSender.textContent = em.from_email || "Chưa cấu hình";
   } catch (error) {
     console.error("Không thể tải trạng thái kênh thông báo:", error);
   }
 }
 
 async function testNotification(channel) {
-  const messageId = channel === "telegram" ? "telegramTestMessage" : "discordTestMessage";
-  const buttonId = channel === "telegram" ? "testTelegramBtn" : "testDiscordBtn";
+  let messageId = "telegramTestMessage";
+  let buttonId = "testTelegramBtn";
+  let targetEmail = "";
+  if (channel === "discord") {
+    messageId = "discordTestMessage";
+    buttonId = "testDiscordBtn";
+  } else if (channel === "email") {
+    messageId = "emailTestMessage";
+    buttonId = "testEmailBtn";
+    targetEmail = byId("testEmailTarget")?.value.trim() || "";
+  }
   const button = byId(buttonId);
   if (button) button.disabled = true;
   setMessage(messageId, "Đang gửi thông báo thử nghiệm...", false);
   try {
+    const payload = { channel };
+    if (targetEmail) payload.target_email = targetEmail;
     const result = await api("/admin/notifications/test", {
       method: "POST",
-      body: JSON.stringify({ channel }),
+      body: JSON.stringify(payload),
     });
     setMessage(messageId, result.message || "Gửi thông báo thử nghiệm thành công.", false);
   } catch (error) {
@@ -2316,6 +2384,7 @@ if (knowledgeVersionsModal) {
 byId("refreshNotificationsBtn")?.addEventListener("click", loadNotificationStatus);
 byId("testTelegramBtn")?.addEventListener("click", () => testNotification("telegram"));
 byId("testDiscordBtn")?.addEventListener("click", () => testNotification("discord"));
+byId("testEmailBtn")?.addEventListener("click", () => testNotification("email"));
 
 document.querySelectorAll(".service-tile").forEach((tile) => {
   tile.addEventListener("click", () => {

@@ -5,6 +5,7 @@ import io
 import logging
 import re
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -150,10 +151,55 @@ TicketStatus = Literal[
 ]
 Priority = Literal["low", "medium", "high", "urgent"]
 
+# Bảng ánh xạ chuẩn hóa mức độ ưu tiên sự cố CNTT theo chuẩn SLA:
+# - P1 · Khẩn cấp (urgent): Thời hạn phản hồi & xử lý tối đa 2 giờ
+# - P2 · Cao (high): Thời hạn phản hồi & xử lý tối đa 8 giờ
+# - P3 · Tiêu chuẩn/Trung bình (medium): Thời hạn phản hồi & xử lý tối đa 24 giờ
+# - P4 · Thấp (low): Thời hạn phản hồi & xử lý tối đa 48 giờ
+PRIORITY_SLA_MAPPING: dict[str, dict[str, Any]] = {
+    "urgent": {"code": "P1", "label": "Khẩn cấp", "sla_hours": 2, "color": "red"},
+    "high": {"code": "P2", "label": "Cao", "sla_hours": 8, "color": "orange"},
+    "medium": {"code": "P3", "label": "Tiêu chuẩn / Trung bình", "sla_hours": 24, "color": "yellow"},
+    "low": {"code": "P4", "label": "Thấp", "sla_hours": 48, "color": "green"},
+}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Khởi động: Kiểm tra cấu hình email và đưa ra cảnh báo nếu chạy production mà thiếu kênh email
+    email_status = email_sender.get_email_status()
+    if not config.DEMO_MODE:
+        if email_status.get("is_mock"):
+            logger.warning(
+                "CẢNH BÁO MÔI TRƯỜNG PRODUCTION: Dịch vụ gửi email thật chưa được cấu hình "
+                "(EMAIL_PROVIDER/SMTP_ENABLED/RESEND_API_KEY/BREVO_API_KEY). "
+                "Email khôi phục mật khẩu và thông báo tài khoản mới sẽ chỉ ghi nhận vào mock outbox trong RAM!"
+            )
+        if not config.PUBLIC_BASE_URL:
+            logger.warning(
+                "CẢNH BÁO: PUBLIC_BASE_URL chưa được thiết lập. Liên kết khôi phục mật khẩu và đăng nhập có thể không trỏ đúng tên miền public."
+            )
+    else:
+        logger.info(
+            "OpsMind Helpdesk đang chạy ở chế độ DEMO_MODE. Kênh email: %s (%s).",
+            email_status["provider"],
+            email_status["target"],
+        )
+    yield
+
+
 app = FastAPI(
     title="Helpdesk RAG",
-    description="Cổng tự phục vụ CNTT và bảng điều phối ticket có trợ lý tri thức dẫn nguồn.",
+    description=(
+        "Cổng tự phục vụ CNTT và bảng điều phối ticket có trợ lý tri thức dẫn nguồn.\n\n"
+        "### Chuẩn hóa mức độ ưu tiên sự cố (SLA Priority Mapping):\n"
+        "- **P1 (urgent)**: Khẩn cấp — Cam kết xử lý trong 2 giờ\n"
+        "- **P2 (high)**: Cao — Cam kết xử lý trong 8 giờ\n"
+        "- **P3 (medium)**: Tiêu chuẩn / Trung bình — Cam kết xử lý trong 24 giờ\n"
+        "- **P4 (low)**: Thấp — Cam kết xử lý trong 48 giờ"
+    ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -395,7 +441,8 @@ class KnowledgeReviewRequest(BaseModel):
 
 
 class NotificationTestRequest(BaseModel):
-    channel: Literal["telegram", "discord"]
+    channel: Literal["telegram", "discord", "email"]
+    target_email: str | None = Field(default=None, max_length=254)
 
 
 async def current_user(request: Request) -> dict[str, str]:
@@ -717,12 +764,16 @@ async def get_staff_directory(request: Request) -> list[dict[str, str]]:
 
 
 @app.post("/admin/users", tags=["admin"], status_code=status.HTTP_201_CREATED)
-async def add_user(request: Request, payload: UserCreate) -> dict[str, str]:
+async def add_user(
+    request: Request,
+    payload: UserCreate,
+    background_tasks: BackgroundTasks,
+) -> dict[str, str]:
     user = await current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được tạo tài khoản.")
     try:
-        return store.create_user(
+        created = store.create_user(
             payload.username,
             payload.password,
             payload.role,
@@ -730,7 +781,19 @@ async def add_user(request: Request, payload: UserCreate) -> dict[str, str]:
             payload.email.strip(),
             payload.department.strip(),
             payload.phone.strip(),
+            force_password_change=1,
         )
+        if payload.email.strip():
+            base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+            background_tasks.add_task(
+                email_sender.send_account_created_email,
+                to_email=payload.email.strip(),
+                username=payload.username,
+                temp_password=payload.password,
+                base_url=base_url,
+                force_change=True,
+            )
+        return created
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Tên đăng nhập đã tồn tại.") from exc
 
@@ -792,6 +855,31 @@ async def admin_reset_user_password(
     return {"message": f"Đã đặt lại mật khẩu cho tài khoản {username}."}
 
 
+@app.post("/admin/users/{username}/create-reset-token", tags=["admin"])
+async def admin_create_user_reset_token(request: Request, username: str) -> dict[str, Any]:
+    """Cấp mã xác thực và liên kết khôi phục mật khẩu dùng một lần (Dành cho IT Support hỗ trợ trực tiếp)."""
+    actor = await current_user(request)
+    if actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới được cấp mã khôi phục mật khẩu.")
+    existing = store.get_user_credentials(username)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+
+    token = store.create_password_reset_token(
+        username, expires_minutes=config.RESET_TOKEN_EXPIRE_MINUTES
+    )
+    base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    reset_link = f"{base_url}/#reset-token={token}"
+
+    return {
+        "status": "success",
+        "username": username,
+        "token": token,
+        "reset_link": reset_link,
+        "expires_minutes": config.RESET_TOKEN_EXPIRE_MINUTES,
+    }
+
+
 @app.get("/admin/notifications/status", tags=["admin"])
 async def get_notifications_status(request: Request) -> dict:
     actor = await current_user(request)
@@ -805,11 +893,11 @@ async def test_notification_channel(request: Request, payload: NotificationTestR
     actor = await current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được gửi thông báo thử nghiệm.")
-    ok = send_test_notification(payload.channel)
+    ok = send_test_notification(payload.channel, target_email=payload.target_email or "")
     if not ok:
         raise HTTPException(
             status_code=400,
-            detail=f"Không thể gửi thông báo tới kênh {payload.channel}. Vui lòng kiểm tra lại token/webhook và biến môi trường.",
+            detail=f"Không thể gửi thông báo tới kênh {payload.channel}. Vui lòng kiểm tra lại cấu hình và biến môi trường.",
         )
     return {
         "success": True,

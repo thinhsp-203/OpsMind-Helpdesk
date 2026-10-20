@@ -1489,41 +1489,68 @@ function uploadKnowledge(event) {
 }
 
 function updateLivePreview() {
-  return window.updateLivePreview ? window.updateLivePreview() : undefined;
+  if (typeof window.updateLivePreview === "function" && window.updateLivePreview !== updateLivePreview) {
+    return window.updateLivePreview();
+  }
+  return undefined;
 }
 
 function openKnowledgeEditor(identifier) {
-  return window.openKnowledgeEditor ? window.openKnowledgeEditor(identifier) : Promise.resolve();
+  if (typeof window.openKnowledgeEditor === "function" && window.openKnowledgeEditor !== openKnowledgeEditor) {
+    return window.openKnowledgeEditor(identifier);
+  }
+  return Promise.resolve();
 }
 
 function saveKnowledgeDocument(event) {
-  return window.saveKnowledgeDocument ? window.saveKnowledgeDocument(event) : Promise.resolve();
+  if (typeof window.saveKnowledgeDocument === "function" && window.saveKnowledgeDocument !== saveKnowledgeDocument) {
+    return window.saveKnowledgeDocument(event);
+  }
+  return Promise.resolve();
 }
 
 function openKnowledgeVersions(identifier, title) {
-  return window.openKnowledgeVersions ? window.openKnowledgeVersions(identifier, title) : Promise.resolve();
+  if (typeof window.openKnowledgeVersions === "function" && window.openKnowledgeVersions !== openKnowledgeVersions) {
+    return window.openKnowledgeVersions(identifier, title);
+  }
+  return Promise.resolve();
 }
 
 function openKnowledgeEditorForTicket(ticket) {
-  return window.openKnowledgeEditorForTicket ? window.openKnowledgeEditorForTicket(ticket) : undefined;
+  if (typeof window.openKnowledgeEditorForTicket === "function" && window.openKnowledgeEditorForTicket !== openKnowledgeEditorForTicket) {
+    return window.openKnowledgeEditorForTicket(ticket);
+  }
+  return undefined;
 }
 
 // Admin user management methods are modularized in /static/modules/admin.js
 function loadAdminUsers() {
-  return window.loadAdminUsers ? window.loadAdminUsers() : Promise.resolve();
+  if (typeof window.loadAdminUsers === "function" && window.loadAdminUsers !== loadAdminUsers) {
+    return window.loadAdminUsers();
+  }
+  return Promise.resolve();
 }
 
 function createAdminUser(event) {
-  return window.createAdminUser ? window.createAdminUser(event) : Promise.resolve();
+  if (typeof window.createAdminUser === "function" && window.createAdminUser !== createAdminUser) {
+    return window.createAdminUser(event);
+  }
+  return Promise.resolve();
 }
 
 // Incident notifications methods are modularized in /static/modules/notifications.js
 function loadNotificationStatus() {
-  return window.loadNotificationStatus ? window.loadNotificationStatus() : Promise.resolve();
+  if (typeof window.loadNotificationStatus === "function" && window.loadNotificationStatus !== loadNotificationStatus) {
+    return window.loadNotificationStatus();
+  }
+  return Promise.resolve();
 }
 
 function testNotification(channel) {
-  return window.testNotification ? window.testNotification(channel) : Promise.resolve();
+  if (typeof window.testNotification === "function" && window.testNotification !== testNotification) {
+    return window.testNotification(channel);
+  }
+  return Promise.resolve();
 }
 
 async function loadAnalytics() {
@@ -2056,7 +2083,10 @@ window.setInterval(refreshServiceState, 30000);
 
 // Safe markdown parser method is modularized in /static/modules/markdown.js
 function renderRunbook(text) {
-  return window.renderRunbook ? window.renderRunbook(text) : document.createElement("div");
+  if (typeof window.renderRunbook === "function" && window.renderRunbook !== renderRunbook) {
+    return window.renderRunbook(text);
+  }
+  return document.createElement("div");
 }
 
 async function loadAssistantTickets() {

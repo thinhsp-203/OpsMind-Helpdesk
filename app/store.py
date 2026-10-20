@@ -450,7 +450,7 @@ def initialize_store() -> None:
                         "database or change the demo passwords before startup, or set ALLOW_DEMO_CREDENTIALS=true."
                     )
         if connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
-            if DEMO_MODE:
+            if DEMO_MODE or (ALLOW_DEMO_CREDENTIALS and not INITIAL_ADMIN_PASSWORD):
                 demo_users = (
                     ("user", "user", "user"),
                     ("agent", "agent", "agent"),

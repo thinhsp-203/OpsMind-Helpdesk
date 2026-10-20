@@ -8,6 +8,8 @@ services:
     envVars:
       - key: DEMO_MODE
         value: "false"
+      - key: ALLOW_DEMO_CREDENTIALS
+        value: "true"
       - key: SECRET_KEY
         generateValue: true
       - key: INITIAL_ADMIN_USERNAME

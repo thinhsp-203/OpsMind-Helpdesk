@@ -195,3 +195,17 @@ def test_non_demo_startup_allows_demo_credentials_when_flag_enabled(
     # Should not raise RuntimeError when ALLOW_DEMO_CREDENTIALS is enabled
     store.initialize_store()
     assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}
+
+
+def test_non_demo_startup_allows_demo_credentials_on_empty_db(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "ALLOW_DEMO_CREDENTIALS", True)
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "")
+
+    # Should seed demo accounts without error on empty DB
+    store.initialize_store()
+    assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}
+

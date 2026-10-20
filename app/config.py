@@ -5,6 +5,7 @@ import secrets
 logger = logging.getLogger(__name__)
 
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in {"1", "true", "yes"}
+ALLOW_DEMO_CREDENTIALS = os.getenv("ALLOW_DEMO_CREDENTIALS", "false").lower() in {"1", "true", "yes"}
 SECRET_KEY = os.getenv("SECRET_KEY")
 INSECURE_SECRET_KEYS = {
     "change-this-to-a-secure-random-secret-key-at-least-32-chars",

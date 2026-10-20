@@ -18,6 +18,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.config import (
+    ALLOW_DEMO_CREDENTIALS,
     DATABASE_URL,
     DATABASE_PATH,
     DEMO_MODE,
@@ -438,10 +439,16 @@ def initialize_store() -> None:
                 verify_password(demo_credentials[row["username"]], row["password_hash"])
                 for row in existing_demo_users
             ):
-                raise RuntimeError(
-                    "Demo credentials are present in this database. Use a fresh non-demo "
-                    "database or change the demo passwords before startup."
-                )
+                if ALLOW_DEMO_CREDENTIALS:
+                    logger.warning(
+                        "Demo credentials are present in non-demo mode. ALLOW_DEMO_CREDENTIALS=true is enabled; "
+                        "skipping startup refusal. Please change demo passwords before real production use."
+                    )
+                else:
+                    raise RuntimeError(
+                        "Demo credentials are present in this database. Use a fresh non-demo "
+                        "database or change the demo passwords before startup, or set ALLOW_DEMO_CREDENTIALS=true."
+                    )
         if connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
             if DEMO_MODE:
                 demo_users = (

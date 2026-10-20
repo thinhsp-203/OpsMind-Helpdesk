@@ -181,3 +181,17 @@ def test_database_backed_rate_limiting_persists_across_restart(
     store.reset_rate_limit(test_key)
     assert store.get_rate_limit_attempts(test_key, 900.0) == []
     assert store.get_lockout_remaining_seconds(test_key) == 0
+
+
+def test_non_demo_startup_allows_demo_credentials_when_flag_enabled(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", True)
+    store.initialize_store()
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "ALLOW_DEMO_CREDENTIALS", True)
+
+    # Should not raise RuntimeError when ALLOW_DEMO_CREDENTIALS is enabled
+    store.initialize_store()
+    assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}

@@ -108,14 +108,28 @@ async function loadAdminUsers() {
       resetForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
-          await api(`/admin/users/${encodeURIComponent(user.username)}/reset-password`, {
+          const res = await api(`/admin/users/${encodeURIComponent(user.username)}/reset-password`, {
             method: "POST",
             body: JSON.stringify({
               new_password: resetInput.value,
               force_change: forceCheckbox.checked,
             }),
           });
-          alertUser("Đổi mật khẩu thành công.");
+          const isSelf = (user.username || "").toLowerCase() === (state.user?.username || "").toLowerCase();
+          if (isSelf) {
+            alertUser("Đổi mật khẩu tài khoản hiện tại thành công. Vui lòng đăng nhập lại.");
+            signOut();
+            if (byId("username")) {
+              byId("username").value = user.username;
+            }
+            if (byId("password")) {
+              byId("password").value = "";
+              byId("password").focus();
+            }
+            setMessage("loginMessage", "Đổi mật khẩu thành công. Vui lòng đăng nhập lại với mật khẩu mới.", false);
+            return;
+          }
+          alertUser(res?.message || "Đổi mật khẩu thành công.");
           resetForm.reset();
           forceCheckbox.checked = true;
           resetDetails.removeAttribute("open");

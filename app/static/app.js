@@ -84,6 +84,18 @@ async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers });
   const data = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
+    if (response.status === 401 && state.token) {
+      const savedUser = state.user?.username || byId("username")?.value || "";
+      signOut();
+      if (savedUser && byId("username")) {
+        byId("username").value = savedUser;
+      }
+      if (byId("password")) {
+        byId("password").value = "";
+        byId("password").focus();
+      }
+      setMessage("loginMessage", "Phiên đăng nhập đã hết hạn hoặc mật khẩu đã thay đổi. Vui lòng đăng nhập lại.");
+    }
     let detailMsg = data?.detail;
     if (Array.isArray(detailMsg)) {
       detailMsg = detailMsg
@@ -435,6 +447,7 @@ async function handleChangePassword(event) {
 
   setMessage("changePasswordMessage", "Đang lưu...", false);
   try {
+    const currentUsername = state.user?.username || byId("username")?.value || "";
     const result = await api("/auth/change-password", {
       method: "POST",
       body: JSON.stringify({
@@ -442,19 +455,22 @@ async function handleChangePassword(event) {
         new_password: newPassword,
       }),
     });
-    const currentUsername = state.user?.username || "";
+    const finalUsername = result.username || currentUsername;
     const modal = byId("changePasswordModal");
     if (modal) {
       modal.dataset.forced = "false";
       modal.classList.add("hidden");
     }
+    closeUserProfileModal();
     signOut();
-    if (currentUsername) {
-      byId("username").value = currentUsername;
+    if (finalUsername && byId("username")) {
+      byId("username").value = finalUsername;
+    }
+    if (byId("password")) {
       byId("password").value = "";
       byId("password").focus();
     }
-    setMessage("loginMessage", result.message || "Đổi mật khẩu thành công. Vui lòng đăng nhập lại.", false);
+    setMessage("loginMessage", result.message || "Đổi mật khẩu thành công. Vui lòng đăng nhập lại bằng mật khẩu mới.", false);
   } catch (error) {
     setMessage("changePasswordMessage", error.message);
   }
@@ -545,11 +561,17 @@ async function handleResetPassword(event) {
       method: "POST",
       body: JSON.stringify({ token, new_password: newPassword }),
     });
+    const targetUsername = result.username || "";
     closeResetPasswordModal();
     signOut();
+    if (targetUsername && byId("username")) {
+      byId("username").value = targetUsername;
+    }
+    if (byId("password")) {
+      byId("password").value = "";
+      byId("password").focus();
+    }
     setMessage("loginMessage", result.message || "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.", false);
-    byId("password").value = "";
-    byId("password").focus();
     if (window.location.hash.includes("reset-token")) {
       history.replaceState(null, "", window.location.pathname);
     }

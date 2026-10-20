@@ -83,7 +83,7 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 
 
 @router.post("/change-password")
-async def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, str]:
+async def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, Any]:
     actor = await current_user(request)
     user_key = f"user:{actor['username'].lower()}"
     _check_change_password_rate_limit(user_key)
@@ -112,9 +112,12 @@ async def change_password(request: Request, payload: ChangePasswordRequest) -> d
     _clear_change_password_attempts(user_key)
     store.update_user_password(actor["username"], payload.new_password, force_password_change=0)
     return {
+        "status": "success",
         "message": (
-            "Đổi mật khẩu thành công. Vui lòng sử dụng mật khẩu mới cho các lần đăng nhập tiếp theo."
-        )
+            "Đổi mật khẩu thành công. Vui lòng đăng nhập lại bằng mật khẩu mới."
+        ),
+        "username": actor["username"],
+        "require_relogin": True,
     }
 
 
@@ -263,7 +266,7 @@ async def forgot_password(
 
 
 @router.post("/reset-password")
-async def reset_password(payload: ResetPasswordRequest) -> dict[str, str]:
+async def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
     if len(payload.new_password) < 12:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -278,4 +281,6 @@ async def reset_password(payload: ResetPasswordRequest) -> dict[str, str]:
     return {
         "status": "success",
         "message": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại với mật khẩu mới.",
+        "username": username,
+        "require_relogin": True,
     }

@@ -110,7 +110,7 @@ async def admin_reset_user_password(
     request: Request,
     username: str,
     payload: AdminResetPasswordRequest,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     actor = await current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
@@ -128,7 +128,13 @@ async def admin_reset_user_password(
         payload.new_password,
         force_password_change=1 if payload.force_change else 0,
     )
-    return {"message": f"Đã đặt lại mật khẩu cho tài khoản {username}."}
+    return {
+        "status": "success",
+        "message": f"Đã đặt lại mật khẩu cho tài khoản {username}.",
+        "username": username,
+        "is_self": actor["username"].lower() == username.lower(),
+        "require_relogin": actor["username"].lower() == username.lower(),
+    }
 
 
 @router.post("/users/{username}/create-reset-token")

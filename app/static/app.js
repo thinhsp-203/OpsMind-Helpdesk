@@ -13,6 +13,12 @@ const state = {
 
 const byId = (id) => document.getElementById(id);
 const alertUser = (message) => window.alert(window.helpdeskI18n.translate(message));
+
+if (typeof window !== "undefined") {
+  window.state = state;
+  window.byId = byId;
+  window.alertUser = alertUser;
+}
 const statusLabels = {
   new: "Mới",
   in_progress: "Đang xử lý",
@@ -52,8 +58,14 @@ function node(tag, className = "", text = "") {
 
 function setMessage(id, message, isError = true) {
   const target = byId(id);
+  if (!target) return;
   target.textContent = window.helpdeskI18n.translate(message);
   target.classList.toggle("success-message", !isError && Boolean(message));
+}
+
+if (typeof window !== "undefined") {
+  window.node = node;
+  window.setMessage = setMessage;
 }
 
 async function loadPublicConfig() {
@@ -127,6 +139,10 @@ async function api(path, options = {}) {
     throw error;
   }
   return data;
+}
+
+if (typeof window !== "undefined") {
+  window.api = api;
 }
 
 function toggleUserDropdown() {
@@ -691,14 +707,13 @@ function setWorkspaceView(view) {
   byId("assistantContext").classList.toggle("hidden", view !== "assistant");
   const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
   byId("workspacePageLabel").textContent = window.helpdeskI18n.translate(activeButton?.dataset.label || "OpsMind");
-  if (view === "assistant") loadAssistantTickets();
-  if (view === "notifications" && state.user?.role === "admin") loadNotificationStatus();
+
   document.querySelectorAll("#workspaceView .workspace-panel").forEach((panel) => {
     const views = panel.dataset.view.split(/\s+/);
     const roleHidden = (
-      (panel.id === "employeeWorkflowNote" || panel.id === "serviceCatalogSection") && state.user.role !== "user"
+      (panel.id === "employeeWorkflowNote" || panel.id === "serviceCatalogSection") && state.user?.role !== "user"
     ) || (
-      panel.id === "assistantPanel" && view === "dashboard" && state.user.role !== "user"
+      panel.id === "assistantPanel" && view === "dashboard" && state.user?.role !== "user"
     );
     panel.classList.toggle("hidden", roleHidden || !views.includes(view));
   });
@@ -707,6 +722,15 @@ function setWorkspaceView(view) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-current", active ? "page" : "false");
   });
+
+  if (view === "assistant") loadAssistantTickets();
+  if (view === "notifications" && state.user?.role === "admin") {
+    try {
+      loadNotificationStatus();
+    } catch (e) {
+      console.error("Lỗi khi gọi loadNotificationStatus:", e);
+    }
+  }
 }
 
 function filterQueueTickets(tickets, mode, username, now = Date.now()) {

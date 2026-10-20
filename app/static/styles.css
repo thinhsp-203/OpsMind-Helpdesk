@@ -393,6 +393,13 @@ body { font-size:14px; }
 #workspaceView:is([data-role="agent"],[data-role="admin"]):is([data-view="knowledge"],[data-view="users"],[data-view="reports"],[data-view="personal"],[data-view="notifications"]) .main-column {
   display: none;
 }
+#workspaceView[data-view="notifications"] .main-column {
+  display: none !important;
+}
+#workspaceView[data-view="notifications"] .side-column {
+  display: grid !important;
+  width: 100% !important;
+}
 #workspaceView[data-role] .side-column { order:0; grid-row:auto; }
 .assistant-context { display:grid; gap:20px; min-width:0; }
 .panel { border:1px solid var(--line); border-radius:18px; padding:24px; box-shadow:0 6px 24px #1d345006; }
@@ -916,7 +923,7 @@ button:disabled { cursor: wait; opacity: .65; }
 
 .notification-channels-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
   margin: 20px 0;
 }
@@ -1023,6 +1030,84 @@ button:disabled { cursor: wait; opacity: .65; }
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 11px;
+}
+
+.notification-history-section {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.notification-history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.notification-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fbfcfe;
+  border: 1px solid #edf2f7;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.notification-history-item:hover {
+  background: #f3f6fc;
+}
+.notification-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.channel-icon-pill {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.channel-icon-pill.channel-telegram {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.channel-icon-pill.channel-discord {
+  background: #ede9fe;
+  color: #6366f1;
+}
+.channel-icon-pill.channel-email {
+  background: #fef3c7;
+  color: #d97706;
+}
+.channel-icon-pill.channel-system {
+  background: #f1f5f9;
+  color: #475569;
+}
+.notification-history-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.notification-history-text strong {
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.notification-history-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.notification-history-msg {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
 }
 
 /* P1-P4 Priority Badges & SLA Enhancements */

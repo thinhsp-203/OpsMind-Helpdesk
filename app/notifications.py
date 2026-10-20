@@ -8,6 +8,7 @@ Hỗ trợ:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -17,6 +18,68 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
+
+# Danh sách sự kiện thông báo gần đây (In-memory audit log)
+NOTIFICATION_HISTORY: list[dict[str, Any]] = [
+    {
+        "id": 1,
+        "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S %d/%m/%Y"),
+        "channel": "system",
+        "channel_label": "Hệ thống",
+        "event_type": "Khởi động trung tâm thông báo",
+        "recipient": "Telegram • Discord • Email",
+        "status": "active",
+        "status_label": "Đang hoạt động",
+        "message": "Các kênh thông báo sự cố IT sẵn sàng tiếp nhận sự kiện.",
+    },
+    {
+        "id": 2,
+        "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S %d/%m/%Y"),
+        "channel": "email",
+        "channel_label": "Dịch vụ Email",
+        "event_type": "Hộp thư hệ thống (Mock Outbox)",
+        "recipient": "noreply@opsmind.internal",
+        "status": "active",
+        "status_label": "Sẵn sàng",
+        "message": "Hỗ trợ lưu trữ thông báo và đặt lại mật khẩu người dùng.",
+    },
+]
+
+
+def record_notification_event(
+    channel: str,
+    event_type: str,
+    recipient: str,
+    status: str,
+    status_label: str,
+    message: str = "",
+) -> None:
+    channel_labels = {
+        "telegram": "Telegram Bot",
+        "discord": "Discord Webhook",
+        "email": "Dịch vụ Email",
+        "system": "Hệ thống",
+    }
+    NOTIFICATION_HISTORY.insert(
+        0,
+        {
+            "id": len(NOTIFICATION_HISTORY) + 1,
+            "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S %d/%m/%Y"),
+            "channel": channel,
+            "channel_label": channel_labels.get(channel, channel.capitalize()),
+            "event_type": event_type,
+            "recipient": recipient,
+            "status": status,
+            "status_label": status_label,
+            "message": message,
+        },
+    )
+    if len(NOTIFICATION_HISTORY) > 50:
+        NOTIFICATION_HISTORY.pop()
+
+
+def get_notification_history() -> list[dict[str, Any]]:
+    return list(NOTIFICATION_HISTORY)
 
 # Danh sách tên miền được phép gửi thông báo (phòng vệ SSRF)
 ALLOWED_TELEGRAM_DOMAINS = {"api.telegram.org"}
@@ -166,10 +229,33 @@ def notify_discord(ticket: dict, webhook_url: str | None = None) -> bool:
 def dispatch_ticket_notification(ticket: dict) -> dict[str, bool]:
     """Phát thông báo sự cố mới tới toàn bộ các kênh đã cấu hình."""
     results = {}
+    prio = ticket.get("priority", "medium")
+    prio_vi = PRIORITY_NAMES_VI.get(prio, prio.upper())
+    title = ticket.get("title", "Sự cố CNTT")
+    ticket_id = ticket.get("id", "Mới")
+
     if os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"):
-        results["telegram"] = notify_telegram(ticket)
+        ok = notify_telegram(ticket)
+        results["telegram"] = ok
+        record_notification_event(
+            "telegram",
+            f"Ticket #{ticket_id} ({prio_vi})",
+            "Telegram IT Alert",
+            "success" if ok else "error",
+            "Đã phát" if ok else "Lỗi gửi",
+            title,
+        )
     if os.environ.get("DISCORD_WEBHOOK_URL"):
-        results["discord"] = notify_discord(ticket)
+        ok = notify_discord(ticket)
+        results["discord"] = ok
+        record_notification_event(
+            "discord",
+            f"Ticket #{ticket_id} ({prio_vi})",
+            "Discord IT Alert",
+            "success" if ok else "error",
+            "Đã phát" if ok else "Lỗi gửi",
+            title,
+        )
     return results
 
 
@@ -189,25 +275,89 @@ def send_test_notification_result(channel: str, target_email: str = "") -> tuple
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
         if not token:
+            record_notification_event(
+                "telegram",
+                "Thử nghiệm Telegram",
+                "Telegram Group",
+                "error",
+                "Chưa cấu hình",
+                "Thiếu biến môi trường TELEGRAM_BOT_TOKEN.",
+            )
             return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường TELEGRAM_BOT_TOKEN trên Render."
         if not chat_id:
+            record_notification_event(
+                "telegram",
+                "Thử nghiệm Telegram",
+                "Telegram Group",
+                "error",
+                "Chưa cấu hình",
+                "Thiếu biến môi trường TELEGRAM_CHAT_ID.",
+            )
             return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường TELEGRAM_CHAT_ID trên Render."
         ok = notify_telegram(test_ticket)
         if ok:
+            record_notification_event(
+                "telegram",
+                "Thử nghiệm Telegram",
+                f"...{chat_id[-4:]}" if len(chat_id) >= 4 else "Telegram Group",
+                "success",
+                "Thành công",
+                "Gửi thông báo thử nghiệm tới Telegram IT thành công.",
+            )
             return True, "Gửi thông báo thử nghiệm tới nhóm Telegram thành công."
+        record_notification_event(
+            "telegram",
+            "Thử nghiệm Telegram",
+            "Telegram Group",
+            "error",
+            "Lỗi kết nối",
+            "Máy chủ Telegram trả về lỗi kết nối.",
+        )
         return False, "Không thể gửi thông báo: Lỗi kết nối Telegram API. Vui lòng kiểm tra lại Bot Token và Chat ID."
     if channel == "discord":
         url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
         if not url:
+            record_notification_event(
+                "discord",
+                "Thử nghiệm Discord",
+                "Discord Channel",
+                "error",
+                "Chưa cấu hình",
+                "Thiếu biến môi trường DISCORD_WEBHOOK_URL.",
+            )
             return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường DISCORD_WEBHOOK_URL trên Render."
         ok = notify_discord(test_ticket)
         if ok:
+            record_notification_event(
+                "discord",
+                "Thử nghiệm Discord",
+                f"...{url[-8:]}" if len(url) >= 8 else "Discord Webhook",
+                "success",
+                "Thành công",
+                "Gửi thông báo thử nghiệm tới Discord Webhook thành công.",
+            )
             return True, "Gửi thông báo thử nghiệm tới Discord Webhook thành công."
+        record_notification_event(
+            "discord",
+            "Thử nghiệm Discord",
+            "Discord Webhook",
+            "error",
+            "Lỗi kết nối",
+            "Máy chủ Discord trả về lỗi kết nối.",
+        )
         return False, "Không thể gửi thông báo: Lỗi kết nối Discord Webhook. Vui lòng kiểm tra lại Webhook URL."
     if channel == "email":
         from app import email_sender, config
         target = target_email.strip() or config.EMAIL_FROM or "admin@example.com"
         ok, msg = email_sender.send_test_email(target)
+        record_notification_event(
+            "email",
+            "Email thử nghiệm",
+            target,
+            "success" if ok else "error",
+            "Thành công" if ok else "Thất bại",
+            msg,
+        )
         return ok, msg
     return False, f"Kênh thông báo '{channel}' không được hỗ trợ."
 
@@ -239,4 +389,5 @@ def get_notification_channels_status() -> dict[str, dict[str, Any]]:
             "target": masked_discord,
         },
         "email": email_sender.get_email_status(),
+        "history": get_notification_history(),
     }

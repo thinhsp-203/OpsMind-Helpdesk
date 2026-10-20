@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ENV DEMO_MODE=true
+ENV ALLOW_DEMO_CREDENTIALS=true
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 

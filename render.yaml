@@ -7,7 +7,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DEMO_MODE
-        value: "false"
+        value: "true"
       - key: ALLOW_DEMO_CREDENTIALS
         value: "true"
       - key: SECRET_KEY

@@ -209,3 +209,39 @@ def test_non_demo_startup_allows_demo_credentials_on_empty_db(
     store.initialize_store()
     assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}
 
+
+def test_non_demo_startup_accepts_custom_admin_password_min_eight_chars(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1m@123")
+
+    store.initialize_store()
+    creds = store.get_user_credentials("admin")
+    assert creds is not None
+    assert store.verify_password("Adm1m@123", creds["password_hash"])
+
+
+def test_initial_admin_password_updates_existing_default_admin(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # First seed DB in demo mode
+    monkeypatch.setattr(store, "DEMO_MODE", True)
+    store.initialize_store()
+
+    # Now restart in non-demo mode with new admin password and ALLOW_DEMO_CREDENTIALS
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "ALLOW_DEMO_CREDENTIALS", True)
+    monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1m@123")
+
+    store.initialize_store()
+    creds = store.get_user_credentials("admin")
+    assert creds is not None
+    assert store.verify_password("Adm1m@123", creds["password_hash"])
+    assert not store.verify_password("admin", creds["password_hash"])
+
+

@@ -429,6 +429,23 @@ def initialize_store() -> None:
                     """
                 )
                 connection.execute("PRAGMA foreign_keys = ON")
+        if (
+            INITIAL_ADMIN_USERNAME
+            and len(INITIAL_ADMIN_PASSWORD) >= 8
+            and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
+            and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
+        ):
+            existing_admin = connection.execute(
+                "SELECT password_hash FROM users WHERE username = ?",
+                (INITIAL_ADMIN_USERNAME,),
+            ).fetchone()
+            if existing_admin and verify_password("admin", existing_admin["password_hash"]):
+                connection.execute(
+                    "UPDATE users SET password_hash = ? WHERE username = ?",
+                    (_password_hash(INITIAL_ADMIN_PASSWORD), INITIAL_ADMIN_USERNAME),
+                )
+                logger.info("Updated default admin password from INITIAL_ADMIN_PASSWORD.")
+
         if not DEMO_MODE:
             demo_credentials = {"user": "user", "agent": "agent", "admin": "admin"}
             existing_demo_users = connection.execute(
@@ -449,8 +466,38 @@ def initialize_store() -> None:
                         "Demo credentials are present in this database. Use a fresh non-demo "
                         "database or change the demo passwords before startup, or set ALLOW_DEMO_CREDENTIALS=true."
                     )
+
         if connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
-            if DEMO_MODE or (ALLOW_DEMO_CREDENTIALS and not INITIAL_ADMIN_PASSWORD):
+            if DEMO_MODE:
+                admin_pw = (
+                    INITIAL_ADMIN_PASSWORD
+                    if (
+                        INITIAL_ADMIN_USERNAME == "admin"
+                        and len(INITIAL_ADMIN_PASSWORD) >= 8
+                        and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
+                    )
+                    else "admin"
+                )
+                demo_users = (
+                    ("user", "user", "user"),
+                    ("agent", "agent", "agent"),
+                    ("admin", admin_pw, "admin"),
+                )
+                connection.executemany(
+                    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                    [(name, _password_hash(password), role) for name, password, role in demo_users],
+                )
+            elif (
+                INITIAL_ADMIN_USERNAME
+                and len(INITIAL_ADMIN_PASSWORD) >= 8
+                and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
+                and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
+            ):
+                connection.execute(
+                    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+                    (INITIAL_ADMIN_USERNAME, _password_hash(INITIAL_ADMIN_PASSWORD)),
+                )
+            elif ALLOW_DEMO_CREDENTIALS:
                 demo_users = (
                     ("user", "user", "user"),
                     ("agent", "agent", "agent"),
@@ -460,19 +507,9 @@ def initialize_store() -> None:
                     "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                     [(name, _password_hash(password), role) for name, password, role in demo_users],
                 )
-            elif (
-                INITIAL_ADMIN_USERNAME
-                and len(INITIAL_ADMIN_PASSWORD) >= 12
-                and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
-                and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
-            ):
-                connection.execute(
-                    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
-                    (INITIAL_ADMIN_USERNAME, _password_hash(INITIAL_ADMIN_PASSWORD)),
-                )
             else:
                 raise RuntimeError(
-                    "INITIAL_ADMIN_PASSWORD (at least 12 characters, not using known placeholder passwords) "
+                    "INITIAL_ADMIN_PASSWORD (at least 8 characters, not using known placeholder passwords) "
                     "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
         seed_builtin_knowledge(connection)

@@ -1488,70 +1488,15 @@ function uploadKnowledge(event) {
   return window.uploadKnowledge ? window.uploadKnowledge(event) : Promise.resolve();
 }
 
-function updateLivePreview() {
-  if (typeof window.updateLivePreview === "function" && window.updateLivePreview !== updateLivePreview) {
-    return window.updateLivePreview();
-  }
-  return undefined;
-}
-
-function openKnowledgeEditor(identifier) {
-  if (typeof window.openKnowledgeEditor === "function" && window.openKnowledgeEditor !== openKnowledgeEditor) {
-    return window.openKnowledgeEditor(identifier);
-  }
-  return Promise.resolve();
-}
-
-function saveKnowledgeDocument(event) {
-  if (typeof window.saveKnowledgeDocument === "function" && window.saveKnowledgeDocument !== saveKnowledgeDocument) {
-    return window.saveKnowledgeDocument(event);
-  }
-  return Promise.resolve();
-}
-
-function openKnowledgeVersions(identifier, title) {
-  if (typeof window.openKnowledgeVersions === "function" && window.openKnowledgeVersions !== openKnowledgeVersions) {
-    return window.openKnowledgeVersions(identifier, title);
-  }
-  return Promise.resolve();
-}
-
-function openKnowledgeEditorForTicket(ticket) {
-  if (typeof window.openKnowledgeEditorForTicket === "function" && window.openKnowledgeEditorForTicket !== openKnowledgeEditorForTicket) {
-    return window.openKnowledgeEditorForTicket(ticket);
-  }
-  return undefined;
-}
-
-// Admin user management methods are modularized in /static/modules/admin.js
-function loadAdminUsers() {
-  if (typeof window.loadAdminUsers === "function" && window.loadAdminUsers !== loadAdminUsers) {
-    return window.loadAdminUsers();
-  }
-  return Promise.resolve();
-}
-
-function createAdminUser(event) {
-  if (typeof window.createAdminUser === "function" && window.createAdminUser !== createAdminUser) {
-    return window.createAdminUser(event);
-  }
-  return Promise.resolve();
-}
-
-// Incident notifications methods are modularized in /static/modules/notifications.js
-function loadNotificationStatus() {
-  if (typeof window.loadNotificationStatus === "function" && window.loadNotificationStatus !== loadNotificationStatus) {
-    return window.loadNotificationStatus();
-  }
-  return Promise.resolve();
-}
-
-function testNotification(channel) {
-  if (typeof window.testNotification === "function" && window.testNotification !== testNotification) {
-    return window.testNotification(channel);
-  }
-  return Promise.resolve();
-}
+const updateLivePreview = () => (window.updateLivePreview ? window.updateLivePreview() : undefined);
+const openKnowledgeEditor = (identifier) => (window.openKnowledgeEditor ? window.openKnowledgeEditor(identifier) : Promise.resolve());
+const saveKnowledgeDocument = (event) => (window.saveKnowledgeDocument ? window.saveKnowledgeDocument(event) : Promise.resolve());
+const openKnowledgeVersions = (identifier, title) => (window.openKnowledgeVersions ? window.openKnowledgeVersions(identifier, title) : Promise.resolve());
+const openKnowledgeEditorForTicket = (ticket) => (window.openKnowledgeEditorForTicket ? window.openKnowledgeEditorForTicket(ticket) : undefined);
+const loadAdminUsers = () => (window.loadAdminUsers ? window.loadAdminUsers() : Promise.resolve());
+const createAdminUser = (event) => (window.createAdminUser ? window.createAdminUser(event) : Promise.resolve());
+const loadNotificationStatus = () => (window.loadNotificationStatus ? window.loadNotificationStatus() : Promise.resolve());
+const testNotification = (channel) => (window.testNotification ? window.testNotification(channel) : Promise.resolve());
 
 async function loadAnalytics() {
   try {
@@ -2082,12 +2027,7 @@ window.setInterval(refreshServiceState, 30000);
 
 
 // Safe markdown parser method is modularized in /static/modules/markdown.js
-function renderRunbook(text) {
-  if (typeof window.renderRunbook === "function" && window.renderRunbook !== renderRunbook) {
-    return window.renderRunbook(text);
-  }
-  return document.createElement("div");
-}
+const renderRunbook = (text) => (window.renderRunbook ? window.renderRunbook(text) : document.createElement("div"));
 
 async function loadAssistantTickets() {
   const list = byId("assistantRecentTickets");

@@ -44,11 +44,30 @@ STORAGE_PATH = os.getenv(
 )
 
 # LLM Generation settings for RAG (optional, with safe fallback)
-ENABLE_LLM_GENERATION = os.getenv("ENABLE_LLM_GENERATION", "false").lower() in {"1", "true", "yes"}
-LLM_API_KEY = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", os.getenv("GROQ_API_KEY", ""))).strip()
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "5.0"))
+GEMINI_KEY = os.getenv("GEMINI_API_KEY", "").strip().strip("'\"")
+LLM_API_KEY = os.getenv(
+    "LLM_API_KEY",
+    os.getenv("OPENAI_API_KEY", os.getenv("GROQ_API_KEY", GEMINI_KEY)),
+).strip().strip("'\"")
+
+_enable_env = os.getenv("ENABLE_LLM_GENERATION")
+if _enable_env is not None:
+    ENABLE_LLM_GENERATION = _enable_env.lower() in {"1", "true", "yes"}
+else:
+    ENABLE_LLM_GENERATION = bool(LLM_API_KEY)
+default_llm_base = (
+    "https://generativelanguage.googleapis.com/v1beta/openai"
+    if GEMINI_KEY and not os.getenv("LLM_BASE_URL")
+    else "https://api.openai.com/v1"
+)
+default_llm_model = (
+    "gemini-1.5-flash"
+    if GEMINI_KEY and not os.getenv("LLM_MODEL")
+    else "gpt-4o-mini"
+)
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", default_llm_base).rstrip("/")
+LLM_MODEL = os.getenv("LLM_MODEL", default_llm_model)
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "8.0"))
 
 def _get_env_case_insensitive(key: str, default: str = "") -> str:
     val = os.getenv(key)

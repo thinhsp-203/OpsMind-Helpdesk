@@ -61,8 +61,13 @@ Nhóm phân định rõ ràng giữa **Phần làm (In-scope)** và **Phần kh�
    - **Xử lý điểm nghẽn gửi email trên Render Free:** Render chặn cổng SMTP đi ra (25/465/587); đã xây dựng kiến trúc gửi email đa nhà cung cấp qua HTTPS API (Brevo API, Resend API, Webhook, Mock/Console) tại cổng 443 và Mailpit trong Docker Compose cho local. Gửi thành công email đặt lại mật khẩu và email tài khoản mới có mật khẩu tạm.
    - Sửa lỗi hiển thị và lọc danh mục tại trang Kho tri thức & Runbook (bổ sung CSS select, `autocomplete="off"`, đồng bộ DOM state).
    - Xử lý lỗi tự động đăng nhập khi đang khôi phục mật khẩu (xóa sạch session cũ khi vào luồng reset, ngăn browser sleep reload gây auto-login).
-3. **Chất lượng Phần mềm (Đạt chuẩn Rubric TC2.4, TC2.5, TC2.6):**
-   - 100% test case tự động pass (81/81 pytest backend pass, 3/3 bộ test Node.js frontend pass, GitHub Actions CI pass 100%).
+3. **Kiến trúc & Tái cấu trúc mã nguồn (Refactoring & Modularization):**
+   - **Tách nhỏ backend thành APIRouters:** Chuyển đổi tệp monolithic `main.py` (>1.500 dòng) thành các router chuyên biệt theo miền nghiệp vụ trong `app/routers/` (`auth.py`, `tickets.py`, `knowledge.py`, `rag.py`, `admin.py`, `analytics.py`), tách `schemas.py` và `dependencies.py`, giữ `main.py` dưới 180 dòng.
+   - **Module hóa frontend:** Tách `app.js` (>2.600 dòng) thành các module JavaScript độc lập trong `app/static/modules/` (`markdown.js`, `notifications.js`, `admin.js`, `knowledge.js`), bảo toàn 100% anchor điểm neo kiểm thử.
+   - **Chuyển Rate Limiting sang CSDL:** Chuyển bộ đếm tần suất và lockout từ RAM sang bảng `rate_limit_attempts` (hỗ trợ cả SQLite và PostgreSQL), bảo đảm duy trì lockout khi restart máy chủ.
+   - **Bổ sung script đo tải thực nghiệm:** Xây dựng `scripts/benchmark_load.py` kiểm chứng chỉ tiêu NFR-02 (đạt 35 – 597 RPS trên các endpoint trọng yếu).
+4. **Chất lượng Phần mềm (Đạt chuẩn Rubric TC2.4, TC2.5, TC2.6):**
+   - 100% test case tự động pass (82/82 pytest backend pass, 3/3 bộ test Node.js frontend pass, GitHub Actions CI pass 100%).
    - Chuẩn hóa song ngữ Anh - Việt cho toàn bộ thông báo xác thực và lỗi validation của hệ thống.
    - 0 lỗi lint (Ruff pass 100%), 0 secret bị lộ trong mã nguồn.
 

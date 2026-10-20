@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import logging
@@ -311,6 +312,11 @@ def initialize_store() -> None:
                 used INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1)),
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS rate_limit_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL,
+                attempt_time REAL NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_tickets_requester ON tickets(requester);
             CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
             CREATE INDEX IF NOT EXISTS idx_comments_ticket ON comments(ticket_id);
@@ -324,6 +330,7 @@ def initialize_store() -> None:
             CREATE INDEX IF NOT EXISTS idx_knowledge_versions_doc ON knowledge_versions(document_id, version_number);
             CREATE INDEX IF NOT EXISTS idx_reset_token_hash ON password_reset_tokens(token_hash);
             CREATE INDEX IF NOT EXISTS idx_reset_user ON password_reset_tokens(username);
+            CREATE INDEX IF NOT EXISTS idx_rate_limit_attempts_key_time ON rate_limit_attempts(key, attempt_time);
             """
         if _database_url:
             schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
@@ -470,7 +477,8 @@ def reset_store() -> None:
         if _database_url:
             connection.execute(
                 "TRUNCATE TABLE audit_logs, comments, tickets, chat_messages, chat_sessions, "
-                "ticket_attachments, users, knowledge_versions, knowledge_documents RESTART IDENTITY CASCADE"
+                "ticket_attachments, users, knowledge_versions, knowledge_documents, "
+                "password_reset_tokens, rate_limit_attempts RESTART IDENTITY CASCADE"
             )
             if DEMO_MODE:
                 demo_users = (
@@ -499,8 +507,10 @@ def reset_store() -> None:
         connection.execute("DELETE FROM knowledge_versions")
         connection.execute("DELETE FROM knowledge_documents")
         connection.execute("DELETE FROM users")
+        connection.execute("DELETE FROM password_reset_tokens")
+        connection.execute("DELETE FROM rate_limit_attempts")
         connection.execute(
-            "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'comments', 'audit_logs', 'knowledge_documents', 'knowledge_versions')"
+            "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'comments', 'audit_logs', 'knowledge_documents', 'knowledge_versions', 'password_reset_tokens', 'rate_limit_attempts')"
         )
     initialize_store()
 
@@ -686,11 +696,31 @@ FAILED_LOGIN_LIMIT: int = 5
 FAILED_LOGIN_WINDOW_SECONDS: float = 900.0
 
 
-def record_failed_login(key: str) -> None:
+def record_rate_limit_attempt(key: str) -> None:
     now = time.time()
+    with contextlib.suppress(Exception):
+        with _connect() as connection:
+            connection.execute(
+                "INSERT INTO rate_limit_attempts (key, attempt_time) VALUES (?, ?)",
+                (key, now),
+            )
     attempts = [t for t in _failed_login_attempts.get(key, []) if now - t < FAILED_LOGIN_WINDOW_SECONDS]
     attempts.append(now)
     _failed_login_attempts[key] = attempts
+
+
+def get_rate_limit_attempts(key: str, window_seconds: float) -> list[float]:
+    cutoff = time.time() - window_seconds
+    try:
+        with _connect() as connection:
+            rows = connection.execute(
+                "SELECT attempt_time FROM rate_limit_attempts WHERE key = ? AND attempt_time >= ? ORDER BY attempt_time ASC",
+                (key, cutoff),
+            ).fetchall()
+            return [float(r["attempt_time"]) for r in rows]
+    except Exception:
+        now = time.time()
+        return [t for t in _failed_login_attempts.get(key, []) if now - t < window_seconds]
 
 
 def get_lockout_remaining_seconds(
@@ -698,17 +728,53 @@ def get_lockout_remaining_seconds(
     limit: int = FAILED_LOGIN_LIMIT,
     window_seconds: float = FAILED_LOGIN_WINDOW_SECONDS,
 ) -> int:
-    now = time.time()
-    attempts = [t for t in _failed_login_attempts.get(key, []) if now - t < window_seconds]
+    attempts = get_rate_limit_attempts(key, window_seconds)
     if len(attempts) < limit:
         return 0
+    now = time.time()
     earliest_in_window = attempts[0]
     remaining = int(window_seconds - (now - earliest_in_window))
     return max(0, remaining)
 
 
-def reset_failed_logins(key: str) -> None:
+def reset_rate_limit(key: str) -> None:
+    with contextlib.suppress(Exception):
+        with _connect() as connection:
+            connection.execute("DELETE FROM rate_limit_attempts WHERE key = ?", (key,))
     _failed_login_attempts.pop(key, None)
+
+
+def reset_failed_logins(key: str) -> None:
+    reset_rate_limit(key)
+
+
+def record_failed_login(key: str) -> None:
+    record_rate_limit_attempt(key)
+
+
+def clear_all_rate_limits(key_prefix: str | None = None) -> None:
+    with contextlib.suppress(Exception):
+        with _connect() as connection:
+            if key_prefix:
+                connection.execute(
+                    "DELETE FROM rate_limit_attempts WHERE key LIKE ?",
+                    (f"{key_prefix}%",),
+                )
+            else:
+                connection.execute("DELETE FROM rate_limit_attempts")
+    if not key_prefix:
+        _failed_login_attempts.clear()
+    else:
+        for k in list(_failed_login_attempts.keys()):
+            if k.startswith(key_prefix):
+                _failed_login_attempts.pop(k, None)
+
+
+def cleanup_expired_rate_limits(max_window_seconds: float = 3600.0) -> None:
+    cutoff = time.time() - max_window_seconds
+    with contextlib.suppress(Exception):
+        with _connect() as connection:
+            connection.execute("DELETE FROM rate_limit_attempts WHERE attempt_time < ?", (cutoff,))
 
 
 def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None:

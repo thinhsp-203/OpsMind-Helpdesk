@@ -478,8 +478,10 @@
     "Mã xác thực một lần": "One-time verification code",
     "Xác nhận đổi mật khẩu": "Confirm password reset",
     "Nếu thông tin khớp với tài khoản hợp lệ trên hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu đến email được liên kết. Vui lòng kiểm tra hộp thư đến (và mục spam/junk).": "If the information matches an active account, password reset instructions have been sent to the linked email. Please check your inbox (and spam/junk folder).",
+    "Nếu thông tin khớp với tài khoản trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi đến email đăng ký của bạn.": "If the information matches an account in the system, password reset instructions have been sent to your registered email.",
     "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại với mật khẩu mới.": "Password reset successfully. Please sign in again with your new password.",
     "Đổi mật khẩu thành công. Vui lòng đăng nhập lại.": "Password changed successfully. Please sign in again.",
+    "Đổi mật khẩu thành công. Vui lòng sử dụng mật khẩu mới cho các lần đăng nhập tiếp theo.": "Password changed successfully. Please use your new password for future logins.",
     "Mã xác thực không hợp lệ, đã được sử dụng hoặc đã hết hạn.": "Verification code is invalid, already used, or expired.",
     "Mật khẩu mới phải có ít nhất 12 ký tự.": "New password must be at least 12 characters.",
     "Mật khẩu phải có ít nhất 12 ký tự.": "Password must be at least 12 characters.",
@@ -489,6 +491,7 @@
     "Mật khẩu hiện tại không chính xác.": "Current password is incorrect.",
     "Mật khẩu xác nhận không chính xác.": "Confirmation password is incorrect.",
     "Mật khẩu mới không được trùng với tên đăng nhập.": "New password cannot be identical to the username.",
+    "Mật khẩu mới không được trùng với mật khẩu hiện tại.": "New password must be different from the current password.",
     "Mật khẩu mới phải khác mật khẩu hiện tại.": "New password must be different from the current password.",
     "Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.": "Password has been changed. Please sign in again.",
     "Tài khoản không còn hợp lệ.": "Account is no longer valid or active.",
@@ -499,6 +502,10 @@
     "Chỉ Admin mới được cấp mã khôi phục mật khẩu.": "Only Administrators can issue recovery codes.",
     "Tạo mã khôi phục (IT cấp mã)": "Generate recovery code (IT Support)",
     "Đã sao chép liên kết vào clipboard": "Link copied to clipboard",
+    "Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.": "Account has been temporarily locked. Please contact an administrator.",
+    "Mật khẩu tối đa 200 ký tự.": "Password can have at most 200 characters.",
+    "Dữ liệu không hợp lệ.": "Invalid data.",
+    "Chỉ Admin mới có quyền thực hiện thao tác này.": "Only Administrators have permission to perform this action.",
     "Kênh thông báo": "Notification channels",
     "Kênh thông báo sự cố": "Incident Notification Channels",
     "CỘNG TÁC & CẢNH BÁO": "COLLABORATION & ALERTS",
@@ -603,7 +610,11 @@
 
   function translate(value) {
     if (typeof value !== "string") return value;
+    if (value.includes("\n")) {
+      return value.split("\n").map((line) => translate(line)).join("\n");
+    }
     const trimmed = value.trim();
+    if (!trimmed) return value;
     let result = (language === "en" ? translations[trimmed] : englishToVietnamese[trimmed]) || trimmed;
     if (result === trimmed) {
       const rules = language === "en"

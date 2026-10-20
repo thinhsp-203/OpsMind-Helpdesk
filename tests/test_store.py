@@ -150,3 +150,34 @@ def test_non_demo_startup_rejects_insecure_placeholder_password(
     with pytest.raises(RuntimeError, match="not using known placeholder passwords"):
         store.initialize_store()
 
+
+
+def test_database_backed_rate_limiting_persists_across_restart(
+    isolated_database: Path,
+) -> None:
+    store.initialize_store()
+    test_key = "login:192.0.2.100"
+
+    # Initially 0 attempts and 0 lockout
+    assert store.get_rate_limit_attempts(test_key, 900.0) == []
+    assert store.get_lockout_remaining_seconds(test_key) == 0
+
+    # Record 5 failed attempts
+    for _ in range(5):
+        store.record_rate_limit_attempt(test_key)
+
+    assert len(store.get_rate_limit_attempts(test_key, 900.0)) == 5
+    assert store.get_lockout_remaining_seconds(test_key) > 0
+
+    # Simulate application restart: clear volatile in-memory cache
+    store._failed_login_attempts.clear()
+
+    # Verify that database persistence retains the lockout and attempts
+    attempts_after_restart = store.get_rate_limit_attempts(test_key, 900.0)
+    assert len(attempts_after_restart) == 5
+    assert store.get_lockout_remaining_seconds(test_key) > 0
+
+    # Reset clears database records
+    store.reset_rate_limit(test_key)
+    assert store.get_rate_limit_attempts(test_key, 900.0) == []
+    assert store.get_lockout_remaining_seconds(test_key) == 0

@@ -244,4 +244,13 @@ def test_initial_admin_password_updates_existing_default_admin(
     assert store.verify_password("Adm1m@123", creds["password_hash"])
     assert not store.verify_password("admin", creds["password_hash"])
 
+    # Changing INITIAL_ADMIN_PASSWORD again synchronizes with the updated password
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1n@123")
+    store.initialize_store()
+    creds_updated = store.get_user_credentials("admin")
+    assert creds_updated is not None
+    assert store.verify_password("Adm1n@123", creds_updated["password_hash"])
+    assert not store.verify_password("Adm1m@123", creds_updated["password_hash"])
+
+
 

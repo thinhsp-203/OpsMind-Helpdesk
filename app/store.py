@@ -439,12 +439,12 @@ def initialize_store() -> None:
                 "SELECT password_hash FROM users WHERE username = ?",
                 (INITIAL_ADMIN_USERNAME,),
             ).fetchone()
-            if existing_admin and verify_password("admin", existing_admin["password_hash"]):
+            if existing_admin and not verify_password(INITIAL_ADMIN_PASSWORD, existing_admin["password_hash"]):
                 connection.execute(
                     "UPDATE users SET password_hash = ? WHERE username = ?",
                     (_password_hash(INITIAL_ADMIN_PASSWORD), INITIAL_ADMIN_USERNAME),
                 )
-                logger.info("Updated default admin password from INITIAL_ADMIN_PASSWORD.")
+                logger.info("Synchronized admin password with INITIAL_ADMIN_PASSWORD.")
 
         if not DEMO_MODE:
             demo_credentials = {"user": "user", "agent": "agent", "admin": "admin"}

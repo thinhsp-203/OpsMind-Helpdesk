@@ -173,8 +173,8 @@ def dispatch_ticket_notification(ticket: dict) -> dict[str, bool]:
     return results
 
 
-def send_test_notification(channel: str, target_email: str = "") -> bool:
-    """Gửi thông báo kiểm tra kết nối tới kênh được chỉ định (Dành cho Admin)."""
+def send_test_notification_result(channel: str, target_email: str = "") -> tuple[bool, str]:
+    """Gửi thông báo kiểm tra kết nối tới kênh được chỉ định kèm thông báo chi tiết."""
     test_ticket = {
         "id": "TEST",
         "title": "Kiểm tra kết nối kênh thông báo tự động",
@@ -186,15 +186,36 @@ def send_test_notification(channel: str, target_email: str = "") -> bool:
         "sla_deadline": "Không áp dụng",
     }
     if channel == "telegram":
-        return notify_telegram(test_ticket)
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+        if not token:
+            return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường TELEGRAM_BOT_TOKEN trên Render."
+        if not chat_id:
+            return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường TELEGRAM_CHAT_ID trên Render."
+        ok = notify_telegram(test_ticket)
+        if ok:
+            return True, "Gửi thông báo thử nghiệm tới nhóm Telegram thành công."
+        return False, "Không thể gửi thông báo: Lỗi kết nối Telegram API. Vui lòng kiểm tra lại Bot Token và Chat ID."
     if channel == "discord":
-        return notify_discord(test_ticket)
+        url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+        if not url:
+            return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường DISCORD_WEBHOOK_URL trên Render."
+        ok = notify_discord(test_ticket)
+        if ok:
+            return True, "Gửi thông báo thử nghiệm tới Discord Webhook thành công."
+        return False, "Không thể gửi thông báo: Lỗi kết nối Discord Webhook. Vui lòng kiểm tra lại Webhook URL."
     if channel == "email":
         from app import email_sender, config
-        target = target_email.strip() or config.EMAIL_FROM
-        ok, _ = email_sender.send_test_email(target)
-        return ok
-    return False
+        target = target_email.strip() or config.EMAIL_FROM or "admin@example.com"
+        ok, msg = email_sender.send_test_email(target)
+        return ok, msg
+    return False, f"Kênh thông báo '{channel}' không được hỗ trợ."
+
+
+def send_test_notification(channel: str, target_email: str = "") -> bool:
+    """Gửi thông báo kiểm tra kết nối tới kênh được chỉ định (Dành cho Admin)."""
+    ok, _ = send_test_notification_result(channel, target_email)
+    return ok
 
 
 def get_notification_channels_status() -> dict[str, dict[str, Any]]:

@@ -58,6 +58,10 @@ async function testNotification(channel) {
     messageId = "emailTestMessage";
     buttonId = "testEmailBtn";
     targetEmail = byId("testEmailTarget")?.value.trim() || "";
+    if (!targetEmail) {
+      targetEmail = state.user?.email || "admin@opsmind.internal";
+      if (byId("testEmailTarget")) byId("testEmailTarget").value = targetEmail;
+    }
   }
   const button = byId(buttonId);
   if (button) button.disabled = true;

@@ -9,7 +9,7 @@ from app import config, email_sender, store
 from app.dependencies import current_user
 from app.notifications import (
     get_notification_channels_status,
-    send_test_notification,
+    send_test_notification_result,
 )
 from app.schemas import (
     AdminResetPasswordRequest,
@@ -179,21 +179,7 @@ async def test_notification_channel(
     actor = await current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được gửi thông báo thử nghiệm.")
-    if payload.channel == "email":
-        target = (payload.target_email or "").strip() or config.EMAIL_FROM
-        ok, msg = email_sender.send_test_email(target)
-        if not ok:
-            raise HTTPException(status_code=400, detail=msg)
-        return {"success": True, "channel": "email", "message": msg}
-
-    ok = send_test_notification(payload.channel, target_email=payload.target_email or "")
+    ok, msg = send_test_notification_result(payload.channel, target_email=payload.target_email or "")
     if not ok:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Không thể gửi thông báo tới kênh {payload.channel}. Vui lòng kiểm tra lại cấu hình và biến môi trường.",
-        )
-    return {
-        "success": True,
-        "channel": payload.channel,
-        "message": f"Đã gửi thông báo thử nghiệm thành công tới {payload.channel}.",
-    }
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "channel": payload.channel, "message": msg}

@@ -25,7 +25,7 @@ services:
         sync: false
       # Kênh gửi Email trên Render Free: khuyên dùng 'resend' hoặc 'brevo' qua HTTPS API cổng 443
       - key: EMAIL_PROVIDER
-        value: "resend"
+        value: ""
       - key: RESEND_API_KEY
         sync: false
       - key: BREVO_API_KEY

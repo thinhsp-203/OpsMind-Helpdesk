@@ -58,6 +58,9 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 
     _clear_failed_login(combo_key)
 
+    if not user["password_hash"].startswith("pbkdf2_sha256$"):
+        store.update_user_password(payload.username, payload.password)
+
     issued_at = datetime.now(timezone.utc)
     token = jwt.encode(
         {

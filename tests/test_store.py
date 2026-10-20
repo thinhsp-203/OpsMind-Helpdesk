@@ -253,4 +253,10 @@ def test_initial_admin_password_updates_existing_default_admin(
     assert not store.verify_password("Adm1m@123", creds_updated["password_hash"])
 
 
+def test_verify_password_supports_manual_plaintext_fallback() -> None:
+    assert store.verify_password("Thinh@321", "Thinh@321")
+    assert not store.verify_password("WrongPassword", "Thinh@321")
+
+
+
 

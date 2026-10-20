@@ -109,11 +109,12 @@ def verify_password(password: str, encoded: str) -> bool:
     try:
         algorithm, salt_hex, digest_hex = encoded.split("$", 2)
         if algorithm != "pbkdf2_sha256":
-            return False
+            return hmac.compare_digest(password, encoded)
         candidate = _password_hash(password, bytes.fromhex(salt_hex)).split("$", 2)[2]
+        return hmac.compare_digest(candidate, digest_hex)
     except (ValueError, TypeError):
-        return False
-    return hmac.compare_digest(candidate, digest_hex)
+        return hmac.compare_digest(password, encoded)
+
 
 
 def _slugify(text: str) -> str:

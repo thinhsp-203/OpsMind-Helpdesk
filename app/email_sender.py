@@ -4,6 +4,7 @@ from collections import deque
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid, parseaddr
+import html
 import logging
 import smtplib
 import ssl
@@ -141,7 +142,8 @@ def _send_via_resend(to_email: str, subject: str, body_text: str) -> bool:
     if not from_addr or "opsmind.internal" in from_addr:
         from_addr = "onboarding@resend.dev"
 
-    html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{body_text.replace(chr(10), '<br>')}</div>"
+    safe_body = html.escape(body_text).replace("\n", "<br>")
+    html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{safe_body}</div>"
     try:
         resp = httpx.post(
             "https://api.resend.com/emails",
@@ -187,7 +189,8 @@ def _send_via_brevo(to_email: str, subject: str, body_text: str) -> bool:
     if sender_name:
         sender_payload["name"] = sender_name
 
-    html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{body_text.replace(chr(10), '<br>')}</div>"
+    safe_body = html.escape(body_text).replace("\n", "<br>")
+    html_content = f"<div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;'>{safe_body}</div>"
 
     try:
         resp = httpx.post(

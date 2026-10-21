@@ -106,14 +106,19 @@ def _password_hash(password: str, salt: bytes | None = None) -> str:
 
 
 def verify_password(password: str, encoded: str) -> bool:
+    if not isinstance(password, str) or not isinstance(encoded, str):
+        return False
     try:
-        algorithm, salt_hex, digest_hex = encoded.split("$", 2)
+        parts = encoded.split("$", 2)
+        if len(parts) != 3:
+            return False
+        algorithm, salt_hex, digest_hex = parts
         if algorithm != "pbkdf2_sha256":
-            return hmac.compare_digest(password, encoded)
+            return False
         candidate = _password_hash(password, bytes.fromhex(salt_hex)).split("$", 2)[2]
         return hmac.compare_digest(candidate, digest_hex)
     except (ValueError, TypeError):
-        return hmac.compare_digest(password, encoded)
+        return False
 
 
 
@@ -125,43 +130,19 @@ def _slugify(text: str) -> str:
     return slug or "runbook"
 
 
+def _escape_like(text: str) -> str:
+    """Escape các ký tự đại diện wildcard (%) và (_) trong truy vấn SQL LIKE."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection) -> None:
     knowledge_dir = Path(__file__).resolve().parent.parent / "data" / "knowledge"
     if not knowledge_dir.is_dir():
         return
 
-    category_map = {
-        "ad_account_lockout.md": "security",
-        "bitlocker_recovery_key.md": "security",
-        "certificate_signature.md": "security",
-        "dns_dhcp_conflict.md": "network",
-        "email_send_receive_error.md": "software",
-        "erp_accounting.md": "software",
-        "ethernet_cable_disconnect.md": "network",
-        "folder_access.md": "security",
-        "high_cpu_ram_disk.md": "software",
-        "mfa_account.md": "security",
-        "openvpn_client_error.md": "network",
-        "outlook_autodiscover_failed.md": "software",
-        "outlook_email.md": "software",
-        "outlook_mailbox_quota.md": "software",
-        "outlook_ost_corruption.md": "software",
-        "printer_driver_install.md": "hardware",
-        "printer_offline_status.md": "hardware",
-        "printer_queue.md": "hardware",
-        "proxy_pac_bypass.md": "network",
-        "remote_desktop_rdp.md": "software",
-        "scanner_smb_folder.md": "hardware",
-        "shared_folder_permission.md": "security",
-        "slow_network_latency.md": "network",
-        "usb_peripheral_not_recognized.md": "hardware",
-        "vpn_forticlient.md": "network",
-        "vpn_split_tunnel.md": "network",
-        "wifi_network.md": "network",
-        "windows_bsod_crash.md": "software",
-        "windows_license_activation.md": "software",
-        "windows_update.md": "software",
-    }
+    from app.rag import CATEGORY_BY_SOURCE
+
+    category_map = CATEGORY_BY_SOURCE
     now = _now()
     for path in sorted(knowledge_dir.glob("*.md")):
         content = path.read_text(encoding="utf-8")
@@ -440,12 +421,14 @@ def initialize_store() -> None:
                 "SELECT password_hash FROM users WHERE username = ?",
                 (INITIAL_ADMIN_USERNAME,),
             ).fetchone()
-            if existing_admin and not verify_password(INITIAL_ADMIN_PASSWORD, existing_admin["password_hash"]):
+            if not existing_admin:
                 connection.execute(
-                    "UPDATE users SET password_hash = ? WHERE username = ?",
-                    (_password_hash(INITIAL_ADMIN_PASSWORD), INITIAL_ADMIN_USERNAME),
+                    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+                    (INITIAL_ADMIN_USERNAME, _password_hash(INITIAL_ADMIN_PASSWORD)),
                 )
-                logger.info("Synchronized admin password with INITIAL_ADMIN_PASSWORD.")
+                logger.info("Created initial admin account '%s'.", INITIAL_ADMIN_USERNAME)
+            else:
+                logger.debug("Admin user '%s' already exists; preserving existing credentials.", INITIAL_ADMIN_USERNAME)
 
         if not DEMO_MODE:
             demo_credentials = {"user": "user", "agent": "agent", "admin": "admin"}
@@ -721,6 +704,13 @@ def verify_and_consume_reset_token(raw_token: str) -> str | None:
         except Exception:
             return None
 
+        user = connection.execute(
+            "SELECT is_active FROM users WHERE username = ?",
+            (row["username"],),
+        ).fetchone()
+        if not user or not user["is_active"]:
+            return None
+
         connection.execute(
             "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
             (token_hash,),
@@ -949,8 +939,9 @@ def list_tickets(
         conditions.append("category = ?")
         parameters.append(category)
     if query:
-        conditions.append("(title LIKE ? OR description LIKE ?)")
-        parameters.extend([f"%{query}%", f"%{query}%"])
+        escaped_query = _escape_like(query.strip())
+        conditions.append("(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')")
+        parameters.extend([f"%{escaped_query}%", f"%{escaped_query}%"])
     if from_date:
         conditions.append("substr(created_at, 1, 10) >= ?")
         parameters.append(from_date)
@@ -1461,8 +1452,8 @@ def list_knowledge_documents(
             sql += " AND d.category = ?"
             params.append(category)
         if query:
-            search_pattern = f"%{query.strip()}%"
-            sql += " AND (d.title LIKE ? OR d.content LIKE ? OR d.tags LIKE ?)"
+            search_pattern = f"%{_escape_like(query.strip())}%"
+            sql += " AND (d.title LIKE ? ESCAPE '\\' OR d.content LIKE ? ESCAPE '\\' OR d.tags LIKE ? ESCAPE '\\')"
             params.extend([search_pattern, search_pattern, search_pattern])
         sql += " ORDER BY d.updated_at DESC"
         rows = connection.execute(sql, tuple(params)).fetchall()

@@ -224,38 +224,97 @@ def test_non_demo_startup_accepts_custom_admin_password_min_eight_chars(
     assert store.verify_password("Adm1m@123", creds["password_hash"])
 
 
-def test_initial_admin_password_updates_existing_default_admin(
+def test_admin_password_preserved_across_restarts_after_user_change(
     isolated_database: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # First seed DB in demo mode
-    monkeypatch.setattr(store, "DEMO_MODE", True)
-    store.initialize_store()
-
-    # Now restart in non-demo mode with new admin password and ALLOW_DEMO_CREDENTIALS
+    # 1. Khởi động lần đầu với mật khẩu ban đầu từ biến môi trường
     monkeypatch.setattr(store, "DEMO_MODE", False)
-    monkeypatch.setattr(store, "ALLOW_DEMO_CREDENTIALS", True)
     monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
-    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1m@123")
-
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1nInitialPass!")
     store.initialize_store()
+
     creds = store.get_user_credentials("admin")
     assert creds is not None
-    assert store.verify_password("Adm1m@123", creds["password_hash"])
-    assert not store.verify_password("admin", creds["password_hash"])
+    assert store.verify_password("Adm1nInitialPass!", creds["password_hash"])
 
-    # Changing INITIAL_ADMIN_PASSWORD again synchronizes with the updated password
-    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1n@123")
+    # 2. Admin chủ động đổi mật khẩu trong hệ thống (thao tác người dùng)
+    store.update_user_password("admin", "AdminChangedSecret999!", force_password_change=0)
+    creds_changed = store.get_user_credentials("admin")
+    assert creds_changed is not None
+    assert store.verify_password("AdminChangedSecret999!", creds_changed["password_hash"])
+    assert not store.verify_password("Adm1nInitialPass!", creds_changed["password_hash"])
+
+    # 3. Ứng dụng khởi động lại (restart container) với biến môi trường cũ hoặc mới
+    # SEC-04: Mật khẩu mới của Admin PHẢI ĐƯỢC BẢO TOÀN, không bị ghi đè về INITIAL_ADMIN_PASSWORD
     store.initialize_store()
-    creds_updated = store.get_user_credentials("admin")
-    assert creds_updated is not None
-    assert store.verify_password("Adm1n@123", creds_updated["password_hash"])
-    assert not store.verify_password("Adm1m@123", creds_updated["password_hash"])
+    creds_after_restart = store.get_user_credentials("admin")
+    assert creds_after_restart is not None
+    assert store.verify_password("AdminChangedSecret999!", creds_after_restart["password_hash"])
+    assert not store.verify_password("Adm1nInitialPass!", creds_after_restart["password_hash"])
 
 
-def test_verify_password_supports_manual_plaintext_fallback() -> None:
-    assert store.verify_password("Thinh@321", "Thinh@321")
-    assert not store.verify_password("WrongPassword", "Thinh@321")
+def test_verify_password_rejects_plaintext_and_malformed_hashes() -> None:
+    # SEC-02: Mật khẩu plaintext lưu trong CSDL không bao giờ được chấp nhận xác thực
+    assert not store.verify_password("Thinh@321", "Thinh@321")
+    assert not store.verify_password("admin", "admin")
+    assert not store.verify_password("password", "password")
+
+    # Thuật toán không hỗ trợ, hash dị dạng, salt không hợp lệ hoặc chuỗi rỗng phải bị từ chối an toàn
+    assert not store.verify_password("password", "md5$1234$5678")
+    assert not store.verify_password("password", "pbkdf2_sha256$invalid_hex$1234")
+    assert not store.verify_password("password", "pbkdf2_sha256$short")
+    assert not store.verify_password("password", "")
+    assert not store.verify_password("password", None)  # type: ignore[arg-type]
+
+    # Mật khẩu băm chuẩn PBKDF2 xác thực chính xác
+    hashed = store._password_hash("ValidPass123!")
+    assert store.verify_password("ValidPass123!", hashed)
+    assert not store.verify_password("WrongPass123!", hashed)
+
+
+def test_verify_and_consume_reset_token_rejects_inactive_user(isolated_database: Path) -> None:
+    # SEC-09: Tài khoản bị vô hiệu hóa (is_active=0) không được phép dùng reset token để đổi mật khẩu
+    store.initialize_store()
+    store.create_user("locked_user", "OldSecretPass123!", "user", email="locked@opsmind.internal")
+
+    token = store.create_password_reset_token("locked_user", expires_minutes=15)
+    assert token is not None
+
+    # Khóa tài khoản
+    store.update_user("locked_user", {"is_active": 0})
+    creds = store.get_user_credentials("locked_user")
+    assert creds is not None and creds["is_active"] == 0
+
+    # Thử dùng token khi tài khoản bị khóa -> phải bị từ chối
+    assert store.verify_and_consume_reset_token(token) is None
+    assert store.reset_password_with_token(token, "NewSecretPass456!") is None
+
+    # Mật khẩu cũ vẫn không đổi
+    creds_unchanged = store.get_user_credentials("locked_user")
+    assert creds_unchanged is not None
+    assert store.verify_password("OldSecretPass123!", creds_unchanged["password_hash"])
+
+
+def test_list_tickets_and_knowledge_escape_like_wildcard(isolated_database: Path) -> None:
+    # FIX-P1-05: Tìm kiếm với % và _ không bị hiểu lầm thành SQL wildcard
+    store.initialize_store()
+    store.create_user("alice", "AlicePass123456!", "user")
+
+    # Tạo 2 ticket: một cái có ký tự 50%, một cái có 500
+    t1 = store.create_ticket("Resource 50% threshold reached", "System alert 50%", "software", "medium", "alice")
+    t2 = store.create_ticket("Resource 500MB exceeded", "System alert 500MB", "software", "medium", "alice")
+
+    # Tìm kiếm chính xác "50%" -> chỉ match t1, không match t2
+    matches_50pct = store.list_tickets("admin", "admin", query="50%")
+    match_ids = [t["id"] for t in matches_50pct]
+    assert t1["id"] in match_ids
+    assert t2["id"] not in match_ids
+
+    # Tìm kiếm "99%" -> không match cái nào
+    matches_none = store.list_tickets("admin", "admin", query="99%")
+    assert len(matches_none) == 0
+
 
 
 

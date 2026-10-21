@@ -41,9 +41,12 @@ router = APIRouter(tags=["tickets"])
 
 
 def _get_attachments_dir() -> Path:
-    import app.main as main_module
+    import sys
 
-    return getattr(main_module, "ATTACHMENTS_DIR", ATTACHMENTS_DIR)
+    main_module = sys.modules.get("app.main")
+    if main_module and hasattr(main_module, "ATTACHMENTS_DIR"):
+        return getattr(main_module, "ATTACHMENTS_DIR")
+    return ATTACHMENTS_DIR
 
 
 @router.get("/staff")

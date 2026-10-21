@@ -29,9 +29,12 @@ router = APIRouter(prefix="/knowledge", tags=["rag"])
 
 
 def _get_knowledge_dir() -> Path:
-    import app.main as main_module
+    import sys
 
-    return getattr(main_module, "KNOWLEDGE_DIR", KNOWLEDGE_DIR)
+    main_module = sys.modules.get("app.main")
+    if main_module and hasattr(main_module, "KNOWLEDGE_DIR"):
+        return getattr(main_module, "KNOWLEDGE_DIR")
+    return KNOWLEDGE_DIR
 
 
 @router.get("")

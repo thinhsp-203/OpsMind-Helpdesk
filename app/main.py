@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -35,31 +36,6 @@ from app.routers import (
     rag_router,
     tickets_router,
 )
-from app.schemas import (
-    PRIORITY_SLA_MAPPING,
-    AdminResetPasswordRequest,
-    AssignmentUpdate,
-    ChangePasswordRequest,
-    CommentCreate,
-    ForgotPasswordRequest,
-    KnowledgeDocumentCreate,
-    KnowledgeDocumentUpdate,
-    KnowledgeReviewRequest,
-    LoginRequest,
-    NotificationTestRequest,
-    Priority,
-    ProfileUpdate,
-    RAGFeedback,
-    RAGQuestion,
-    ResetPasswordRequest,
-    Role,
-    StatusUpdate,
-    TicketCreate,
-    TicketRating,
-    TicketStatus,
-    TicketUpdate,
-    _validated_email,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +62,32 @@ async def lifespan(app: FastAPI):
             email_status["provider"],
             email_status["target"],
         )
-    yield
+    # OPS-03: Dọn dẹp bản ghi giới hạn tốc độ (rate-limit attempts) hết hạn
+    try:
+        store.cleanup_expired_rate_limits()
+    except Exception as exc:
+        logger.debug("Initial rate-limit cleanup skipped: %s", exc)
+
+    cleanup_task = None
+
+    async def _periodic_rate_limit_cleanup() -> None:
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                store.cleanup_expired_rate_limits()
+            except Exception as exc:
+                logger.warning("Periodic rate-limit cleanup failed: %s", exc)
+
+    try:
+        cleanup_task = asyncio.create_task(_periodic_rate_limit_cleanup())
+    except RuntimeError:
+        cleanup_task = None
+
+    try:
+        yield
+    finally:
+        if cleanup_task:
+            cleanup_task.cancel()
 
 
 app = FastAPI(
@@ -97,7 +98,10 @@ app = FastAPI(
         "- **P1 (urgent)**: Khẩn cấp — Cam kết xử lý trong 2 giờ\n"
         "- **P2 (high)**: Cao — Cam kết xử lý trong 8 giờ\n"
         "- **P3 (medium)**: Tiêu chuẩn / Trung bình — Cam kết xử lý trong 24 giờ\n"
-        "- **P4 (low)**: Thấp — Cam kết xử lý trong 48 giờ"
+        "- **P4 (low)**: Thấp — Cam kết xử lý trong 48 giờ\n\n"
+        "> **Lưu ý kiến trúc SLA:** Hạn chót xử lý (sla_deadline) được tính toán cố định từ thời điểm "
+        "tạo ticket dựa trên bảng SLA Priority. Trạng thái chờ người dùng (pending_waiting_user) "
+        "hiện được theo dõi minh bạch qua nhật ký audit mà không tự động tạm dừng đồng hồ SLA (không pause)."
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -138,37 +142,14 @@ async def health() -> dict[str, str]:
 __all__ = [
     "APP_DIR",
     "ATTACHMENTS_DIR",
-    "AdminResetPasswordRequest",
-    "AssignmentUpdate",
     "BASE_KNOWLEDGE_DIR",
-    "ChangePasswordRequest",
-    "CommentCreate",
-    "ForgotPasswordRequest",
     "KNOWLEDGE_DIR",
-    "KnowledgeDocumentCreate",
-    "KnowledgeDocumentUpdate",
-    "KnowledgeReviewRequest",
-    "LoginRequest",
-    "NotificationTestRequest",
-    "PRIORITY_SLA_MAPPING",
-    "Priority",
-    "ProfileUpdate",
-    "RAGFeedback",
-    "RAGQuestion",
-    "ResetPasswordRequest",
-    "Role",
     "STATIC_DIR",
     "STORAGE_KNOWLEDGE_DIR",
-    "StatusUpdate",
-    "TicketCreate",
-    "TicketRating",
-    "TicketStatus",
-    "TicketUpdate",
     "_change_password_attempts",
     "_failed_logins",
     "_forgot_password_attempts",
     "_forgot_password_target_cooldown",
-    "_validated_email",
     "app",
     "current_user",
     "require_admin",

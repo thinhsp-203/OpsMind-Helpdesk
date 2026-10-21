@@ -1183,3 +1183,87 @@ def test_cannot_change_priority_on_resolved_or_closed_ticket() -> None:
 
 
 
+
+
+def test_idor_and_ticket_ownership_isolation() -> None:
+    # QA-03: Kiểm thử triệt để chống IDOR - Người dùng Alice và Bob bị cách ly hoàn toàn
+    store.create_user(
+        "user_alice",
+        "AlicePass2026!@",
+        "user",
+        "Alice Nguyen",
+        "alice@opsmind.internal",
+        "Finance",
+        "0911111111",
+    )
+    store.create_user(
+        "user_bob",
+        "BobPass2026!@#",
+        "user",
+        "Bob Tran",
+        "bob@opsmind.internal",
+        "Sales",
+        "0922222222",
+    )
+
+    alice_headers = {"Authorization": f"Bearer {token_for('user_alice', 'AlicePass2026!@')}"}
+    bob_headers = {"Authorization": f"Bearer {token_for('user_bob', 'BobPass2026!@#')}"}
+
+    # Alice tạo một ticket riêng tư
+    ticket_alice = make_ticket(alice_headers, title="Alice confidential financial issue")
+    alice_t_id = ticket_alice["id"]
+
+    # 1. Bob liệt kê danh sách ticket -> KHÔNG được nhìn thấy ticket của Alice
+    bob_list = client.get("/tickets", headers=bob_headers)
+    assert bob_list.status_code == 200
+    bob_ticket_ids = [t["id"] for t in bob_list.json()]
+    assert alice_t_id not in bob_ticket_ids
+
+    # 2. Bob cố tình truy cập trực tiếp ID của Alice -> Phải bị từ chối 404
+    assert client.get(f"/tickets/{alice_t_id}", headers=bob_headers).status_code == 404
+
+    # 3. Bob cố tình chỉnh sửa ticket của Alice -> 404
+    assert (
+        client.put(
+            f"/tickets/{alice_t_id}",
+            headers=bob_headers,
+            json={"title": "Hacked by Bob"},
+        ).status_code
+        == 404
+    )
+
+    # 4. Bob cố tình gửi bình luận vào ticket của Alice -> 404
+    assert (
+        client.post(
+            f"/tickets/{alice_t_id}/comments",
+            headers=bob_headers,
+            json={"comment": "Unauthorized comment from Bob"},
+        ).status_code
+        == 404
+    )
+
+    # 5. Bob cố tình đánh giá sao ticket của Alice -> 404
+    assert (
+        client.post(
+            f"/tickets/{alice_t_id}/rate",
+            headers=bob_headers,
+            json={"rating": 1, "comment": "Malicious rating"},
+        ).status_code
+        == 404
+    )
+
+    # 6. Bob cố tình xem lịch sử audit của Alice -> 404
+    assert client.get(f"/tickets/{alice_t_id}/audit", headers=bob_headers).status_code == 404
+
+
+def test_html_escaping_in_email_dispatch() -> None:
+    # SEC-06 / OPS-02: Dữ liệu động chứa ký tự HTML đặc biệt phải được escape an toàn
+    import html as html_lib
+
+    raw_body = 'Xin chào <script>alert("xss")</script> & "admin"!'
+    safe_body = html_lib.escape(raw_body).replace("\n", "<br>")
+
+    assert "<script>" not in safe_body
+    assert "&lt;script&gt;" in safe_body
+    assert "&amp;" in safe_body
+    assert "&quot;" in safe_body

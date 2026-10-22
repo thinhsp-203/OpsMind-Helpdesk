@@ -163,3 +163,15 @@ trùng builtin trước sửa DB. File legacy được giữ để đối chiế
 Đã tái hiện 11 FAIL trước sửa; nhóm KB/RAG 41 passed, 1 symlink skipped.
 Thêm kiểm restart process, transaction rollback và hai PostgreSQL case chưa
 chạy local. Không tự sửa provenance lịch sử hay migration dữ liệu production.
+
+
+### Theo dõi audit AUD-12 — emergency UI contract (21/10/2026)
+
+**FIXED LOCAL / CI chưa chạy**, chưa commit/push/deploy. Sửa result.ticket.id;
+chỉ xác nhận tạo ticket, ghi delivery/nhân viên tiếp nhận chưa được xác nhận.
+Bỏ lời SOC tự động khỏi payload, nhãn VPN/AD/SOC/live-response chưa chứng minh;
+thay bằng chức năng KB/ticket. Receipt không tự biến mất, submit lặp bị chặn,
+refresh lỗi không gây thông báo tạo thất bại, response thiếu ID hướng dẫn kiểm
+danh sách. Regression Node trước FAIL/sau PASS; Chrome Việt/Anh với backend
+TestClient/SQLite thật PASS; nhóm API 7 passed. Không thêm delivery status API,
+không coi AUD-13/16/18 đã đóng và không kiểm provider/triển khai thật.

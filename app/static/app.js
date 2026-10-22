@@ -609,23 +609,25 @@ function checkResetPasswordTokenInUrl() {
 function openEmergencyModal() {
   const modal = byId("emergencyModal");
   if (!modal) return;
-  byId("emergencyTicketForm")?.reset();
-  setMessage("emergencyMessage", "");
+  const form = byId("emergencyTicketForm");
+  if (form && form.dataset.submitting !== "true") {
+    form.reset();
+    delete form.dataset.ticketCreated;
+    form.querySelector('button[type="submit"]').disabled = false;
+    setMessage("emergencyMessage", "");
+  }
   modal.classList.remove("hidden");
   byId("emergencyDescriptionInput")?.focus();
 }
 
 function closeEmergencyModal() {
-  const modal = byId("emergencyModal");
-  if (!modal) return;
-  modal.classList.add("hidden");
-  byId("emergencyTicketForm")?.reset();
-  setMessage("emergencyMessage", "");
+  byId("emergencyModal")?.classList.add("hidden");
 }
 
 async function handleEmergencyTicket(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  if (form.dataset.submitting === "true" || form.dataset.ticketCreated === "true") return;
   const submitBtn = form.querySelector('button[type="submit"]');
   const title = byId("emergencyTitleInput")?.value.trim() || "Sự cố bảo mật khẩn cấp";
   const desc = byId("emergencyDescriptionInput")?.value.trim() || "";
@@ -633,27 +635,39 @@ async function handleEmergencyTicket(event) {
     setMessage("emergencyMessage", "Vui lòng mô tả ít nhất 10 ký tự về triệu chứng sự cố.");
     return;
   }
+  const translate = window.helpdeskI18n.translate;
+  form.dataset.submitting = "true";
   submitBtn.disabled = true;
-  setMessage("emergencyMessage", "Đang phát cảnh báo khẩn cấp đến SOC...", false);
+  setMessage("emergencyMessage", "Đang tạo ticket P1...", false);
   try {
     const result = await api("/tickets", {
       method: "POST",
       body: JSON.stringify({
         title,
-        description: `${desc}\n\n[SỰ CỐ BẢO MẬT KHẨN CẤP P1 - PHÁT TỰ ĐỘNG TỚI SOC 24/7]`,
+        description: `${desc}\n\n[SỰ CỐ BẢO MẬT KHẨN CẤP P1]`,
         category: "security",
         priority: "urgent",
       }),
     });
-    setMessage("emergencyMessage", `Đã phát cảnh báo P1 thành công! Mã ticket: HD-${String(result.id).padStart(4, "0")}. Đội SOC đang tiếp nhận.`, false);
-    setTimeout(() => {
-      closeEmergencyModal();
-      refreshWorkspace();
-    }, 2000);
+    // A successful POST does not contain a delivery or responder acknowledgement.
+    form.dataset.ticketCreated = "true";
+    const ticketId = result?.ticket?.id;
+    if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+      setMessage("emergencyMessage", "Chưa xác định được mã ticket từ phản hồi. Kiểm tra danh sách trước khi gửi lại.");
+      return;
+    }
+    const receipt = `${translate("Đã tạo ticket P1")} HD-${String(ticketId).padStart(4, "0")}. ${translate("Chưa có xác nhận gửi thông báo hoặc nhân viên tiếp nhận. Nếu cần hỗ trợ ngay, liên hệ IT qua kênh nội bộ.")}`;
+    setMessage("emergencyMessage", receipt, false);
+    try {
+      await refreshWorkspace();
+    } catch {
+      setMessage("emergencyMessage", `${receipt} ${translate("Chưa tải lại được danh sách; không cần gửi lại ticket.")}`, false);
+    }
   } catch (error) {
-    setMessage("emergencyMessage", error.message || "Không thể gửi cảnh báo khẩn cấp.");
+    setMessage("emergencyMessage", `${translate(error.message || "Không xác nhận được việc tạo ticket.")} ${translate("Kiểm tra danh sách trước khi thử lại.")}`);
   } finally {
-    submitBtn.disabled = false;
+    delete form.dataset.submitting;
+    submitBtn.disabled = form.dataset.ticketCreated === "true";
   }
 }
 

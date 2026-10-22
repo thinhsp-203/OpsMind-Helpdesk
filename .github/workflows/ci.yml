@@ -64,6 +64,7 @@ jobs:
           node tests/test_queue.js
           node tests/test_handoff.js
           node tests/test_frontend_boot.js
+          node tests/test_emergency.js
       - name: Run tests
         run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml
       - name: Test PostgreSQL backend

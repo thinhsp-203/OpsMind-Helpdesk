@@ -236,17 +236,16 @@
                   <div class="assistant-title-group">
                     <div class="assistant-title-row">
                       <span class="eyebrow">TRỢ LÝ AI NỘI BỘ</span>
-                      <span class="agent-live-badge"><span class="live-dot"></span><span>Trực tuyến • trả lời ngay</span></span>
+                      <span class="agent-live-badge"><span>Tra cứu tri thức nội bộ</span></span>
                     </div>
                     <h2 id="assistantTitle">IT Helpdesk Agent</h2>
                   </div>
                 </div>
 
-                <div class="agent-integrations" aria-label="Hệ thống kết nối">
-                  <span class="integration-chip"><span class="dot-ok"></span><span>Cổng VPN</span></span>
-                  <span class="integration-chip"><span class="dot-ok"></span><span>Active Directory</span></span>
-                  <span class="integration-chip"><span class="dot-ok"></span><span>Hàng đợi IT</span></span>
-                  <span class="integration-chip"><span class="dot-ok"></span><span>SOC 24/7</span></span>
+                <div class="agent-integrations" aria-label="Chức năng Helpdesk">
+                  <span class="integration-chip">Tra cứu tri thức</span>
+                  <span class="integration-chip">Tạo ticket</span>
+                  <span class="integration-chip">Theo dõi yêu cầu</span>
                 </div>
 
                 <div class="scenario-chips-container">
@@ -262,7 +261,7 @@
 
                 <div class="emergency-alert-banner">
                   <div class="emergency-banner-content">
-                    <span class="emergency-badge">🚨 P1 · SOC 24/7</span>
+                    <span class="emergency-badge">🚨 P1 · Khẩn cấp</span>
                     <span>Nghi ngờ lộ mật khẩu, mất máy hoặc dính mã độc?</span>
                   </div>
                   <button id="openEmergencyModalBtn" class="button button-danger-sm" type="button">Báo khẩn cấp</button>
@@ -787,7 +786,7 @@
             <span class="emergency-icon">🚨</span>
             <div>
               <h2 id="emergencyModalHeading">Báo sự cố bảo mật khẩn cấp (P1)</h2>
-              <p class="muted">Kích hoạt cảnh báo tức thì tới Đội Ứng cứu Sự cố CNTT (SOC 24/7)</p>
+              <p class="muted">Tạo ticket ưu tiên P1; chưa có xác nhận nhân viên tiếp nhận.</p>
             </div>
           </div>
           <button id="closeEmergencyModalBtn" class="button button-quiet" type="button">✕ Đóng</button>
@@ -809,7 +808,7 @@
           <div class="emergency-meta-row">
             <span class="tag tag-urgent">Mức độ: P1 · Khẩn cấp (SLA 2 giờ)</span>
             <span class="tag">Danh mục: Tài khoản & bảo mật</span>
-            <span class="tag">Thông báo: Telegram Bot + Discord Webhook</span>
+            <span class="tag">Thông báo phụ thuộc cấu hình kênh; chưa có xác nhận gửi.</span>
           </div>
           <label class="field" for="emergencyDescriptionInput">Mô tả chi tiết triệu chứng <span>*</span>
             <textarea id="emergencyDescriptionInput" name="description" rows="3" minlength="10" maxlength="5000" placeholder="Mô tả dấu hiệu: mã độc tống tiền, link lạ đã bấm, thiết bị bị mất, hoặc mã OTP bị yêu cầu bất thường..." required></textarea>
@@ -817,17 +816,17 @@
           <p id="emergencyMessage" class="form-message" role="status"></p>
           <div class="modal-actions">
             <button id="cancelEmergencyBtn" class="button button-quiet" type="button">Hủy</button>
-            <button class="button button-danger" type="submit">🚨 Phát cảnh báo P1 đến IT/SOC</button>
+            <button class="button button-danger" type="submit">🚨 Tạo ticket P1</button>
           </div>
         </form>
       </div>
     </div>
 
-    <script src="/static/i18n.js?v=20261021-v5"></script>
-    <script src="/static/modules/markdown.js?v=20261021-v5"></script>
-    <script src="/static/modules/notifications.js?v=20261021-v5"></script>
-    <script src="/static/modules/admin.js?v=20261021-v5"></script>
-    <script src="/static/modules/knowledge.js?v=20261021-v5"></script>
-    <script src="/static/app.js?v=20261021-v5"></script>
+    <script src="/static/i18n.js?v=20261021-v6"></script>
+    <script src="/static/modules/markdown.js?v=20261021-v6"></script>
+    <script src="/static/modules/notifications.js?v=20261021-v6"></script>
+    <script src="/static/modules/admin.js?v=20261021-v6"></script>
+    <script src="/static/modules/knowledge.js?v=20261021-v6"></script>
+    <script src="/static/app.js?v=20261021-v6"></script>
   </body>
 </html>

@@ -476,3 +476,20 @@ attachment và SQLite fallback; nội dung KB PostgreSQL được backup trong D
 Không có transaction phân tán file/DB vì request KB không ghi file nữa.
 Lỗi mất kết nối sau commit có thể khiến kết quả request không chắc chắn; kiểm
 slug/version trước retry, không coi mọi HTTP 503 là chứng minh DB chưa ghi.
+
+
+### AUD-12 — biên nhận ticket P1 và thông báo
+
+POST /tickets vẫn trả `{message, ticket}`; UI đọc `ticket.id`, chỉ hiển thị
+mã HD khi là số nguyên dương an toàn. Phản hồi không có delivery receipt hoặc
+xác nhận nhân viên tiếp nhận nên UI luôn ghi chưa xác nhận, không suy từ kênh
+đã cấu hình. P1 vẫn category security/priority urgent. Payload bỏ lời khẳng
+định tự động phát SOC; chip VPN/AD/SOC đổi thành chức năng Helpdesk thực có.
+
+Biên nhận giữ đến khi người dùng đóng, chặn submit lặp khi đang chờ/đã nhận
+phản hồi thành công; mở lại bắt đầu một báo cáo mới. Refresh lỗi không đổi
+thành tạo-ticket thất bại. Nếu response không có ID hợp lệ, yêu cầu kiểm tra
+danh sách; không render HD-undefined và không gửi lại tự động. Network timeout
+không chứng minh server chưa tạo ticket; UI nhắc kiểm tra trước retry.
+Đây là bảo vệ UI, không phải idempotency hay durable delivery backend.
+AUD-13 retry/escalation và AUD-16 email provider vẫn chưa xử lý.

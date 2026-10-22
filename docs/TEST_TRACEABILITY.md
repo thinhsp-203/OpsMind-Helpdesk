@@ -143,3 +143,17 @@ regression vẫn bảo đảm lookup không đọc file ngoài DB. AUD-10 HTTP r
 đổi nhãn knowledge_file thành knowledge_import; vẫn giữ chờ rồi chạy import
 thật. Hai test PostgreSQL thêm trong test_postgres kiểm unique/version và
 trigger rollback; local skip khi không có DATABASE_URL, không coi đã đạt.
+
+
+### AUD-12 — emergency receipt
+
+`node tests/test_emergency.js` chạy handler thực từ app.js: response contract,
+payload P1, receipt không xác nhận delivery, thiếu/sai ID, API timeout, lỗi
+refresh sau thành công, concurrent/repeated submit, không tự đóng modal và
+loại nhãn integration chưa chứng minh. Baseline FAIL ở result.ticket.id;
+bản sửa PASS. CI thêm runner này; i18n/queue/handoff/frontend boot vẫn PASS.
+Chrome + frontend thật + FastAPI TestClient/SQLite qua stdio route interception
+đã tạo ticket P1 bằng tiếng Việt/Anh, so ID response với receipt, kiểm nút
+disabled/modal còn mở, không page error. Không là socket HTTP/cloud/provider test.
+Nhóm API ticket/notification hiện có 7 passed, 61 deselected; không chạy lại
+toàn bộ pytest do không sửa backend. Suite AUD-11 là kết quả lịch sử riêng.

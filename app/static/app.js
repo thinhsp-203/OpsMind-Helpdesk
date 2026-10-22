@@ -1480,13 +1480,8 @@ function showRagResult(message) {
 }
 
 // Knowledge Base methods are modularized in /static/modules/knowledge.js
-function loadKnowledge() {
-  return window.loadKnowledge ? window.loadKnowledge() : Promise.resolve();
-}
-
-function uploadKnowledge(event) {
-  return window.uploadKnowledge ? window.uploadKnowledge(event) : Promise.resolve();
-}
+const loadKnowledge = () => (window.loadKnowledge ? window.loadKnowledge() : Promise.resolve());
+const uploadKnowledge = (event) => (window.uploadKnowledge ? window.uploadKnowledge(event) : Promise.resolve());
 
 const updateLivePreview = () => (window.updateLivePreview ? window.updateLivePreview() : undefined);
 const openKnowledgeEditor = (identifier) => (window.openKnowledgeEditor ? window.openKnowledgeEditor(identifier) : Promise.resolve());

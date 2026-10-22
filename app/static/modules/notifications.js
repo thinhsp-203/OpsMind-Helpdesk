@@ -1,3 +1,5 @@
+// Keep implementation names private; expose only the existing window API.
+(() => {
 function getAppState() {
   return window.state || (typeof state !== "undefined" ? state : { user: null });
 }
@@ -202,3 +204,4 @@ if (typeof window !== "undefined") {
   window.testNotification = testNotification;
   window.renderNotificationHistory = renderNotificationHistory;
 }
+})();

@@ -44,6 +44,15 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-01 — frontend script boot (21/10/2026)
+
+- **FIXED LOCAL / chưa commit, merge hoặc deploy**, trên nhánh `fix/aud-01-frontend-boot`, baseline `811fe81e6599b25d0e0bd828c7805720c95a627a`.
+- Nguyên nhân: classic scripts khai báo function global trùng với const wrapper trong `app.js` (`renderRunbook`, editor/admin/notifications). Hai function wrapper KB còn có thể ghi đè export qua `window` khi đổi thứ tự nạp.
+- Sửa tối thiểu: đóng scope triển khai của bốn module bằng IIFE, giữ public API qua `window`; dùng lexical wrapper cho hai hàm KB trong `app.js`; nạp module trước app và đổi asset version.
+- Regression `node tests/test_frontend_boot.js`: FAIL với baseline (`renderRunbook already declared`), PASS với bản sửa; kiểm nguyên script graph từ HTML, login và session restore ba vai trò, renderer, editor và notifications. Đã thêm vào CI; chưa chạy GitHub Actions trên bản sửa chưa push.
+- Chrome 155 + frontend thật + FastAPI TestClient/SQLite cách ly qua route interception: ba vai trò PASS login, reload/session restore, RAG Markdown; Agent/Admin PASS editor create; Admin PASS users/notifications. Không phải phép thử HTTP socket/proxy/cloud hoặc kiểm thử E2E toàn bộ sản phẩm.
+- Kiểm tra local: bốn runner Node, JS syntax, Ruff, RAG evaluation PASS; pytest **91 passed, 5 PostgreSQL skipped**, 74.79s. PostgreSQL/Docker local NOT RUN. TD-03 về E2E toàn hệ thống vẫn mở.
+
 | ID | Ưu tiên | Rủi ro / giới hạn | Điều kiện đóng | Trạng thái |
 |---|---|---|---|---|
 | TD-01 | P1 | Chưa có staging/deploy, HTTPS termination, rate limit, backup/restore hoặc giám sát uptime | Triển khai môi trường thử nghiệm an toàn, có runbook khôi phục và minh chứng | **Đã hoàn thành 95%** (Đã deploy Render Cloud HTTPS, cấu hình Neon PostgreSQL, chuyển rate limit sang CSDL lưu vết) |

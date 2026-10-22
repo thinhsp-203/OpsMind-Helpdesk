@@ -1,3 +1,5 @@
+// Keep implementation names private; expose only the existing window API.
+(() => {
 async function loadAdminUsers() {
   try {
     const users = await api("/admin/users");
@@ -217,3 +219,4 @@ if (typeof window !== "undefined") {
   window.loadAdminUsers = loadAdminUsers;
   window.createAdminUser = createAdminUser;
 }
+})();

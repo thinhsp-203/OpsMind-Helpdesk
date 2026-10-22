@@ -29,6 +29,7 @@ py -m ruff check app tests scripts
 node --check app/static/app.js
 node --check app/static/i18n.js
 node tests/test_i18n.js
+node tests/test_frontend_boot.js
 py -m compileall -q app tests scripts
 py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
 py -m scripts.evaluate_rag

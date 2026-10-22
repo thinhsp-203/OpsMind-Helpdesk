@@ -13,7 +13,7 @@ py -m pip install -r requirements.txt
 py -m uvicorn app.main:app --reload
 ```
 
-Mở `http://127.0.0.1:8000`; health check tại `/health` và OpenAPI UI tại `/docs`. `DEMO_MODE` mặc định là `true`. Trên DB mới ứng dụng tạo ba tài khoản demo `user/user`, `agent/agent`, `admin/admin`. Chỉ dùng dữ liệu giả.
+Mở `http://127.0.0.1:8000`; health check tại `/health` và OpenAPI UI tại `/docs`. Lưu ý: Trong mã nguồn `app/config.py`, `DEMO_MODE` mặc định là `false` để đảm bảo an toàn. Khi muốn chạy chế độ demo trên máy cá nhân, hãy gán `$env:DEMO_MODE = "true"`. Khi `DEMO_MODE=true`, trên DB mới ứng dụng sẽ tạo ba tài khoản demo `user/user`, `agent/agent`, `admin/admin`. Chỉ dùng dữ liệu giả.
 
 Nếu muốn đặt secret cố định trong phiên PowerShell local:
 
@@ -57,7 +57,7 @@ Nhập mật khẩu riêng tại prompt; không lưu secret vào Git hoặc gõ 
 
 | Biến | Mặc định | Ghi chú |
 |---|---|---|
-| `DEMO_MODE` | `true` | DB mới nhận tài khoản demo; chỉ dùng local. |
+| `DEMO_MODE` | `false` | Mặc định trong code là `false` để an toàn. Cần gán tường minh `true` khi chạy demo local để tự tạo tài khoản mẫu trên DB mới rỗng. |
 | `ALLOW_DEMO_CREDENTIALS` | `false` | CỜ NGOẠI LỆ THỬ NGHIỆM: Chỉ cho phép tài khoản demo khi chuyển đổi hoặc kiểm thử local ở chế độ non-demo; tuyệt đối tắt (`false`) trên production. |
 | `SECRET_KEY` | Sinh ngẫu nhiên khi demo; bắt buộc non-demo | Đặt secret mạnh, ổn định và quản lý ngoài source control nếu muốn phiên JWT còn hiệu lực qua restart. |
 | `DATABASE_URL` | Rỗng | PostgreSQL connection URI; khi rỗng, ứng dụng dùng SQLite tại `HELPDESK_DB_PATH`. Compose mặc định trỏ tới service PostgreSQL `postgres`. |

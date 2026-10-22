@@ -1459,14 +1459,56 @@ def test_idor_and_ticket_ownership_isolation() -> None:
     assert client.get(f"/tickets/{alice_t_id}/audit", headers=bob_headers).status_code == 404
 
 
-def test_html_escaping_in_email_dispatch() -> None:
-    # SEC-06 / OPS-02: Dữ liệu động chứa ký tự HTML đặc biệt phải được escape an toàn
-    import html as html_lib
+def test_html_escaping_in_email_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SEC-06 / OPS-02 / AUD-21: Kiểm tra trực tiếp mã sản phẩm app.email_sender
+    # Dữ liệu động chứa ký tự HTML đặc biệt phải được escape an toàn trong payload HTML gửi đi
+    from typing import Any
+    from app import config, email_sender
 
-    raw_body = 'Xin chào <script>alert("xss")</script> & "admin"!'
-    safe_body = html_lib.escape(raw_body).replace("\n", "<br>")
+    captured_payloads: list[dict[str, Any]] = []
 
-    assert "<script>" not in safe_body
-    assert "&lt;script&gt;" in safe_body
-    assert "&amp;" in safe_body
-    assert "&quot;" in safe_body
+    def mock_post(url: str, **kwargs: Any) -> Any:
+        captured_payloads.append(kwargs.get("json", {}))
+
+        class MockResponse:
+            status_code = 200
+            is_success = True
+
+            def json(self) -> dict[str, Any]:
+                return {"id": "msg-mock-123"}
+
+        return MockResponse()
+
+    monkeypatch.setattr(email_sender.httpx, "post", mock_post)
+
+    raw_body = 'Xin chào <script>alert("xss")</script> & "admin"!\nLine 2'
+
+    # 1. Kiểm tra qua Resend provider
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_test_key_12345")
+    success_resend = email_sender._send_via_resend("user@example.com", "Thử nghiệm an toàn HTML", raw_body)
+    assert success_resend is True
+    resend_payload = captured_payloads[-1]
+
+    # Raw text giữ nguyên
+    assert resend_payload["text"] == raw_body
+    # HTML payload phải được escape an toàn
+    assert "<script>" not in resend_payload["html"]
+    assert "&lt;script&gt;" in resend_payload["html"]
+    assert "&amp;" in resend_payload["html"]
+    assert "&quot;" in resend_payload["html"]
+    assert "<br>" in resend_payload["html"]
+
+    # 2. Kiểm tra qua Brevo provider
+    monkeypatch.setattr(config, "BREVO_API_KEY", "xkeysib-test-key-12345")
+    success_brevo = email_sender._send_via_brevo("user@example.com", "Thử nghiệm an toàn HTML Brevo", raw_body)
+    assert success_brevo is True
+    brevo_payload = captured_payloads[-1]
+
+    # Raw textContent giữ nguyên
+    assert brevo_payload["textContent"] == raw_body
+    # HTML payload phải được escape an toàn
+    assert "<script>" not in brevo_payload["htmlContent"]
+    assert "&lt;script&gt;" in brevo_payload["htmlContent"]
+    assert "&amp;" in brevo_payload["htmlContent"]
+    assert "&quot;" in brevo_payload["htmlContent"]
+    assert "<br>" in brevo_payload["htmlContent"]

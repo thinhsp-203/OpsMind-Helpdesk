@@ -152,10 +152,19 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
         category = category_map.get(path.name, "general")
         tags = f"{category}, runbook"
         existing = connection.execute(
-            "SELECT id FROM knowledge_documents WHERE slug = ?",
+            "SELECT id, content FROM knowledge_documents WHERE slug = ?",
             (path.name,),
         ).fetchone()
         if existing:
+            if existing[1] != content:
+                connection.execute(
+                    """
+                    UPDATE knowledge_documents
+                    SET title = ?, category = ?, tags = ?, content = ?, updated_at = ?
+                    WHERE id = ? AND is_builtin = 1
+                    """,
+                    (title, category, tags, content, now, existing[0]),
+                )
             continue
         connection.execute(
             """

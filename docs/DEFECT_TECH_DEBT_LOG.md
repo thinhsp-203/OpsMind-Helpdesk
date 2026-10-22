@@ -44,6 +44,23 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-18 — an toàn runbook, phân định quyền user/IT và sửa cú pháp lệnh (21/10/2026)
+
+- **FIXED LOCAL / Chờ review chuyên gia domain & CI**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Một số runbook khuyến nghị thao tác quản trị quá mạnh cho người dùng cuối (High CPU hướng dẫn tắt SysMain/xóa cache update; email_send_receive_error hướng dẫn tắt antivirus; outlook_mailbox_quota hướng dẫn purge máy chủ; outlook_ost_corruption thiếu điều kiện đồng bộ webmail); đồng thời có lỗi cú pháp mất ký tự đầu lệnh (`slookup` thay vì `nslookup` trong `dns_dhcp_conflict.md`, `etsh` thay vì `netsh` trong `proxy_pac_bypass.md`).
+- Giải pháp:
+  1. Chuẩn hóa cú pháp lệnh: Sửa triệt để các lệnh bị mất ký tự (`nslookup company.internal`, `nslookup google.com`, `netsh winhttp reset proxy`).
+  2. Thiết lập ranh giới an toàn (Guardrails) & Phân định vai trò User vs IT:
+     - `high_cpu_ram_disk.md`: Phân định rõ tầng User Self-Service (Task Manager, đóng tab nặng, Startup apps, `cleanmgr`, restart) vs IT Tier 2 (chỉ kỹ thuật viên có quyền Admin mới chẩn đoán SysMain hoặc dọn cache Windows Update).
+     - `email_send_receive_error.md`: Loại bỏ hoàn toàn hướng dẫn tắt antivirus; hướng dẫn dùng Safe Mode (`outlook.exe /safe`), kiểm tra Webmail và chuyển cấp IT Security kiểm tra chứng thư/firewall.
+     - `outlook_mailbox_quota.md`: Loại bỏ lệnh purge vĩnh viễn trên máy chủ; bổ sung cảnh báo tuân thủ chính sách lưu trữ doanh nghiệp và hướng dẫn dùng Online Archive / nâng quota.
+     - `outlook_ost_corruption.md`: Thêm điều kiện tiên quyết kiểm tra đồng bộ trên Webmail trước khi đổi tên `.ost`, cảnh báo mất thư kẹt offline, và duy trì bản sao `.old` để rollback.
+     - `dns_dhcp_conflict.md` & `proxy_pac_bypass.md`: Phân tách hành động tự làm của người dùng và các lệnh can thiệp hệ thống nâng cao của IT Administrator.
+  3. Đồng bộ CSDL tự động: Cập nhật hàm `seed_builtin_knowledge` trong `app/store.py` để tự động phát hiện và đồng bộ nội dung các runbook tích hợp (`is_builtin = 1`) khi tệp Markdown trên đĩa thay đổi. Đồng bộ trực tiếp `data/helpdesk.sqlite3`.
+  4. Bộ kiểm thử hồi quy an toàn: Bổ sung `tests/test_aud18_runbook_safety.py` kiểm tra toàn bộ 30 runbook về cấu trúc Markdown, URL citation, cú pháp lệnh và các chốt chặn an toàn (guardrails).
+- Kiểm thử: `tests/test_aud18_runbook_safety.py` 4/4 PASS; `scripts/evaluate_rag.py` 100% Hit@3 và 100% Evidence Hit@3; toàn bộ test suite pass 100%.
+- Rủi ro còn lại: Nội dung tri thức đã được chuẩn hóa theo best practices của Microsoft/Fortinet; khi mở rộng thêm runbook mới trong tương lai, cần tuân thủ quy trình peer review và lint cú pháp tự động theo `test_aud18_runbook_safety.py`.
+
 ### Theo dõi audit AUD-19 — phân định tập holdout regression, khóa hash và rubric bằng chứng (21/10/2026)
 
 - **FIXED LOCAL / Chờ blinded test set độc lập**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.

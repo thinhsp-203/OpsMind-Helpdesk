@@ -419,3 +419,76 @@ def test_postgres_markdown_version_failure_rolls_back_document():
         with store._connect() as connection:
             connection.execute('DROP TRIGGER IF EXISTS aud11_fail_version ON knowledge_versions')
             connection.execute('DROP FUNCTION IF EXISTS aud11_reject_version()')
+
+
+def test_postgres_outbox_claim_is_exclusive_and_schema_idempotent(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app import notification_outbox as outbox
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', 'AUD13-fake-token')
+    monkeypatch.setenv('TELEGRAM_CHAT_ID', 'AUD13-fake-chat')
+    monkeypatch.delenv('DISCORD_WEBHOOK_URL', raising=False)
+    store.initialize_store()
+    store.reset_store()
+    store.create_ticket('AUD13 PG', 'Synthetic claim test', 'general', 'low', 'user')
+    store.initialize_store()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(lambda _: outbox.claim(), range(2)))
+    assert sum(item is not None for item in claims) == 1
+    item = next(item for item in claims if item)
+    assert outbox.finish(item, 'accepted')
+    assert len(outbox.list_deliveries()) == 2
+
+
+def test_postgres_escalation_outbox_is_atomic_and_single_under_concurrency(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app import notification_outbox as outbox
+    for key in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'DISCORD_WEBHOOK_URL'):
+        monkeypatch.delenv(key, raising=False)
+    store.initialize_store()
+    store.reset_store()
+    doc = store.create_ticket('AUD13 PG', 'Synthetic escalation test', 'general', 'low', 'user')
+    store.update_ticket_status(doc['id'], 'in_progress', 'agent')
+    original = outbox.enqueue
+
+    def fail(*args, **kwargs):
+        raise RuntimeError('Synthetic outbox failure')
+
+    monkeypatch.setattr(outbox, 'enqueue', fail)
+    with pytest.raises(RuntimeError):
+        store.update_ticket_status(doc['id'], 'escalated', 'agent')
+    assert store.get_ticket(doc['id'])['status'] == 'in_progress'
+    monkeypatch.setattr(outbox, 'enqueue', original)
+
+    def escalate():
+        try:
+            store.update_ticket_status(doc['id'], 'escalated', 'agent')
+            return 'ok'
+        except ValueError:
+            return 'conflict'
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: escalate(), range(2))) == ['conflict', 'ok']
+    assert len([row for row in outbox.list_deliveries() if row['event_type'] == 'escalated']) == 2
+
+
+def test_postgres_manual_notification_retry_is_serialized(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app import notification_outbox as outbox
+    for key in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'DISCORD_WEBHOOK_URL'):
+        monkeypatch.delenv(key, raising=False)
+    store.initialize_store()
+    store.reset_store()
+    store.create_ticket('AUD13 PG', 'Synthetic manual retry test', 'general', 'low', 'user')
+    row = next(row for row in outbox.list_deliveries() if row['channel'] == 'telegram')
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', 'AUD13-fake-token')
+    monkeypatch.setenv('TELEGRAM_CHAT_ID', 'AUD13-fake-chat')
+
+    def retry():
+        try:
+            outbox.retry_delivery(row['id'], 'admin')
+            return 'ok'
+        except ValueError:
+            return 'conflict'
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: retry(), range(2))) == ['conflict', 'ok']

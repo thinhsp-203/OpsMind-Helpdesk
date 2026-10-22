@@ -196,3 +196,44 @@ file chưa duyệt làm nguồn live. Nếu rollback dữ liệu, dừng ghi và
 theo checkpoint được kiểm tra. Chưa có migration/repair tự động, chưa chạy với
 DB/file production. Kiểm local: `python -m pytest tests/test_knowledge_persistence.py -q`;
 PostgreSQL còn hai case import/rollback chờ môi trường DATABASE_URL thử nghiệm.
+
+
+## AUD-13 — vận hành outbox và đối soát notification
+
+Upgrade thêm bảng notification_outbox/index bằng initializer idempotent; không
+xóa dữ liệu cũ. Backup DB trước upgrade và kiểm quyền CREATE TABLE/INDEX trên
+DB thử nghiệm. SQLite cần đường DB bền vững, Neon dùng DB hiện có. Outbox chỉ
+có event từ phiên bản mới; không backfill ticket/SLA quá hạn lịch sử.
+
+1. Trong staging, đặt target thử nghiệm Telegram/Discord và tạo ticket/chuyển
+   cấp. Kiểm hai row chung event_id, snapshot đúng thời điểm, trạng thái tiến
+   triển; accepted không là người đọc xác nhận. Không thử bằng dữ liệu thật.
+2. Khi lỗi provider, xem admin GET /admin/notifications/deliveries?status=failed.
+   Dùng limit tối đa 100 và before_id = id cuối trang để duyệt tiếp. Xem attempts,
+   max_attempts, next_attempt_at, last_error (Unix seconds UTC). Các lỗi provider
+   kể cả 4xx hiện được retry hữu hạn như nhau; sửa cấu hình trước retry thủ công.
+3. not_configured không tự gửi backlog khi mới đặt kênh. config_changed chặn
+   retarget sau đổi token/target. Review người nhận, nội dung snapshot và event
+   trước POST /admin/notifications/deliveries/{id}/retry bằng admin; endpoint này
+   cấp thêm 3 claim, ghi audit actor, không reset counter tổng. Không sửa SQL
+   trực tiếp để bỏ fence hoặc đặt accepted khi chưa có bằng chứng.
+4. Với lease_expired_delivery_unknown hoặc crash sau remote send: tìm event UUID
+   trong kênh trước khi retry vì có thể đã gửi. Chưa lưu receipt ID của provider;
+   đối soát cần bằng chứng ở kênh. Accepted không tự retry, tránh gửi lại kênh
+   đã chấp nhận khi kênh khác lỗi. Theo dõi backlog pending/failed và đĩa DB.
+5. Dừng/restart worker thử nghiệm sau claim, kiểm lease hết rồi recover. Kiểm
+   hai worker chỉ có một claim còn hiệu lực, ack cũ không đổi trạng thái mới;
+   kiểm 3 case PostgreSQL trong CI/staging. Local chưa có PostgreSQL/Docker.
+
+Không có retention/purge outbox tự động hay monitoring/alert backlog ngoài
+endpoint. Payload chứa snapshot ticket; phân quyền/retention/backup cần đưa
+vào kế hoạch vận hành trước pilot. Soft archive ticket không hủy event đã xếp;
+xóa vật lý ticket cascade outbox. Không có quy trình recall remote notification.
+Timeout 10s là socket timeout của adapter, không chứng minh hard deadline tổng
+gồm DNS/response streaming. Chưa benchmark saturation của threadpool dùng chung.
+
+Rollback: dừng worker trước khi đổi code; giữ bảng và backup cùng DB ticket.
+Không drop outbox để xử lý backlog. Bản cũ gửi trực tiếp và không enqueue nên
+giai đoạn rollback có khoảng trống outbox; review event trước khi bật lại worker
+để tránh gửi lặp. Chưa có exactly-once hay đồng bộ receipt provider tự động.
+Chưa deploy, gửi provider thật hoặc diễn tập restore/cloud trong phiên local.

@@ -175,3 +175,19 @@ refresh lỗi không gây thông báo tạo thất bại, response thiếu ID h�
 danh sách. Regression Node trước FAIL/sau PASS; Chrome Việt/Anh với backend
 TestClient/SQLite thật PASS; nhóm API 7 passed. Không thêm delivery status API,
 không coi AUD-13/16/18 đã đóng và không kiểm provider/triển khai thật.
+
+
+### Theo dõi audit AUD-13 — escalation và durable notification (21/10/2026)
+
+**IMPLEMENTED LOCAL / PostgreSQL, CI và provider staging còn chờ**, chưa
+commit/push/deploy. Create và escalate enqueue event + hai channel rows cùng
+transaction ticket; serialize status transition tránh hai escalation hợp lệ
+đồng thời. Worker lease/token fence, budget 3, backoff, terminal status và admin
+retry có audit. DB history phục vụ hub/API cursor; không còn seed history giả.
+Không lưu secret/raw exception; target fingerprint đổi cần admin review/retry.
+Baseline escalation durable API FAIL; nhóm notification 21 passed, restart
+process/lease recovery và rollback PASS. Có ba PG case chưa chạy local.
+At-least-once có thể trùng sau send-before-ack/crash; không có exactly-once,
+human acknowledgement, immutable attempt ledger, purge hay backlog monitoring.
+UI nêu đúng create/escalate và trạng thái configured, bỏ SLA-overdue claim.
+AUD-16/email và race khác của AUD-23 vẫn mở; không tự backfill lịch sử.

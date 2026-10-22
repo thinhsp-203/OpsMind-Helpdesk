@@ -157,3 +157,23 @@ Chrome + frontend thật + FastAPI TestClient/SQLite qua stdio route interceptio
 disabled/modal còn mở, không page error. Không là socket HTTP/cloud/provider test.
 Nhóm API ticket/notification hiện có 7 passed, 61 deselected; không chạy lại
 toàn bộ pytest do không sửa backend. Suite AUD-11 là kết quả lịch sử riêng.
+
+
+### AUD-13 — event, delivery state, retry và recovery
+
+Baseline: regression escalation GET durable delivery trả 404 (FAIL). Sau sửa:
+tests/test_notification_outbox.py có 16 ca API/store/worker, kiểm create +
+escalate hai kênh/event, no-op/repeated transition, rollback enqueue, concurrent
+escalation, retry 3 lần/backoff/stable event ID, không resend kênh accepted,
+exception secret không lưu, target rotation, manual retry/audit/quyền admin,
+cursor không mất row cùng timestamp, stale ack fence, lease hết budget, recovery
+qua process mới, lifespan drain, wake lỗi không biến create thành thất bại.
+Nhóm outbox + notifications 21 passed. Ba ca PG mới: exclusive claim/schema
+idempotence, concurrent escalation/rollback, serialized manual retry; local skip.
+
+Chrome frontend thật + FastAPI TestClient/SQLite qua stdio, Telegram mocked
+accepted: user/agent/admin login/restore/RAG/editor/admin hub PASS; history DB
+hiện provider accepted và staff acknowledgement unknown. Không gọi provider
+thật; không là HTTP socket E2E/cloud. Năm Node runners và Ruff/diff PASS.
+Full suite/kết quả coverage được lưu báo cáo phiên. AUD-16 email chưa thuộc
+durable outbox này; AUD-23 race nghiệp vụ khác vẫn mở.

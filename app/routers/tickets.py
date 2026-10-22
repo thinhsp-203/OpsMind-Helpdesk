@@ -24,7 +24,7 @@ from app.dependencies import (
     require_staff,
     visible_ticket,
 )
-from app.notifications import dispatch_ticket_notification
+from app.notification_outbox import wake_notification_worker
 from app.schemas import (
     AssignmentUpdate,
     CommentCreate,
@@ -93,7 +93,7 @@ def create_new_ticket(
         priority=payload.priority,
         requester=user["username"],
     )
-    background_tasks.add_task(dispatch_ticket_notification, dict(ticket))
+    background_tasks.add_task(wake_notification_worker)
     return {"message": "Đã tạo ticket.", "ticket": ticket}
 
 
@@ -104,7 +104,7 @@ def get_one_ticket(request: Request, ticket_id: int) -> dict:
 
 
 @router.patch("/tickets/{ticket_id}")
-def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate) -> dict:
+def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate, background_tasks: BackgroundTasks) -> dict:
     user = current_user(request)
     ticket = visible_ticket(ticket_id, user)
     if user["role"] == "user":
@@ -127,6 +127,8 @@ def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate) -> dic
         ticket = store.update_ticket_status(ticket_id, payload.status, user["username"])
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if payload.status == "escalated":
+        background_tasks.add_task(wake_notification_worker)
     return {"message": "Đã cập nhật trạng thái.", "ticket": ticket}
 
 

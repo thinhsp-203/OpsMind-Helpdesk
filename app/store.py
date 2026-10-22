@@ -497,6 +497,8 @@ def initialize_store() -> None:
                     "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
         seed_builtin_knowledge(connection)
+        from app.notification_outbox import initialize
+        initialize(connection)
 
 
 def reset_store() -> None:
@@ -504,7 +506,7 @@ def reset_store() -> None:
     with _connect() as connection:
         if _database_url:
             connection.execute(
-                "TRUNCATE TABLE audit_logs, comments, tickets, chat_messages, chat_sessions, "
+                "TRUNCATE TABLE notification_outbox, audit_logs, comments, tickets, chat_messages, chat_sessions, "
                 "ticket_attachments, users, knowledge_versions, knowledge_documents, "
                 "password_reset_tokens, rate_limit_attempts RESTART IDENTITY CASCADE"
             )
@@ -527,6 +529,7 @@ def reset_store() -> None:
                 )
             seed_builtin_knowledge(connection)
             return
+        connection.execute("DELETE FROM notification_outbox")
         connection.execute("DELETE FROM audit_logs")
         connection.execute("DELETE FROM comments")
         connection.execute("DELETE FROM tickets")
@@ -981,6 +984,8 @@ def create_ticket(
             ticket_id = int(cursor.lastrowid)
         _record_audit(connection, ticket_id, requester, "created", None, "new")
         row = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        from app.notification_outbox import enqueue
+        enqueue(connection, dict(row), 'created')
         return _ticket_dict(connection, row)
 
 
@@ -1108,8 +1113,10 @@ def archive_ticket(ticket_id: int, actor: str) -> dict[str, Any]:
 
 def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""), (ticket_id,)  # noqa: S608 -- fixed dialect suffix, bound ticket ID
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
@@ -1125,6 +1132,9 @@ def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[st
         )
         _record_audit(connection, ticket_id, actor, "status_changed", previous_status, new_status)
         updated = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if new_status == "escalated":
+            from app.notification_outbox import enqueue
+            enqueue(connection, dict(updated), 'escalated')
         return _ticket_dict(connection, updated)
 
 

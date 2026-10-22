@@ -107,7 +107,7 @@ async function loadNotificationStatus() {
     const tgUser = byId("telegramBotUsername");
     const tgChat = byId("telegramChatId");
     if (tgBadge) {
-      tgBadge.textContent = tg.enabled ? "Đã kết nối" : "Chưa kết nối";
+      tgBadge.textContent = tg.enabled ? "Đã cấu hình" : "Chưa cấu hình";
       tgBadge.className = `tag ${tg.enabled ? "tag-status-published" : "tag-status-draft"}`;
     }
     if (tgUser) tgUser.textContent = tg.enabled ? "Đã cấu hình" : "Chưa cấu hình";
@@ -117,7 +117,7 @@ async function loadNotificationStatus() {
     const dcBadge = byId("discordStatusBadge");
     const dcUrl = byId("discordWebhookUrl");
     if (dcBadge) {
-      dcBadge.textContent = dc.enabled ? "Đã kết nối" : "Chưa kết nối";
+      dcBadge.textContent = dc.enabled ? "Đã cấu hình" : "Chưa cấu hình";
       dcBadge.className = `tag ${dc.enabled ? "tag-status-published" : "tag-status-draft"}`;
     }
     if (dcUrl) dcUrl.textContent = dc.target || "Chưa cấu hình";

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -84,11 +85,27 @@ async def lifespan(app: FastAPI):
     except RuntimeError:
         cleanup_task = None
 
+    from app.notification_outbox import process_notification_outbox
+
+    async def _notification_worker():
+        while True:
+            try:
+                await run_in_threadpool(process_notification_outbox)
+            except Exception as exc:
+                logger.warning("Notification worker failed: %s", type(exc).__name__)
+            await asyncio.sleep(5)
+
+    notification_task = asyncio.create_task(_notification_worker())
     try:
         yield
     finally:
+        notification_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await notification_task
         if cleanup_task:
             cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
 
 
 app = FastAPI(

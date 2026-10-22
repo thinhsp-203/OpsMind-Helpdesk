@@ -620,6 +620,8 @@
     "Cập nhật thông tin cá nhân thành công.": "Personal profile updated successfully.",
     "Không thể cập nhật thông tin cá nhân.": "Could not update personal profile.",
     "Tài khoản": "Account",
+    "Gửi thông báo khi tạo ticket hoặc chuyển cấp qua kênh đã cấu hình. Chưa có cảnh báo tự động khi quá hạn SLA.": "Send notifications when tickets are created or escalated through configured channels. Automatic SLA overdue alerts are not implemented.",
+    "Tạo ticket, chuyển cấp": "Ticket creation, escalation",
   };
 
   const englishToVietnamese = Object.fromEntries(

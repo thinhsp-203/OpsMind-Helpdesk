@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
 from app import config, email_sender, store
-from app.dependencies import current_user
+from app.dependencies import current_user, require_admin
 from app.notifications import (
     get_notification_channels_status,
     send_test_notification_result,
@@ -183,3 +183,30 @@ def test_notification_channel(
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "channel": payload.channel, "message": msg}
+
+
+@router.get("/notifications/deliveries")
+def notification_deliveries(request: Request, status: str | None = None, limit: int = 50, before_id: str | None = None) -> list[dict]:
+    from app.notification_outbox import list_deliveries
+    require_admin(current_user(request))
+    if status not in {None, 'pending', 'processing', 'accepted', 'failed', 'not_configured', 'config_changed'}:
+        raise HTTPException(status_code=422, detail="Invalid delivery status")
+    try:
+        return list_deliveries(status, limit, before_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/notifications/deliveries/{delivery_id}/retry")
+def retry_notification_delivery(request: Request, delivery_id: str, background_tasks: BackgroundTasks) -> dict:
+    from app.notification_outbox import retry_delivery, wake_notification_worker
+    actor = current_user(request)
+    require_admin(actor)
+    try:
+        retry_delivery(delivery_id, actor['username'])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Delivery not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(wake_notification_worker)
+    return {"message": "Delivery queued; provider acceptance is not yet confirmed."}

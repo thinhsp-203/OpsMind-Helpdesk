@@ -22,30 +22,7 @@ from urllib.request import Request, urlopen
 logger = logging.getLogger(__name__)
 
 # Danh sách sự kiện thông báo gần đây (In-memory audit log)
-NOTIFICATION_HISTORY: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S %d/%m/%Y"),
-        "channel": "system",
-        "channel_label": "Hệ thống",
-        "event_type": "Khởi động trung tâm thông báo",
-        "recipient": "Telegram • Discord • Email",
-        "status": "active",
-        "status_label": "Đang hoạt động",
-        "message": "Các kênh thông báo sự cố IT sẵn sàng tiếp nhận sự kiện.",
-    },
-    {
-        "id": 2,
-        "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S %d/%m/%Y"),
-        "channel": "email",
-        "channel_label": "Dịch vụ Email",
-        "event_type": "Hộp thư hệ thống (Mock Outbox)",
-        "recipient": "noreply@opsmind.internal",
-        "status": "active",
-        "status_label": "Sẵn sàng",
-        "message": "Hỗ trợ lưu trữ thông báo và đặt lại mật khẩu người dùng.",
-    },
-]
+NOTIFICATION_HISTORY: list[dict[str, Any]] = []
 
 
 def record_notification_event(
@@ -81,7 +58,23 @@ def record_notification_event(
 
 
 def get_notification_history() -> list[dict[str, Any]]:
-    return list(NOTIFICATION_HISTORY)
+    from app.notification_outbox import list_deliveries
+    labels = {
+        'pending': 'Pending retry', 'processing': 'Processing',
+        'accepted': 'Provider accepted',
+        'failed': 'Failed; review required', 'not_configured': 'Not configured',
+        'config_changed': 'Config changed; review required',
+    }
+    persisted = [{
+        'id': row['id'], 'channel': row['channel'], 'channel_label': row['channel'],
+        'event_type': f"Ticket #{row['ticket_id']} — {row['event_type']}",
+        'recipient': 'Not configured' if row['status'] == 'not_configured' else 'Channel snapshot',
+        'timestamp': datetime.fromtimestamp(row['updated_at'], timezone.utc).isoformat(),
+        'status': 'success' if row['status'] == 'accepted' else row['status'],
+        'status_label': labels[row['status']],
+        'message': f"Event {row['event_id']} | attempts {row['attempts']}/{row['max_attempts']} | {row['last_error']} | Staff acknowledgement unknown",
+    } for row in list_deliveries()]
+    return persisted + list(NOTIFICATION_HISTORY)
 
 # Danh sách tên miền được phép gửi thông báo (phòng vệ SSRF)
 ALLOWED_TELEGRAM_DOMAINS = {"api.telegram.org"}
@@ -144,6 +137,7 @@ def notify_telegram_result(
     prio_vi = PRIORITY_NAMES_VI.get(prio_raw, prio_raw.title())
     is_test = str(ticket.get("id")) == "TEST"
 
+    event_label = "Ticket được chuyển cấp" if ticket.get("notification_event") == "escalated" else "Có yêu cầu hỗ trợ mới"
     if is_test:
         text = (
             "🔔 [OpsMind Helpdesk] Kiểm tra kết nối Telegram Bot\n\n"
@@ -152,7 +146,8 @@ def notify_telegram_result(
         )
     else:
         text = (
-            "🔔 [OpsMind Helpdesk] Có yêu cầu hỗ trợ mới\n\n"
+            f"🔔 [OpsMind Helpdesk] {event_label}\n\n"
+            f"Sự kiện: {field('notification_event_id', 40)}\n"
             f"🎫 Mã sự cố: #{field('id', 30)}\n"
             f"📌 Tiêu đề: {field('title')}\n"
             f"👤 Người yêu cầu: {field('requester', 80)}\n"
@@ -217,10 +212,11 @@ def notify_discord_result(ticket: dict, webhook_url: str | None = None) -> tuple
     color = DISCORD_PRIORITY_COLORS.get(prio_raw, 0x3498DB)
     is_test = str(ticket.get("id")) == "TEST"
 
+    event_label = "Ticket được chuyển cấp" if ticket.get("notification_event") == "escalated" else "Yêu cầu hỗ trợ mới"
     content_title = (
         "🔔 **[OpsMind Helpdesk] Thông báo thử nghiệm kết nối**"
         if is_test
-        else f"🔔 **[OpsMind Helpdesk] Yêu cầu hỗ trợ mới #{field('id', 30)} ({prio_vi})**"
+        else f"🔔 **[OpsMind Helpdesk] {event_label} #{field('id', 30)} ({prio_vi})**\nSự kiện: {field('notification_event_id', 40)}"
     )
 
     payload = {

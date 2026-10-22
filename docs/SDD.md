@@ -493,3 +493,50 @@ danh sách; không render HD-undefined và không gửi lại tự động. Netw
 không chứng minh server chưa tạo ticket; UI nhắc kiểm tra trước retry.
 Đây là bảo vệ UI, không phải idempotency hay durable delivery backend.
 AUD-13 retry/escalation và AUD-16 email provider vẫn chưa xử lý.
+
+
+### AUD-13 — transactional notification outbox
+
+Phạm vi sự kiện: mọi ticket mới (mọi priority) và mỗi chuyển trạng thái hợp lệ
+sang escalated. Hai kênh Telegram/Discord; không thêm email sự kiện ticket,
+cảnh báo SLA quá hạn hoặc xác nhận nhân viên đọc. Chuyển cấp không tự đổi priority.
+Một event UUID chung có hai delivery row, một row/kênh. Document snapshot và
+event/target fingerprint ghi cùng transaction ticket/audit. Không giữ secret
+trong outbox. Payload chứa thông tin ticket đã dùng cho thông báo, cần bảo vệ
+và backup như DB nghiệp vụ. Ticket status update khóa writer SQLite/row PG để
+hai chuyển cấp đồng thời không tạo hai event; không coi toàn bộ AUD-23 đã sửa.
+
+Delivery states: pending, processing, accepted, failed, not_configured,
+config_changed. Accepted chỉ nghĩa adapter báo provider chấp nhận; không có
+provider message receipt ID hay xác nhận người đọc. Attempt đếm claim kể cả
+kiểm cấu hình/crash. Tối đa 3 claim mỗi chu kỳ; lỗi provider false/exception
+được retry sau 5s, 10s (poll/backlog có thể làm muộn hơn). Adapter vẫn timeout
+socket 10s; không phân loại 4xx/5xx để retry khác nhau. Enum last_error không
+chứa raw exception/token/URL. Không có retry vô hạn.
+
+Claim transaction ngắn: SQLite BEGIN IMMEDIATE, PG FOR UPDATE SKIP LOCKED;
+lease 120s, UUID token chặn ack cũ ghi đè claim mới. Không giữ connection DB
+khi gọi provider. Lease hết mà còn budget được claim lại; hết budget chuyển
+failed/lease_expired_delivery_unknown. Đây là **at-least-once**: crash sau
+remote send trước ack DB, hoặc send vượt lease, có thể gửi trùng. Event UUID
+giữ nguyên và hiện trong message để đối chiếu; không tuyên bố exactly-once
+hoặc provider-side idempotency. POST tạo ticket cũng chưa có request idempotency.
+
+Lifespan mỗi process có worker offload qua threadpool, poll 5s, batch tối đa 10;
+background wake sau commit create/escalate/retry giúp gửi sớm. Wake lỗi không
+đổi phản hồi ticket đã commit. Worker bị dừng giữa send để lại lease cho process
+khác phục hồi. Pool hữu hạn dùng chung với API; chưa đo tải hay thời gian giao.
+
+GET /admin/notifications/deliveries: admin-only, status filter, limit 1..100,
+cursor before_id theo (created_at,id) giảm dần. Không trả payload/fingerprint.
+POST /admin/notifications/deliveries/{id}/retry: chỉ failed/not_configured/
+config_changed, yêu cầu kênh đang cấu hình, audit actor trong cùng transaction;
+thêm budget 3, giữ số claim tổng và event ID. Accepted/pending/processing không
+được gửi lại qua endpoint này. Credential/target đổi không tự retarget; cần
+review rồi retry rõ ràng bằng admin. Chưa có attempt ledger bất biến riêng:
+row giữ counter/trạng thái/lỗi gần nhất; audit giữ thao tác retry thủ công.
+
+Hub lấy tối đa 50 delivery DB gần nhất, kèm các manual test/email RAM hiện có;
+API cursor dùng để xem sâu hơn. RAM không thay thế outbox, manual test/email
+chưa có durable retry (AUD-16 và phạm vi email riêng). Không seed lịch sử giả.
+UI nêu đúng create/escalate; badge cấu hình không còn gọi là kết nối thành công.

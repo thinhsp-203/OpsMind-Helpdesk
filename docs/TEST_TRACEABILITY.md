@@ -1,5 +1,12 @@
 # Ma trận truy vết yêu cầu và kiểm thử (Test Traceability Matrix)
 
+### Bổ sung regression AUD-22 (21/10/2026, local)
+
+- Khắc phục nguy cơ lộ thông tin bảo mật (Secret Leak) trong `scripts/verify_neon.py`: chuẩn hóa `sanitize_database_url`, thay thế việc in chuỗi `database_url` thô ở cuối script bằng chuỗi đã che giấu mật khẩu (`:***@`).
+- Phân định rõ ràng giữa Safe Read-Only Check (mặc định, chỉ dùng `SELECT` kiểm tra handshake, version và bảng CSDL) và Write/Mutation Check (chỉ kích hoạt khi có cờ tường minh `--write` hoặc `--crud-test`).
+- Loại bỏ việc gán `os.environ["DATABASE_URL"]` và import `app.store` ở cấp module, ngăn chặn hành vi tự động thực thi DDL/seeding khi import script.
+- Bổ sung bộ kiểm thử `tests/test_aud22_neon_secret_leak.py` (4 ca test pass 100%).
+
 ### Bổ sung regression AUD-21 (21/10/2026, local)
 
 - Đính chính toàn bộ ma trận truy vết yêu cầu: loại bỏ các hàm không tồn tại (thay thế bằng `retrieve_relevant_context` trong `app/rag.py`, `buildHandoffDescription` và `addTicketHandoff` trong `app/static/app.js`).

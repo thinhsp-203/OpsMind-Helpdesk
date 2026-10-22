@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,42 @@ from app.main import app
 from app.rag import build_retrieval_index, generate_answer, load_knowledge_base, retrieve_relevant_context
 
 client = TestClient(app)
+
+
+def test_knowledge_fallback_blocks_paths_outside_directory(tmp_path, monkeypatch):
+    knowledge_dir = tmp_path / "knowledge"
+    knowledge_dir.mkdir()
+    marker = tmp_path / "outside.md"
+    marker.write_text("# Private marker\nAUD02-PRIVATE", encoding="utf-8")
+    (knowledge_dir / "safe-runbook.md").write_text("# Safe runbook", encoding="utf-8")
+    monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
+    headers = auth()
+    identifiers = [
+        str(marker), marker.as_posix(), "../outside.md", "..\\outside.md",
+        "C:\\outside.md", "C:outside.md", "\\\\server\\share\\outside.md",
+        "/outside.md", "safe-runbook.md:outside.md", "%2e%2e%5coutside.md",
+    ]
+    for identifier in identifiers:
+        response = client.get("/knowledge/" + quote(identifier, safe=""), headers=headers)
+        assert response.status_code in {404, 422}, (identifier, response.text)
+        assert "AUD02-PRIVATE" not in response.text
+    response = client.get("/knowledge/safe-runbook.md", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["content"] == "# Safe runbook"
+
+
+def test_knowledge_fallback_blocks_symlink_escape(tmp_path, monkeypatch):
+    knowledge_dir = tmp_path / "knowledge"
+    knowledge_dir.mkdir()
+    marker = tmp_path / "outside.md"
+    marker.write_text("# Private marker", encoding="utf-8")
+    try:
+        (knowledge_dir / "linked.md").symlink_to(marker)
+    except OSError as exc:
+        pytest.skip(f"File symlinks unavailable: {exc}")
+    monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
+    response = client.get("/knowledge/linked.md", headers=auth())
+    assert response.status_code == 404
 
 
 @pytest.fixture(autouse=True)

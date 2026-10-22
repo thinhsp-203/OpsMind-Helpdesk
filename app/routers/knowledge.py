@@ -76,8 +76,13 @@ async def get_single_knowledge_document(
     doc = store.get_knowledge_document(identifier)
     knowledge_dir = _get_knowledge_dir()
     if not doc:
-        if (knowledge_dir / identifier).is_file():
-            content = (knowledge_dir / identifier).read_text(encoding="utf-8")
+        # Legacy file fallback accepts a filename, never an arbitrary path.
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", identifier):
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+        root = knowledge_dir.resolve()
+        target = (root / identifier).resolve()
+        if target.parent == root and target.is_file():
+            content = target.read_text(encoding="utf-8")
             heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
             title = heading.group(1).strip() if heading else identifier
             return {

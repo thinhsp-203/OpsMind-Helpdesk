@@ -44,6 +44,15 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-02 — Knowledge Base path containment (21/10/2026)
+
+- **FIXED LOCAL / chưa commit, push, merge hoặc deploy**, trên nhánh `fix/aud-01-frontend-boot`; giữ nguyên sửa đổi AUD-01.
+- Tái hiện trước sửa: User gọi GET knowledge với đường dẫn tuyệt đối Windows mã hóa URL, đọc được marker giả ngoài KB (HTTP 200); regression FAIL.
+- Sửa fallback đọc file: chỉ nhận tên Markdown theo allow-list hiện dùng khi quản lý nguồn KB; resolve đường dẫn và chỉ đọc khi parent trùng thư mục KB đã resolve. Nhánh đọc ID/slug từ DB và phân quyền giữ nguyên.
+- Regression kiểm tra absolute Windows/POSIX, drive-relative, UNC, traversal, encoded separators, double encoding và alternate data stream; tên runbook hợp lệ vẫn trả 200. Có test symlink escape cho môi trường hỗ trợ symlink.
+- Local Windows: nhóm knowledge **12 passed, 1 skipped**; toàn bộ pytest **92 passed, 6 skipped, 1 warning**, 52.04s; Ruff và `git diff --check` PASS. Skip gồm 5 PostgreSQL và 1 symlink do thiếu quyền tạo symlink Windows.
+- Linux, symlink runtime, PostgreSQL và GitHub Actions trên patch mới chưa kiểm chứng; không coi các kiểm chứng đó là đã đạt. AUD-05 về fallback nội dung/RAG vẫn mở.
+
 ### Theo dõi audit AUD-01 — frontend script boot (21/10/2026)
 
 - **FIXED LOCAL / chưa commit, merge hoặc deploy**, trên nhánh `fix/aud-01-frontend-boot`, baseline `811fe81e6599b25d0e0bd828c7805720c95a627a`.

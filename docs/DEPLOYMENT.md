@@ -159,3 +159,40 @@ connection timeout 15s; không thay timeout hay thêm retry. Test giữ toàn b�
 generate_answer, không đo provider thật. Cần đo lại staging với DB/provider
 thật, nhiều request đồng thời, worker count và pool saturation trước khi chốt
 p95/error budget production. PostgreSQL runtime và multi-worker còn chờ kiểm.
+
+
+## AUD-11 — chuyển KB cũ sang nguồn DB
+
+Upload Markdown không cần thư mục runbook có quyền ghi hoặc volume KB. Khi
+DATABASE_URL là Neon, DB chứa nội dung và version; khi dùng SQLite, phải backup
+file SQLite đúng quy trình nhất quán. Attachment vẫn cần disk theo AUD-09.
+File runbook đóng gói chỉ dùng seed; API không import ngầm file thiếu DB.
+
+Trước triển khai, giữ một bản DB nhất quán và bản sao các file KB cũ từ
+instance còn sống, kèm checksum, nguồn, thời điểm và version code. Không
+redeploy trước khi xuất file từ filesystem tạm. Giữ bản gốc để phục hồi;
+không tự động xóa file hoặc sửa is_builtin/author hàng loạt.
+
+1. Lập inventory slug/tên file, nội dung, checksum, DB status/author/is_builtin
+   và versions. Phân biệt runbook gốc theo phiên bản repository đã dùng với
+   tài liệu upload cũ; không suy đoán provenance chỉ từ vị trí thư mục.
+2. File có bản ghi DB: DB là nguồn phục vụ. Nếu nội dung khác, review khác
+   biệt rồi cập nhật qua editor để có version; không ghi đè bản published bằng
+   bản file cũ. Helper cũ có thể thêm heading khi ghi file nên checksum file
+   và raw content DB khác nhau không tự chứng minh tài liệu sai.
+3. File không có bản ghi DB: API sẽ trả 404, kể cả reindex/delete. Sau khi
+   duyệt nội dung, Admin nhập qua multipart (published) hoặc JSON editor ở
+   trạng thái draft để review. Kiểm slug chuẩn hóa và trùng 409 trước khi
+   chấp nhận mapping citation cũ/mới; không tự rename hoặc thêm hậu tố ngầm.
+4. Bản ghi custom đã bị seed thành builtin, hoặc có tên trùng runbook gốc:
+   giữ nguyên và đối chiếu bằng chứng trước khi sửa provenance bằng quy trình
+   bảo trì có review. Bản vá không thể suy ra tác giả/thời điểm đã mất.
+5. Kiểm list/get, version/author/is_builtin, truy vấn RAG, restart rồi kiểm lại.
+   Khi xóa custom qua API, DB/version bị xóa, file cũ vẫn giữ offline và không
+   xuất hiện lại qua GET. Chỉ dọn bản lưu cũ sau nghiệm thu backup/restore.
+
+Rollback code phải xét lại việc bản cũ có thể phục vụ file lẻ; không dùng các
+file chưa duyệt làm nguồn live. Nếu rollback dữ liệu, dừng ghi và phục hồi DB
+theo checkpoint được kiểm tra. Chưa có migration/repair tự động, chưa chạy với
+DB/file production. Kiểm local: `python -m pytest tests/test_knowledge_persistence.py -q`;
+PostgreSQL còn hai case import/rollback chờ môi trường DATABASE_URL thử nghiệm.

@@ -12,8 +12,6 @@ from app import store
 from app.dependencies import current_user, require_staff
 from app.rag import (
     BASE_KNOWLEDGE_DIR,
-    KNOWLEDGE_DIR,
-    STORAGE_KNOWLEDGE_DIR,
     build_retrieval_index,
     load_knowledge_base,
     save_knowledge_document,
@@ -27,15 +25,6 @@ from app.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge", tags=["rag"])
-
-
-def _get_knowledge_dir() -> Path:
-    import sys
-
-    main_module = sys.modules.get("app.main")
-    if main_module and hasattr(main_module, "KNOWLEDGE_DIR"):
-        return getattr(main_module, "KNOWLEDGE_DIR")
-    return KNOWLEDGE_DIR
 
 
 @router.get("")
@@ -53,18 +42,6 @@ def knowledge_documents(
         category=category,
         query=search,
     )
-    knowledge_dir = _get_knowledge_dir()
-    if not docs and knowledge_dir.resolve() != BASE_KNOWLEDGE_DIR.resolve():
-        return [
-            {
-                "title": document["title"],
-                "source": document["source"],
-                "is_builtin": bool(document.get("is_builtin", True)),
-                "category": document.get("category", "general"),
-                "status": "published",
-            }
-            for document in load_knowledge_base()
-        ]
     return [{**doc, "source": doc["slug"]} for doc in docs]
 
 
@@ -75,34 +52,7 @@ def get_single_knowledge_document(
 ) -> dict[str, Any]:
     user = current_user(request)
     doc = store.get_knowledge_document(identifier)
-    knowledge_dir = _get_knowledge_dir()
     if not doc:
-        # Legacy file fallback accepts a filename, never an arbitrary path.
-        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", identifier):
-            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
-        root = knowledge_dir.resolve()
-        target = (root / identifier).resolve()
-        if target.parent == root and target.is_file():
-            content = target.read_text(encoding="utf-8")
-            heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
-            title = heading.group(1).strip() if heading else identifier
-            return {
-                "id": None,
-                "slug": identifier,
-                "source": identifier,
-                "title": title,
-                "category": store.get_document_category_from_db(identifier),
-                "tags": "",
-                "content": content,
-                "status": "published",
-                "author": "admin",
-                "reviewer": "admin",
-                "approved_at": None,
-                "created_at": None,
-                "updated_at": None,
-                "is_builtin": (BASE_KNOWLEDGE_DIR / identifier).is_file(),
-                "version_count": 1,
-            }
         raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
 
     if user["role"] == "user" and doc["status"] != "published":
@@ -234,37 +184,18 @@ def delete_knowledge_document(request: Request, source: str) -> dict[str, str]:
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
-
-    doc = store.get_knowledge_document(source)
-    if doc and doc["is_builtin"]:
-        raise HTTPException(status_code=403, detail="Không thể xóa tài liệu mặc định của hệ thống.")
-
-    deleted_any = False
-    if doc:
-        store.delete_knowledge_document(doc["id"])
-        deleted_any = True
-
-    knowledge_dir = _get_knowledge_dir()
-    target = (knowledge_dir / source).resolve()
-    if target.is_file() and target.parent == knowledge_dir.resolve():
-        if knowledge_dir.resolve() == BASE_KNOWLEDGE_DIR.resolve():
+    try:
+        doc = store.get_knowledge_document(source)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+        # Reject legacy rows colliding with packaged input BEFORE any DB mutation.
+        if doc["is_builtin"] or (BASE_KNOWLEDGE_DIR / source).is_file():
             raise HTTPException(status_code=403, detail="Không thể xóa tài liệu mặc định của hệ thống.")
-        try:
-            target.unlink()
-            deleted_any = True
-        except OSError as exc:
-            raise HTTPException(status_code=500, detail="Không thể xóa tài liệu tri thức.") from exc
-
-    if (STORAGE_KNOWLEDGE_DIR / source).is_file():
-        (STORAGE_KNOWLEDGE_DIR / source).unlink(missing_ok=True)
-        deleted_any = True
-
-    if (BASE_KNOWLEDGE_DIR / source).is_file():
-        raise HTTPException(status_code=403, detail="Không thể xóa tài liệu mặc định của hệ thống.")
-
-    if not deleted_any:
-        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
-
+        if not store.delete_knowledge_document(doc["id"]):
+            raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
+    except store.DatabaseError as exc:
+        raise HTTPException(status_code=503, detail="Kho tri thức tạm thời không khả dụng.") from exc
+    # Legacy file copies are offline migration input, never part of this mutation.
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     return {"message": "Đã xóa tài liệu khỏi Knowledge Base."}
@@ -278,12 +209,7 @@ def reindex_knowledge_document(request: Request, source: str) -> dict[str, str]:
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
     doc = store.get_knowledge_document(source)
-    knowledge_dir = _get_knowledge_dir()
-    if (
-        not doc
-        and not (knowledge_dir / source).is_file()
-        and not (BASE_KNOWLEDGE_DIR / source).is_file()
-    ):
+    if not doc:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu.")
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
@@ -330,10 +256,10 @@ async def upload_knowledge_document(
         try:
             saved = await run_in_threadpool(
                 save_knowledge_document,
-                _get_knowledge_dir(),
                 original_name,
                 cleaned_title,
                 text,
+                author=user["username"],
             )
         except FileExistsError as exc:
             raise HTTPException(status_code=409, detail="Tên tài liệu này đã tồn tại.") from exc
@@ -341,6 +267,8 @@ async def upload_knowledge_document(
             raise HTTPException(
                 status_code=422, detail="Tên tệp hoặc tiêu đề tài liệu không hợp lệ."
             ) from exc
+        except store.DatabaseError as exc:
+            raise HTTPException(status_code=503, detail="Kho tri thức tạm thời không khả dụng.") from exc
         except OSError as exc:
             raise HTTPException(status_code=500, detail="Không thể lưu tài liệu tri thức.") from exc
         return {"message": "Đã nạp tài liệu tri thức.", **saved}

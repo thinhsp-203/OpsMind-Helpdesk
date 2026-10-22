@@ -451,3 +451,28 @@ có 40 token dùng chung cả endpoint/background/file operations; chưa tăng l
 Khi pool đầy, các request cần thread vẫn phải chờ. Đây không phải async DB,
 connection pooling, process pool cho CPU hay bảo đảm throughput. Các race về
 rate limit/cooldown và version/FSM vẫn cần xử lý riêng, không được coi đã đóng.
+
+
+### AUD-11 — một nguồn lưu KB trong database
+
+Multipart Markdown và JSON editor cùng dùng `store.create_knowledge_document`:
+bản ghi tài liệu và version đầu trong một transaction. Import Markdown giữ
+chuẩn hóa filename/slug, giới hạn 256 KiB, UTF-8 và yêu cầu heading; Admin đăng
+nhập là author/reviewer, `is_builtin=false`. Không tạo file export hay bản sao
+trong image/runtime. Lỗi persistence được truyền ra HTTP 503; slug đã tồn tại
+trả 409, kể cả hai upload đồng thời qua unique constraint. Lỗi constraint khác
+không bị coi là trùng nếu DB không có slug tương ứng.
+
+List/get/reindex/delete API chỉ dùng bản ghi DB, không fallback file lẻ.
+DELETE không unlink file. Builtin DB và tên trùng runbook đóng gói bị chặn
+trước khi sửa DB. Runbook đóng gói là seed input chỉ đọc; initialize_store bỏ
+qua slug đã có, không đổi provenance của import sau restart. Nhánh đọc file
+trong rag.load_knowledge_base khi override KNOWLEDGE_DIR bằng Python còn phục
+vụ offline evaluation/fixtures; không phải một chế độ fallback API production.
+
+Phần này thay mô tả multipart filesystem trước đây, và phần KB-file của AUD-10;
+async upload vẫn offload import DB trong threadpool. AUD-09 disk còn cần cho
+attachment và SQLite fallback; nội dung KB PostgreSQL được backup trong DB.
+Không có transaction phân tán file/DB vì request KB không ghi file nữa.
+Lỗi mất kết nối sau commit có thể khiến kết quả request không chắc chắn; kiểm
+slug/version trước retry, không coi mọi HTTP 503 là chứng minh DB chưa ghi.

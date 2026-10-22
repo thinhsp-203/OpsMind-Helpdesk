@@ -150,3 +150,16 @@ Tái hiện ca HTTP RAG trước sửa bị health timeout; sau sửa 7 ca concu
 Không đổi timeout, transaction, payload hay quyền truy cập. Pool vẫn hữu hạn;
 không tuyên bố giải quyết saturation, CPU throughput hay race nghiệp vụ.
 Chi tiết kết quả suite và bằng chứng được lưu trong báo cáo phiên AUD-10.
+
+
+### Theo dõi audit AUD-11 — KB file/DB consistency (21/10/2026)
+
+**FIXED LOCAL / PostgreSQL và migration thực còn chờ**, chưa commit/push/deploy.
+Multipart import chỉ ghi DB, cùng transaction version với editor; không ghi
+image hay file runtime, không nuốt lỗi DB. Author/reviewer lấy Admin thực,
+is_builtin=false; unique slug xử lý duplicate/concurrent upload thành 409.
+API list/get/reindex/delete bỏ fallback file; delete không unlink và chặn tên
+trùng builtin trước sửa DB. File legacy được giữ để đối chiếu offline.
+Đã tái hiện 11 FAIL trước sửa; nhóm KB/RAG 41 passed, 1 symlink skipped.
+Thêm kiểm restart process, transaction rollback và hai PostgreSQL case chưa
+chạy local. Không tự sửa provenance lịch sử hay migration dữ liệu production.

@@ -380,3 +380,42 @@ def test_postgres_user_profile_and_force_password_change(
     assert updated_creds["force_password_change"] == 0
     assert store.verify_password("UpdatedPassword123!", updated_creds["password_hash"])
 
+
+def test_postgres_markdown_import_uses_db_versions_and_unique_slug():
+    from app.rag import save_knowledge_document
+
+    store.initialize_store()
+    store.reset_store()
+    imported = save_knowledge_document('aud11-pg.md', 'AUD11 PG import', '# Synthetic', author='admin')
+    assert imported['source'] == 'aud11-pg.md'
+    assert imported['author'] == 'admin' and not imported['is_builtin']
+    assert len(store.list_knowledge_versions(imported['id'])) == 1
+    with pytest.raises(FileExistsError):
+        save_knowledge_document('aud11-pg.md', 'Duplicate', '# Other', author='admin')
+    assert store.get_knowledge_document(imported['id'])['content'] == '# Synthetic'
+    assert len(store.list_knowledge_versions(imported['id'])) == 1
+
+
+def test_postgres_markdown_version_failure_rolls_back_document():
+    from app.rag import save_knowledge_document
+
+    store.initialize_store()
+    store.reset_store()
+    with store._connect() as connection:
+        connection.execute("""CREATE OR REPLACE FUNCTION aud11_reject_version() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.title = 'AUD11 PG rollback' THEN
+                    RAISE EXCEPTION 'AUD11 synthetic version failure';
+                END IF;
+                RETURN NEW;
+            END; $$ LANGUAGE plpgsql""")
+        connection.execute("""CREATE TRIGGER aud11_fail_version BEFORE INSERT ON knowledge_versions
+            FOR EACH ROW EXECUTE FUNCTION aud11_reject_version()""")
+    try:
+        with pytest.raises(store.DatabaseError):
+            save_knowledge_document('aud11-pg-rollback.md', 'AUD11 PG rollback', '# Synthetic', author='admin')
+        assert store.get_knowledge_document('aud11-pg-rollback.md') is None
+    finally:
+        with store._connect() as connection:
+            connection.execute('DROP TRIGGER IF EXISTS aud11_fail_version ON knowledge_versions')
+            connection.execute('DROP FUNCTION IF EXISTS aud11_reject_version()')

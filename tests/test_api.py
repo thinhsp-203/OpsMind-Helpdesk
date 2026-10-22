@@ -13,12 +13,14 @@ from app.rag import build_retrieval_index, generate_answer, load_knowledge_base,
 client = TestClient(app)
 
 
-def test_knowledge_fallback_blocks_paths_outside_directory(tmp_path, monkeypatch):
+def test_knowledge_lookup_does_not_read_paths_outside_database(tmp_path, monkeypatch):
     knowledge_dir = tmp_path / "knowledge"
     knowledge_dir.mkdir()
     marker = tmp_path / "outside.md"
     marker.write_text("# Private marker\nAUD02-PRIVATE", encoding="utf-8")
-    (knowledge_dir / "safe-runbook.md").write_text("# Safe runbook", encoding="utf-8")
+    (knowledge_dir / "safe-runbook.md").write_text("# Untracked file", encoding="utf-8")
+    store.create_knowledge_document("Safe runbook", "general", "# Safe runbook",
+                                    custom_slug="safe-runbook.md", status="published")
     monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
     headers = auth()
     identifiers = [
@@ -35,7 +37,7 @@ def test_knowledge_fallback_blocks_paths_outside_directory(tmp_path, monkeypatch
     assert response.json()["content"] == "# Safe runbook"
 
 
-def test_knowledge_fallback_blocks_symlink_escape(tmp_path, monkeypatch):
+def test_knowledge_lookup_ignores_symlink_file(tmp_path, monkeypatch):
     knowledge_dir = tmp_path / "knowledge"
     knowledge_dir.mkdir()
     marker = tmp_path / "outside.md"
@@ -311,7 +313,6 @@ def test_admin_can_ingest_valid_markdown_and_retriever_refreshes(
 ) -> None:
     knowledge_dir = tmp_path / "knowledge"
     monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
-    monkeypatch.setattr("app.rag.KNOWLEDGE_DIR", knowledge_dir)
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     files = {
@@ -631,14 +632,17 @@ def test_admin_can_reindex_and_delete_knowledge_document(
     target = knowledge_dir / "vpn.md"
     target.write_text("# VPN Guide\n\nReset the vpn quasar connector.", encoding="utf-8")
     monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
-    monkeypatch.setattr("app.rag.KNOWLEDGE_DIR", knowledge_dir)
+    store.create_knowledge_document("VPN Guide", "network", target.read_text(encoding="utf-8"),
+                                    custom_slug="vpn.md", status="published")
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     assert client.post("/knowledge/vpn.md/reindex", headers=auth("admin")).status_code == 200
     assert client.delete("/knowledge/vpn.md", headers=auth("agent")).status_code == 403
     assert client.delete("/knowledge/..-outside.md", headers=auth("admin")).status_code == 422
     assert client.delete("/knowledge/vpn.md", headers=auth("admin")).status_code == 200
-    assert not target.exists()
+    assert target.exists()  # Legacy files are retained for offline reconciliation.
+    assert store.get_knowledge_document("vpn.md") is None
+    assert client.get("/knowledge/vpn.md", headers=auth("admin")).status_code == 404
     assert client.delete("/knowledge/vpn.md", headers=auth("admin")).status_code == 404
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()

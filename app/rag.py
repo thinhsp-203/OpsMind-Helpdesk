@@ -416,11 +416,18 @@ def load_knowledge_base() -> list[dict[str, Any]]:
 
 
 def save_knowledge_document(
-    directory: Path,
     original_name: str,
     title: str,
     content: str,
-) -> dict[str, str]:
+    *,
+    author: str,
+) -> dict[str, Any]:
+    """Import Markdown into the same DB transaction/version history as the editor.
+
+    Packaged runbooks are read-only seed input. No mutable file copy is created.
+    """
+    from app import store
+
     normalized = unicodedata.normalize("NFKD", Path(original_name).stem.lower())
     normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
     normalized = normalized.replace("đ", "d")
@@ -429,44 +436,28 @@ def save_knowledge_document(
         raise ValueError("Document filename does not contain a usable name.")
     if not title.strip():
         raise ValueError("Document title is required.")
-
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{slug}.md"
-    if path.exists():
-        raise FileExistsError(path.name)
-    if directory.resolve() == STORAGE_KNOWLEDGE_DIR.resolve() and (BASE_KNOWLEDGE_DIR / f"{slug}.md").exists():
-        raise FileExistsError(path.name)
-
-    document = f"# {title.strip()}\n\n{content.strip()}\n"
-    created = False
+    source = f"{slug}.md"
+    if (BASE_KNOWLEDGE_DIR / source).is_file():
+        raise FileExistsError(source)
     try:
-        with path.open("x", encoding="utf-8", newline="\n") as file:
-            created = True
-            file.write(document)
-    except FileExistsError:
-        raise
-    except OSError:
-        if created:
-            path.unlink(missing_ok=True)
-        raise
-
-    try:
-        from app import store
-        store.create_knowledge_document(
+        document = store.create_knowledge_document(
             title=title.strip(),
-            category=CATEGORY_BY_SOURCE.get(path.name, "general"),
+            category=CATEGORY_BY_SOURCE.get(source, "general"),
             content=content.strip(),
-            custom_slug=path.name,
+            custom_slug=source,
             status="published",
-            author="admin",
+            author=author,
             is_builtin=0,
         )
-    except Exception as exc:
-        logger.debug("Could not record knowledge document in store: %s", exc)
-
+    except store.DatabaseIntegrityError as exc:
+        # The unique slug constraint arbitrates concurrent uploads. Do not turn
+        # unrelated constraint/version-write failures into a duplicate response.
+        if store.get_knowledge_document(source) is not None:
+            raise FileExistsError(source) from exc
+        raise
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
-    return {"title": title.strip(), "source": path.name}
+    return {**document, "source": source}
 
 
 def chunk_markdown(text: str, chunk_size: int = 650) -> list[str]:

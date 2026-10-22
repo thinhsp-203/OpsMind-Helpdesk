@@ -126,3 +126,20 @@ Trước sửa, ca RAG timeout (FAIL); sau sửa cả 7 ca PASS, mỗi ca 8 heal
 Kiểm đầy đủ nghiệp vụ/phân quyền bằng suite hiện có; test không mock auth hay
 store trả về thành công giả. Hook chỉ giữ chờ rồi gọi implementation thật.
 Không chứng minh throughput, provider thật, PostgreSQL, Linux hay cloud.
+
+
+### AUD-11 — KB DB authority và lỗi persistence
+
+`tests/test_knowledge_persistence.py`: lỗi DB import -> 503 không file/row;
+trigger lỗi ghi version -> rollback tài liệu; slug trùng và upload đồng thời
+-> một document/version; thư mục immutable vẫn upload được; author/reviewer
+và is_builtin giữ nguyên qua process mới + initialize; file lẻ không được
+list/get/reindex/delete; chặn builtin collision trước xóa DB; delete lỗi giữ
+dữ liệu; delete thành công không unlink/resurrect file legacy. Trước sửa 12
+ca đầu có 11 FAIL, 1 PASS; thêm ca delete-success sau đó.
+
+Tests API cũ dùng DB record thay kỳ vọng upload/delete filesystem; path/symlink
+regression vẫn bảo đảm lookup không đọc file ngoài DB. AUD-10 HTTP regression
+đổi nhãn knowledge_file thành knowledge_import; vẫn giữ chờ rồi chạy import
+thật. Hai test PostgreSQL thêm trong test_postgres kiểm unique/version và
+trigger rollback; local skip khi không có DATABASE_URL, không coi đã đạt.

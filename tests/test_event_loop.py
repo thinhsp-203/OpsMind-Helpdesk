@@ -48,7 +48,7 @@ server.run(sockets=[sock])
     ('database', 'app.store:list_tickets'),
     ('password', 'app.store:verify_password'),
     ('notification', 'app.routers.admin:send_test_notification_result'),
-    ('knowledge_file', 'app.routers.knowledge:save_knowledge_document'),
+    ('knowledge_import', 'app.routers.knowledge:save_knowledge_document'),
     ('attachment', 'app.store:add_attachment'),
     ('knowledge_auth', 'app.store:get_user_credentials'),
 ])
@@ -95,7 +95,7 @@ def test_health_responds_while_sync_work_is_blocked(tmp_path, operation, target)
                     'database': ('GET', '/tickets', {}),
                     'password': ('POST', '/auth/login', {'json': {'username': 'admin', 'password': 'admin'}}),
                     'notification': ('POST', '/admin/notifications/test', {'json': {'channel': 'email'}}),
-                    'knowledge_file': ('POST', '/knowledge', {
+                    'knowledge_import': ('POST', '/knowledge', {
                         'data': {'title': 'AUD10 synthetic runbook'},
                         'files': {'document': ('aud10-test.md', b'# AUD10\nSynthetic test', 'text/markdown')},
                     }),

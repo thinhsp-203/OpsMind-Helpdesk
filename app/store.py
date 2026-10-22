@@ -1458,10 +1458,17 @@ def get_analytics() -> dict[str, Any]:
         helpful_feedback_count = rag_stats["helpful_count"] or 0
         unhelpful_feedback_count = rag_stats["unhelpful_count"] or 0
         total_feedback = helpful_feedback_count + unhelpful_feedback_count
+        unrated_queries = max(0, total_rag_queries - total_feedback)
         if total_feedback > 0:
-            self_service_rate = round(helpful_feedback_count / total_feedback * 100, 1)
+            helpful_feedback_rate = round(helpful_feedback_count / total_feedback * 100, 1)
         else:
-            self_service_rate = None
+            helpful_feedback_rate = None
+        feedback_response_rate = (
+            round(total_feedback / total_rag_queries * 100, 1) if total_rag_queries > 0 else None
+        )
+        # AUD-20: helpful_feedback_rate accurately measures thumbs-up proportion among rated answers.
+        # self_service_rate is maintained as a legacy backward-compatible alias.
+        self_service_rate = helpful_feedback_rate
 
     agent_stats: dict[str, dict[str, Any]] = {}
     resolution_hours: list[float] = []
@@ -1501,9 +1508,16 @@ def get_analytics() -> dict[str, Any]:
         "rating_count": rating_row["rating_count"],
         "daily_created": created_daily,
         "agent_performance": agent_performance,
+        "helpful_feedback_rate": helpful_feedback_rate,
         "self_service_rate": self_service_rate,
         "total_rag_queries": total_rag_queries,
         "helpful_feedback_count": helpful_feedback_count,
+        "unhelpful_feedback_count": unhelpful_feedback_count,
+        "total_feedback": total_feedback,
+        "feedback_sample_size": total_feedback,
+        "unrated_queries": unrated_queries,
+        "feedback_response_rate": feedback_response_rate,
+        "self_resolution_verified_rate": None,
     }
 
 

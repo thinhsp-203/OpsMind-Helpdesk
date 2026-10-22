@@ -1572,10 +1572,17 @@ async function loadAnalytics() {
       (analytics.status_breakdown.resolved || 0) + (analytics.status_breakdown.closed || 0);
     byId("statOverdue").textContent = analytics.overdue_tickets;
     if (byId("statSelfService")) {
+      const rate = analytics.helpful_feedback_rate !== undefined ? analytics.helpful_feedback_rate : analytics.self_service_rate;
       byId("statSelfService").textContent =
-        analytics.self_service_rate !== null && analytics.self_service_rate !== undefined
-          ? `${analytics.self_service_rate}%`
-          : "—";
+        rate !== null && rate !== undefined ? `${rate}%` : "—";
+      const detail = byId("statSelfServiceDetail");
+      if (detail) {
+        if (analytics.total_feedback > 0) {
+          detail.textContent = `${analytics.helpful_feedback_count}/${analytics.total_feedback} đánh giá hữu ích (${analytics.total_rag_queries} câu hỏi)`;
+        } else {
+          detail.textContent = "Chưa có phản hồi từ người dùng";
+        }
+      }
     }
     byId("statResolution").textContent = analytics.average_resolution_hours === null
       ? "—"

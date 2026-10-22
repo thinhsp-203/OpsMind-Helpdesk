@@ -44,6 +44,8 @@
 
 - AUD-18: Chuẩn hóa 6 runbook sự cố kỹ thuật, loại bỏ các hướng dẫn rủi ro (tắt antivirus, purge server, tắt SysMain), bổ sung điều kiện tiên quyết và phân định rạch ròi giữa thao tác người dùng (User Self-Service) và quyền quản trị (IT Administration). Sửa lỗi cú pháp lệnh `nslookup` và `netsh`. Bổ sung bộ kiểm thử an toàn runbook `tests/test_aud18_runbook_safety.py` (4 ca test pass 100%).
 
+- AUD-20: Chuẩn hóa chỉ số `helpful_feedback_rate` trong `app/store.py`, minh bạch kích thước mẫu ($N$), số câu hỏi chưa đánh giá (`unrated_queries`) và tỷ lệ phản hồi (`feedback_response_rate`); cập nhật thẻ giao diện Dashboard từ "Tự phục vụ qua AI" sang "Đánh giá hữu ích RAG" hiển thị kèm mẫu số; bổ sung bộ kiểm thử `tests/test_aud20_analytics_metrics.py` (4 ca test pass 100%).
+
 ## 1. Bảng tổng hợp độ phủ kiểm thử (Test Coverage Summary)
 
 | Loại kiểm thử | Công cụ / Framework | Số lượng test cases | Trạng thái thực thi |

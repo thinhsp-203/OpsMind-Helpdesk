@@ -44,6 +44,25 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-20 — chuẩn hóa chỉ số helpful feedback rate và minh bạch mẫu đánh giá (21/10/2026)
+
+- **FIXED LOCAL / Chờ CI**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Chỉ số `self_service_rate` tính theo công thức `helpful / (helpful + unhelpful) * 100`, nhưng được hiển thị trên Dashboard là "Tự phục vụ qua AI — Giải quyết qua Runbook nội bộ". Thực chất đây chỉ là tỷ lệ đánh giá hữu ích (Helpful Feedback Rate) trong số những người dùng chủ động bấm 👍/👎; hoàn toàn không có bằng chứng người dùng đã tự giải quyết sự cố mà không cần kỹ thuật viên hoặc tránh tạo ticket (ticket avoidance). Việc dùng chỉ số này đại diện cho tỷ lệ tự phục vụ là sai lệch construct và thiên lệch tự chọn mẫu (self-selection bias).
+- Giải pháp:
+  1. Chuẩn hóa tên gọi chỉ số: Đổi tên thuộc tính nghiệp vụ thành `helpful_feedback_rate` (Tỷ lệ đánh giá câu trả lời hữu ích). Duy trì `self_service_rate` như một alias tương thích ngược (deprecated backward-compatible alias).
+  2. Bổ sung các chỉ số minh bạch mẫu (Sample Size Transparency):
+     - `total_feedback` & `feedback_sample_size`: Tổng số lượt người dùng đánh giá ($N = 	ext{up} + 	ext{down}$).
+     - `unrated_queries`: Số câu hỏi người dùng không để lại đánh giá ($	ext{total\_queries} - 	ext{total\_feedback}$).
+     - `feedback_response_rate`: Tỷ lệ phản hồi đánh giá trên tổng số câu hỏi RAG.
+     - `self_resolution_verified_rate = None`: Ghi chú rõ việc đo lường tự phục vụ thực chất đòi hỏi cơ chế xác nhận giải quyết rõ ràng hoặc theo dõi tránh tạo ticket (ticket deflection) trong cửa sổ quan sát.
+  3. Cập nhật giao diện người dùng & Đa ngôn ngữ:
+     - Sửa thẻ thống kê trên Dashboard (`app/static/index.html`): Tiêu đề chuyển thành `Đánh giá hữu ích RAG`, mô tả chi tiết `Tỷ lệ hữu ích trên tổng phản hồi`.
+     - Cập nhật `app/static/app.js`: Hiển thị rõ số lượng mẫu `${helpful}/${total} đánh giá hữu ích (${total_queries} câu hỏi)` thay vì một con số phần trăm đơn lẻ gây ngộ nhận.
+     - Cập nhật từ điển song ngữ `app/static/i18n.js` hỗ trợ đầy đủ tiếng Việt và tiếng Anh (`test_i18n.js` pass 100%).
+  4. Bộ kiểm thử hồi quy: Tạo `tests/test_aud20_analytics_metrics.py` (4 ca test pass 100%) xác thực công thức tính toán, kiểm tra trường hợp 0 feedback trả về `None`, kiểm tra sự độc lập giữa lượt upvote và việc tạo ticket, và kiểm tra schema API `/analytics`.
+- Kiểm thử: `tests/test_aud20_analytics_metrics.py` 4/4 PASS; `test_i18n.js` PASS 100%; toàn bộ suite pass 100%.
+- Rủi ro còn lại: Để triển khai chỉ số tỷ lệ giải quyết tự phục vụ thực sự (Verified Self-Resolution Rate) trong tương lai, cần bổ sung nút xác nhận "Sự cố đã được giải quyết hoàn toàn" ở giao diện hỏi đáp RAG và theo dõi phân tích telemetry tương quan với việc tạo ticket trong vòng 24 giờ.
+
 ### Theo dõi audit AUD-18 — an toàn runbook, phân định quyền user/IT và sửa cú pháp lệnh (21/10/2026)
 
 - **FIXED LOCAL / Chờ review chuyên gia domain & CI**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.

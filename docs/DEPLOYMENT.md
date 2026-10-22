@@ -292,3 +292,34 @@ Rollback code cũ làm mất bảo đảm serialize dù unique index còn bảo 
 Giữ backup và index; không tự drop index để cho writer cũ tiếp tục lỗi. Nếu phải
 restore, dừng ghi và theo runbook restore/session-key hiện có, đối chiếu history
 trước khi mở lại. Phiên này không chạy migration hay restore trên dữ liệu thật.
+
+### AUD-16 bổ sung — Gate email worker và migration (22/10/2026)
+
+Phiên này chưa deploy/gửi thư thật. Backup DB và drain mọi worker cũ trước upgrade;
+không chạy lẫn router cũ gửi password/RAM BackgroundTasks với worker mới. Một
+initializer tạo email_deliveries/indexes; không sửa password/hash/token lịch sử.
+Kiểm API/Admin schema và quyền DB, sau đó khởi động workers dùng chung DB +
+SECRET_KEY ổn định. Queue hash-only cần key để dựng link; backup key bảo mật tách
+DB. Restore DB cũ phải theo runbook JWT key/epoch; không giả định các link/job đã
+thu hồi vẫn an toàn nếu restore trạng thái credential cũ.
+
+DEMO_MODE=true mới dùng EMAIL_PROVIDER=console/mock. SMTP disabled không fallback
+mock; provider thiếu key/URL hoặc typo sẽ fail startup. Non-demo yêu cầu SMTP bật
+với verified TLS (465 hoặc STARTTLS) hoặc Resend/Brevo key hoặc webhook HTTPS;
+EMAIL_FROM hợp lệ và PUBLIC_BASE_URL HTTPS không userinfo/query/fragment. Đây là
+validation cấu hình, không kiểm credentials/provider sender/domain thật bằng network.
+Phải kiểm provider staging bằng địa chỉ thử được phép trước rollout; không bật
+console/mock để né gate. Chọn EMAIL_PROVIDER rõ ràng để tránh auto-detect bất ngờ.
+
+Kiểm pending restart (cả process mới), ack fencing, limit 3, fault rollback và token
+one-use trên PostgreSQL sandbox riêng; tests/test_postgres.py reset/truncate DB nên
+không trỏ DATABASE_URL vào production. 4 scenario PG mới chưa chạy local nếu không
+có PG. GET /admin/email-deliveries cung cấp status metadata, provider accepted không
+chứng nhận inbox. Nếu config đổi, terminal config_changed yêu cầu người dùng gửi
+request mới; không tự retarget email hoặc replay link cũ. Không backfill thư lịch sử.
+
+Trước nâng cấp/restore lập retention và quyền backup cho recipient/username/hash
+metadata; chưa có auto purge/alert. Giữ app sống để poll; mất wake vẫn recover,
+DNS/provider timeout có thể kéo dài nên lease hết hạn có thể duplicate mail. Rollback
+code cũ bỏ queue và gửi password là regression; dừng ghi/delivery trước rollback,
+giữ bảng/history, không drop để che mất pending jobs hoặc delivery unknown.

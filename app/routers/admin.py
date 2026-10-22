@@ -50,18 +50,16 @@ def add_user(
             payload.department.strip(),
             payload.phone.strip(),
             force_password_change=1,
+            invitation_base_url=(config.PUBLIC_BASE_URL or str(request.base_url).rstrip('/')) if payload.email.strip() else None,
         )
         if payload.email.strip():
-            base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
-            background_tasks.add_task(
-                email_sender.send_account_created_email,
-                to_email=payload.email.strip(),
-                username=payload.username,
-                temp_password=payload.password,
-                base_url=base_url,
-                force_change=True,
-            )
+            from app.email_outbox import wake_email_worker
+            background_tasks.add_task(wake_email_worker)
         return created
+    except email_sender.EmailConfigurationError as exc:
+        raise HTTPException(status_code=503, detail="Email chưa được cấu hình hợp lệ; chưa tạo tài khoản.") from exc
+    except store.DatabaseError as exc:
+        raise HTTPException(status_code=503, detail="Chưa lưu được tài khoản và thư mời.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Tên đăng nhập đã tồn tại.") from exc
 
@@ -210,3 +208,13 @@ def retry_notification_delivery(request: Request, delivery_id: str, background_t
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(wake_notification_worker)
     return {"message": "Delivery queued; provider acceptance is not yet confirmed."}
+
+
+@router.get("/email-deliveries")
+def email_deliveries(request: Request, limit: int = 50) -> list[dict]:
+    from app.email_outbox import list_deliveries
+    require_admin(current_user(request))
+    try:
+        return list_deliveries(limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

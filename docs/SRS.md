@@ -373,3 +373,15 @@ Reset token vẫn trim riêng. Không tự thử mật khẩu trimmed/normalized
 Mật khẩu đã bị trim bởi bản cũ không thể suy ra khoảng trắng đã mất: người dùng
 cần reset lại bằng liên kết mới nếu không nhớ chuỗi đang có hiệu lực; không tự
 sửa hash hoặc thay đổi mật khẩu của tài khoản hiện có trong migration.
+
+### AUD-16 bổ sung — Thư mời và khôi phục mật khẩu (22/10/2026)
+
+Thư chào mừng chỉ chứa username và link đặt mật khẩu một lần, không chứa mật
+khẩu mà Admin nhập. Mật khẩu Admin nhập vẫn có hiệu lực ngoài kênh email và
+force_password_change vẫn bật; không thay policy tạo tài khoản. Reset endpoint
+hiện có consume token và đổi password atomic, thu hồi các link cũ theo AUD06/07.
+Yêu cầu forgot-password dùng response đồng nhất chống enumeration, không khẳng
+định thư đã được phát; status nội bộ giúp Admin phân biệt pending/failed/accepted.
+DEMO console/mock chỉ capture RAM và đánh dấu mocked; non-demo phải có provider
+thật đã cấu hình, sender và PUBLIC_BASE_URL HTTPS hợp lệ. Provider accepted
+không tương đương delivered, inbox receipt hoặc đã đọc.

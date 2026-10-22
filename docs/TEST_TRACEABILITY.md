@@ -274,3 +274,22 @@ có padding được trim và chỉ dùng một lần. Bốn ca schema kiểm bi
 11/12/200/201 trên chuỗi có spaces. Baseline 7 FAIL, 13 PASS; sau sửa kiểm cùng
 test_password_reset và test_session_lifecycle. Dữ liệu/secret đều synthetic,
 SQLite sandbox; không gửi email thật hoặc sửa credential production.
+
+### AUD-16 bổ sung — Đóng thiếu sót acceptance email
+
+Baseline review 3 tầng có 4/4 acceptance probes FAIL, không được xem enum-only fix
+là đóng toàn AUD16. tests/test_email_delivery.py có 26 ca API/store/lifecycle:
+welcome không reusable password + one-use; SMTP disabled false; 6 provider non-demo
+thiếu cấu hình từ chối startup; failure retry qua lifespan restart; bounded retry/
+crash leases/fencing; account/email/role/config/expiry cancellation; không raw token
+DB/API; account+job rollback, link-revocation rollback; supersede; accepted không
+resend; process mới dựng cùng token qua HMAC; TLS/base URL; SMTP refusal và error
+sanitization. Các contract queue API chưa tồn tại là một phần baseline mới.
+
+Test welcome cũ từng yêu cầu password trong body, nay đảo assertion để thực thi
+acceptance đúng (không password, phải có one-use link); không bỏ checks force-change/
+login hiện có. Hai SMTP mock trả {} theo contract send_message để kiểm refused dict.
+tests/test_postgres.py thêm 4 scenario claim fencing/accepted/supersede/account rollback;
+skip nếu thiếu sandbox PG, không là bằng chứng PG PASS. Bốn probe độc lập trong
+work/probe_aud16_completion.py giữ logic review gốc, ghi evidence mới không overwrite
+snapshot review trước. Browser 3 vai trò và Node kiểm regression frontend/i18n.

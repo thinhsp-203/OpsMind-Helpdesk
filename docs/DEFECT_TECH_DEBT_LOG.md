@@ -303,3 +303,14 @@ luồng create/change/admin-reset/login. Regression baseline 7 FAIL/13 PASS gồ
 4 reset API và 3 biên length; bộ test tổng 20 ca. Không đổi policy độ dài, không
 thêm normalization/fallback login hoặc sửa mật khẩu lịch sử. Không mở rộng
 sang accessibility/i18n polish hay các gate PostgreSQL/cloud của issue trước.
+
+### AUD-16 bổ sung sau review 3 tầng (22/10/2026)
+
+Enum-only fix trước chưa đóng đủ finding: 4 acceptance probes còn FAIL. Đã bổ sung
+invitation one-use không password, email_deliveries hash-only + worker/lease/retry/
+status bền vững, transaction account/job/token và fail-closed non-demo config.
+**IMPLEMENTED LOCAL; PG/provider staging/CI pending**. Response/mock status không
+được gọi là delivery/read receipt; at-least-once có thể duplicate, token vẫn one-use.
+Audit report/manifest cũ giữ nguyên theo snapshot; evidence bổ sung trong
+outputs/AUD-16-COMPLETION ở workspace audit. Không có commit/push/deploy hay mail
+thật trong phiên này. Các gate AUD09/18/19 và commit replay AUD03 vẫn chưa đóng.

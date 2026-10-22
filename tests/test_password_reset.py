@@ -411,7 +411,9 @@ def test_admin_create_user_sends_welcome_email_and_enforces_password_change() ->
     assert len(outbox) == 1
     welcome_email = outbox[0]
     assert welcome_email["to"] == "new.employee@opsmind.internal"
-    assert "TempPassword1234!" in welcome_email["body"]
+    assert "TempPassword1234!" not in welcome_email["body"]
+    assert "temp_password" not in welcome_email
+    assert welcome_email["token"] in welcome_email["link"]
     assert "đổi mật khẩu ngay trong lần đăng nhập đầu tiên" in welcome_email["body"]
 
     # 4. User logs in with temporary password
@@ -494,6 +496,7 @@ def test_email_sender_smtp_dispatch_and_headers(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(config, "SMTP_SSL_VERIFY", True)
 
     mock_server = MagicMock()
+    mock_server.send_message.return_value = {}
     mock_server_cm = MagicMock()
     mock_server_cm.__enter__.return_value = mock_server
     mock_server_cm.__exit__.return_value = None
@@ -531,6 +534,7 @@ def test_email_sender_smtp_ssl_port_465(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
 
     mock_server = MagicMock()
+    mock_server.send_message.return_value = {}
     mock_server_cm = MagicMock()
     mock_server_cm.__enter__.return_value = mock_server
     mock_server_cm.__exit__.return_value = None

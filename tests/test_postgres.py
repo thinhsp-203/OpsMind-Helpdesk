@@ -582,3 +582,43 @@ def test_postgres_aud23_concurrent_business_writes(monkeypatch, scenario):
         'unique': test_database_rejects_duplicate_kb_version,
     }
     actions[scenario]()
+
+
+@pytest.mark.parametrize('scenario',['claim','accepted','superseded'])
+def test_postgres_durable_credential_email(monkeypatch,scenario):
+    from app import config, email_outbox
+    from test_email_delivery import (
+        test_exclusive_claim_and_stale_lease_cannot_acknowledge,
+        test_provider_acceptance_is_terminal_and_not_a_read_receipt,
+        test_new_link_supersedes_prior_job_and_token,
+    )
+    monkeypatch.setattr(config,'DEMO_MODE',True)
+    monkeypatch.setattr(config,'EMAIL_PROVIDER','console')
+    monkeypatch.setattr(config,'PUBLIC_BASE_URL','')
+    store.initialize_store()
+    store.reset_store()
+    actions={
+        'claim':lambda:test_exclusive_claim_and_stale_lease_cannot_acknowledge(),
+        'accepted':lambda:test_provider_acceptance_is_terminal_and_not_a_read_receipt(monkeypatch),
+        'superseded':lambda:test_new_link_supersedes_prior_job_and_token(),
+    }
+    actions[scenario]()
+    assert email_outbox.list_deliveries()
+
+
+def test_postgres_email_enqueue_failure_rolls_back_account(monkeypatch):
+    from app import config, email_outbox
+    monkeypatch.setattr(config,'DEMO_MODE',True)
+    monkeypatch.setattr(config,'EMAIL_PROVIDER','console')
+    store.initialize_store()
+    store.reset_store()
+
+    def fail(*args):
+        raise RuntimeError('Synthetic enqueue failure')
+
+    monkeypatch.setattr(email_outbox,'enqueue',fail)
+    import secrets
+    with pytest.raises(RuntimeError,match='Synthetic'):
+        store.create_user('emailrollback',secrets.token_urlsafe(24),'user',email='user@example.invalid',
+                          invitation_base_url='http://testserver')
+    assert store.get_user_credentials('emailrollback') is None

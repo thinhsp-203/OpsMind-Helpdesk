@@ -527,6 +527,8 @@ def initialize_store() -> None:
         seed_builtin_knowledge(connection)
         from app.notification_outbox import initialize
         initialize(connection)
+        from app.email_outbox import initialize as initialize_email
+        initialize_email(connection)
 
 
 def reset_store() -> None:
@@ -534,7 +536,7 @@ def reset_store() -> None:
     with _connect() as connection:
         if _database_url:
             connection.execute(
-                "TRUNCATE TABLE notification_outbox, audit_logs, comments, tickets, chat_messages, chat_sessions, "
+                "TRUNCATE TABLE email_deliveries, notification_outbox, audit_logs, comments, tickets, chat_messages, chat_sessions, "
                 "ticket_attachments, users, knowledge_versions, knowledge_documents, "
                 "password_reset_tokens, rate_limit_attempts RESTART IDENTITY CASCADE"
             )
@@ -558,6 +560,7 @@ def reset_store() -> None:
             _ensure_session_epochs(connection)
             seed_builtin_knowledge(connection)
             return
+        connection.execute("DELETE FROM email_deliveries")
         connection.execute("DELETE FROM notification_outbox")
         connection.execute("DELETE FROM audit_logs")
         connection.execute("DELETE FROM comments")
@@ -653,6 +656,7 @@ def create_user(
     department: str = "",
     phone: str = "",
     force_password_change: int = 0,
+    invitation_base_url: str | None = None,
 ) -> dict[str, str]:
     now_str = _now()
     with _connect() as connection:
@@ -665,6 +669,9 @@ def create_user(
             )
         except DatabaseIntegrityError as exc:
             raise ValueError("Username already exists.") from exc
+        if invitation_base_url is not None and email:
+            from app.email_outbox import enqueue
+            enqueue(connection, username, 'invitation', invitation_base_url)
     return {"username": username, "role": role}
 
 

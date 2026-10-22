@@ -623,3 +623,42 @@ updates không xóa field vừa đổi của writer trước; cùng field vẫn 
 Phạm vi này không giải quyết race last-active-admin giữa hai user, attachment
 file/DB atomicity, bootstrap đồng thời hay mọi race authorization ngoài transaction.
 Các race đó không nằm trong ba acceptance criteria của finding AUD-23 gốc.
+
+### AUD-16 bổ sung — Durable credential email (22/10/2026)
+
+email_deliveries lưu metadata (username/recipient/kind/base URL/epoch/fingerprint,
+token hash, status, attempt/lease/timestamps), không lưu raw token/body/password.
+Token ổn định qua retry/process được derive bằng HMAC-SHA256 với SECRET_KEY:
+namespace OpsMind-email-link:v1 + random UUID job + kind + username + session_epoch.
+Đây là PRF token derivation, không phải mã hóa body. Chỉ hash của raw token được
+lưu trong password_reset_tokens và queue; reset verifier AUD07 vẫn hash-compare
+và consume một lần. Key phải đủ mạnh, bảo vệ tách khỏi backup DB và đồng nhất
+giữa worker. Không có dependency crypto mới hoặc raw-token recovery API.
+
+Admin create user + invitation job + reset-token hash cùng transaction. Forgot
+enqueue khóa user và re-read active/email/epoch trước issuance; link/job cũ pending
+được supersede và token cũ revoke cùng transaction. Enqueue lỗi rollback mọi thay
+đổi; DatabaseError trả 503 cho Admin, forgot giữ response anti-enumeration/log
+class lỗi. BackgroundTasks chỉ đánh thức worker sau commit; mất wake không mất job.
+
+Worker email riêng poll 5s off event loop, batch tối đa 10. SQLite BEGIN IMMEDIATE
+hoặc PG FOR UPDATE SKIP LOCKED claim job; không giữ connection trong provider I/O.
+Lease 120s và UUID fencing; tối đa 3 claims, retry chờ 5s rồi 10s, không gia hạn
+token TTL. Restart lấy lại pending/lease hết hạn; hết budget và lease không rõ kết
+quả -> failed/lease_expired_delivery_unknown. Provider HTTP/MTA accepted -> accepted;
+DEMO -> mocked. Không resend terminal. Có thể duplicate send-after-ack-crash, không
+exactly-once hoặc read receipt. SMTP inspect refusal dict; lỗi provider chỉ ghi enum/
+class/HTTP code, không ghi response body/key/link. Diagnostics test mail là one-shot.
+
+Trước gửi kiểm token chưa dùng/chưa hết hạn, user active/email/epoch đúng, và
+fingerprint provider/credential/base URL/key/TTL/mode không đổi. Không khớp ->
+cancelled/config_changed/expired, không tự retarget. Issuance mới là cách lấy job/link
+mới sau terminal/config change; chưa có requeue thủ công bằng Admin API. Thay đổi
+sau pre-send check không recall được email đang in-flight; token revoke/expiry vẫn
+chặn reset. Role/JWT logout không đổi policy revoke reset-token hiện có: epoch chỉ
+chặn job chưa gửi; các link đã phát vẫn theo lifecycle reset-token AUD06/07.
+
+GET /admin/email-deliveries (limit 1–100, newest first) dành Admin, chỉ trả ID,
+username/kind/status/attempts/error enum/timestamps; không raw email/link/token/
+hash/fingerprint/epoch. Chưa có immutable attempt ledger, retention worker, backlog
+alert hoặc pagination sâu. Queue contains recipient PII nên backup/access có kiểm soát.

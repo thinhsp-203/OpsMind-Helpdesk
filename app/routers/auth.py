@@ -220,7 +220,7 @@ def forgot_password(
 
     uniform_message = (
         "Nếu thông tin khớp với tài khoản trong hệ thống, hướng dẫn đặt lại mật khẩu "
-        "đã được gửi đến email đăng ký của bạn."
+        "sẽ được gửi đến email đăng ký của bạn. Vui lòng chờ và kiểm tra hộp thư."
     )
 
     user = store.find_user_for_password_reset(payload.identifier)
@@ -253,25 +253,13 @@ def forgot_password(
     if len(_forgot_password_target_cooldown) > 1000:
         _forgot_password_target_cooldown.clear()
 
-    token = store.create_password_reset_token(
-        user["username"],
-        expires_minutes=config.RESET_TOKEN_EXPIRE_MINUTES,
-    )
-
-    if not config.DEMO_MODE and not config.PUBLIC_BASE_URL:
-        logger.error(
-            "Password reset request rejected: PUBLIC_BASE_URL must be configured in non-demo environment."
-        )
+    from app.email_outbox import request_password_email, wake_email_worker
+    try:
+        request_password_email(user['username'], 'reset', config.PUBLIC_BASE_URL or str(request.base_url).rstrip('/'))
+    except (email_sender.EmailConfigurationError, *store.DatabaseError) as exc:
+        logger.warning("Password email enqueue failed: %s", type(exc).__name__)
         return {"status": "success", "message": uniform_message}
-
-    base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
-    background_tasks.add_task(
-        email_sender.send_password_reset_email,
-        to_email=user_email,
-        username=user["username"],
-        reset_token=token,
-        base_url=base_url,
-    )
+    background_tasks.add_task(wake_email_worker)
 
     return {"status": "success", "message": uniform_message}
 

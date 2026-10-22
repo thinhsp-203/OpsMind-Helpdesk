@@ -589,3 +589,8 @@ Không có session table/jti deny-list/per-device revoke, audit logout riêng,
 refresh token hay WebSocket broadcast. Epoch nằm cùng DB nên request tiếp
 theo thấy revoke; request đã qua auth không bị cancel. Các race business còn
 lại và last-active-admin trên hai user khác nhau vẫn thuộc AUD-23/17.
+
+### 6.6 Chính sách mật khẩu thống nhất & ngoại lệ demo (AUD-17)
+
+- **Ngưỡng độ dài mật khẩu thống nhất**: Toàn bộ hệ thống áp dụng chung một ngưỡng tối thiểu 12 ký tự (`MIN_PASSWORD_LENGTH = 12`) cho tất cả các luồng: khởi tạo tài khoản quản trị ban đầu (`INITIAL_ADMIN_PASSWORD`), API tạo người dùng (`UserCreate`), đổi mật khẩu (`ChangePasswordRequest`) và đặt lại mật khẩu (`ResetPasswordRequest`). Mọi mật khẩu dưới 12 ký tự đều bị từ chối ở cả bootstrap lẫn runtime API.
+- **Quy định cờ ALLOW_DEMO_CREDENTIALS**: Mặc định là `false`. Chỉ được bật làm cơ chế ngoại lệ tạm thời trong môi trường thử nghiệm hoặc di trú dữ liệu staging; không được phép xem là cấu hình production hợp lệ.

@@ -210,18 +210,30 @@ def test_non_demo_startup_allows_demo_credentials_on_empty_db(
     assert {user["username"] for user in store.list_users()} == {"user", "agent", "admin"}
 
 
-def test_non_demo_startup_accepts_custom_admin_password_min_eight_chars(
+def test_non_demo_startup_rejects_admin_password_under_twelve_chars(
     isolated_database: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(store, "DEMO_MODE", False)
     monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
-    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1m@123")
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1m@123")  # 9 chars (< 12)
+
+    with pytest.raises(RuntimeError, match="at least 12 characters"):
+        store.initialize_store()
+
+
+def test_non_demo_startup_accepts_custom_admin_password_min_twelve_chars(
+    isolated_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "DEMO_MODE", False)
+    monkeypatch.setattr(store, "INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(store, "INITIAL_ADMIN_PASSWORD", "Adm1nPass1234!")  # 14 chars (>= 12)
 
     store.initialize_store()
     creds = store.get_user_credentials("admin")
     assert creds is not None
-    assert store.verify_password("Adm1m@123", creds["password_hash"])
+    assert store.verify_password("Adm1nPass1234!", creds["password_hash"])
 
 
 def test_admin_password_preserved_across_restarts_after_user_change(

@@ -58,6 +58,7 @@ Nhập mật khẩu riêng tại prompt; không lưu secret vào Git hoặc gõ 
 | Biến | Mặc định | Ghi chú |
 |---|---|---|
 | `DEMO_MODE` | `true` | DB mới nhận tài khoản demo; chỉ dùng local. |
+| `ALLOW_DEMO_CREDENTIALS` | `false` | CỜ NGOẠI LỆ THỬ NGHIỆM: Chỉ cho phép tài khoản demo khi chuyển đổi hoặc kiểm thử local ở chế độ non-demo; tuyệt đối tắt (`false`) trên production. |
 | `SECRET_KEY` | Sinh ngẫu nhiên khi demo; bắt buộc non-demo | Đặt secret mạnh, ổn định và quản lý ngoài source control nếu muốn phiên JWT còn hiệu lực qua restart. |
 | `DATABASE_URL` | Rỗng | PostgreSQL connection URI; khi rỗng, ứng dụng dùng SQLite tại `HELPDESK_DB_PATH`. Compose mặc định trỏ tới service PostgreSQL `postgres`. |
 | `POSTGRES_PASSWORD` | Mật khẩu demo trong Compose | Mật khẩu service PostgreSQL của Compose; bắt buộc thay trước khi dùng ngoài máy demo. |

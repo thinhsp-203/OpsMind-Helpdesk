@@ -28,6 +28,7 @@ from app.config import (
 
 logger = logging.getLogger(__name__)
 
+MIN_PASSWORD_LENGTH = 12
 PRIORITY_HOURS = {"low": 48, "medium": 24, "high": 8, "urgent": 2}
 TRANSITIONS = {
     "new": {"in_progress"},
@@ -425,7 +426,7 @@ def initialize_store() -> None:
                 connection.execute("PRAGMA foreign_keys = ON")
         if (
             INITIAL_ADMIN_USERNAME
-            and len(INITIAL_ADMIN_PASSWORD) >= 8
+            and len(INITIAL_ADMIN_PASSWORD) >= MIN_PASSWORD_LENGTH
             and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
             and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
         ):
@@ -454,8 +455,8 @@ def initialize_store() -> None:
             ):
                 if ALLOW_DEMO_CREDENTIALS:
                     logger.warning(
-                        "Demo credentials are present in non-demo mode. ALLOW_DEMO_CREDENTIALS=true is enabled; "
-                        "skipping startup refusal. Please change demo passwords before real production use."
+                        "CẢNH BÁO BẢO MẬT: ALLOW_DEMO_CREDENTIALS=true đang được bật ở chế độ non-demo! "
+                        "Cờ này CHỈ ĐƯỢC DÙNG cho môi trường thử nghiệm/staging tạm thời, tuyệt đối không dùng trên production."
                     )
                 else:
                     raise RuntimeError(
@@ -469,7 +470,7 @@ def initialize_store() -> None:
                     INITIAL_ADMIN_PASSWORD
                     if (
                         INITIAL_ADMIN_USERNAME == "admin"
-                        and len(INITIAL_ADMIN_PASSWORD) >= 8
+                        and len(INITIAL_ADMIN_PASSWORD) >= MIN_PASSWORD_LENGTH
                         and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
                     )
                     else "admin"
@@ -485,7 +486,7 @@ def initialize_store() -> None:
                 )
             elif (
                 INITIAL_ADMIN_USERNAME
-                and len(INITIAL_ADMIN_PASSWORD) >= 8
+                and len(INITIAL_ADMIN_PASSWORD) >= MIN_PASSWORD_LENGTH
                 and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
                 and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
             ):
@@ -505,7 +506,7 @@ def initialize_store() -> None:
                 )
             else:
                 raise RuntimeError(
-                    "INITIAL_ADMIN_PASSWORD (at least 8 characters, not using known placeholder passwords) "
+                    "INITIAL_ADMIN_PASSWORD (at least 12 characters, not using known placeholder passwords) "
                     "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
         _ensure_session_epochs(connection)

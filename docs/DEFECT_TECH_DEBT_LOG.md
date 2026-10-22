@@ -44,6 +44,14 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-17 — chính sách mật khẩu thống nhất và cờ demo (21/10/2026)
+
+- **FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Bootstrap chấp nhận `len(INITIAL_ADMIN_PASSWORD) >= 8` lệch chuẩn với API (`>= 12`); `ALLOW_DEMO_CREDENTIALS` cho phép giữ demo accounts ở chế độ non-demo mà chưa có tài liệu và cảnh báo chặt chẽ.
+- Giải pháp: Khai báo hằng số dùng chung `MIN_PASSWORD_LENGTH = 12` trong `app/store.py`; nâng toàn bộ điều kiện kiểm tra bootstrap từ 8 lên 12 ký tự; cập nhật thông báo lỗi từ chối mật khẩu dưới 12 ký tự; bổ sung tài liệu `DEPLOYMENT.md` và `SDD.md` làm rõ cờ `ALLOW_DEMO_CREDENTIALS` chỉ dành cho môi trường thử nghiệm/staging; nâng cấp cảnh báo bảo mật khi cờ được bật ở chế độ non-demo.
+- Kiểm thử: `test_non_demo_startup_rejects_admin_password_under_twelve_chars` xác nhận từ chối mật khẩu 9 ký tự (`Adm1m@123`); `test_non_demo_startup_accepts_custom_admin_password_min_twelve_chars` xác nhận chấp nhận mật khẩu >= 12 ký tự. Toàn bộ test suite liên quan đến store và auth pass.
+- Rủi ro còn lại: Khi triển khai môi trường production mới, biến môi trường `INITIAL_ADMIN_PASSWORD` phải có độ dài ít nhất 12 ký tự; nếu dưới 12 ký tự ứng dụng sẽ từ chối khởi động ngay lập tức để bảo đảm an toàn.
+
 ### Theo dõi audit AUD-16 — validate enum email provider và loại bỏ silent mock fallback (21/10/2026)
 
 - **FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.

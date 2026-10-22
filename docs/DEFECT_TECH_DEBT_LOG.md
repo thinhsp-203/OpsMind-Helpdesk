@@ -44,6 +44,18 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-19 — phân định tập holdout regression, khóa hash và rubric bằng chứng (21/10/2026)
+
+- **FIXED LOCAL / Chờ blinded test set độc lập**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Holdout 60 câu (`data/evaluation/rag_holdout.csv`) nằm trong repo và được evaluator/pytest chạy trực tiếp; `AI_USAGE_LOG` ghi nhận việc tinh chỉnh từ điển/từ khóa để đạt Hit@3 100%. Cột `required_evidence` hoàn toàn bị bỏ qua, không được evaluator chấm; thiếu provenance, annotator agreement và frozen split hash độc lập.
+- Giải pháp:
+  1. Phân định rõ ranh giới kỹ thuật: Ban hành `data/evaluation/DATASET_CARD.md`, xác định tập 60 câu là **Frozen Fixed Regression Benchmark Gate Set** (bảo đảm không suy thoái các luồng xử lý sự cố CNTT đã biết trong 30 runbook), không phải blinded evaluation set đo lường tổng quát hóa độc lập.
+  2. Khóa tính toàn vẹn dữ liệu: Tính toán và khóa cứng mã băm SHA-256 độc lập cho cả hai tập dữ liệu (`rag_questions.csv` SHA-256: `9a0fc80667527170c7dad3476a26374a5183a7b8374795b6ec35d1482ae5ad4d`, `rag_holdout.csv` SHA-256: `aaaf9673ed6d886ff5faa46f2a0bbcff92629cb024acd0cefb9e763706fad872`), kiểm tra tự động trong `tests/test_rag_dataset.py::test_evaluation_datasets_provenance_and_frozen_hash`.
+  3. Bổ sung Answer & Evidence Rubric: Mở rộng `scripts/evaluate_rag.py` và `tests/test_rag_dataset.py` để chấm điểm tiêu chí `required_evidence` (tỷ lệ trích xuất bằng chứng đạt 100%, độ bao phủ bằng chứng trung bình 95.6%, tỷ lệ từ chối giải thích rõ ngoài phạm vi đạt 100%) tách bạch hoàn toàn với CI Retrieval Gate (Hit@1, Hit@3, MRR@3, Refusal rate).
+  4. Quy định quy thức thu thập Blinded Test Set mới: Định nghĩa quy trình thu thập dữ liệu độc lập từ ticket thực tế, gán nhãn chéo chuyên gia IT (Cohen's Kappa >= 0.80) và khóa hash trước khi tinh chỉnh mô hình.
+- Kiểm thử: `tests/test_rag_dataset.py` mở rộng lên 7 ca test bao quát toàn vẹn hash, schema, CI retrieval gate, evidence coverage (>95%) và refusal rubric (100%), toàn bộ pass 100%. `scripts/evaluate_rag.py` xuất tách bạch retrieval gate vs answer rubric.
+- Rủi ro còn lại: Tập 60 câu holdout đóng vai trò regression test ngăn chặn thoái lui tri thức; năng lực tổng quát hóa (generalization) và độ trung thực câu trả lời (faithfulness) cần được kiểm chứng định kỳ trên blinded test set mới chưa từng dùng để tinh chỉnh hệ thống.
+
 ### Theo dõi audit AUD-17 — chính sách mật khẩu thống nhất và cờ demo (21/10/2026)
 
 - **FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.

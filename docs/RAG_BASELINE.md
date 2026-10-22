@@ -24,3 +24,13 @@
 - Triage category/priority là rule-based suggestion chạy sau truy xuất; chưa được chấm precision/recall trên ticket có nhãn IT và không nằm trong chỉ số hit@3/refusal.
 - Chưa đo Faithfulness, Answer Relevance, Ragas/TruLens, SUS, hiệu quả task hoặc mức độ tự giải quyết ticket.
 - Trước khi đưa vào luận văn: xác nhận ground truth với người có chuyên môn, bổ sung câu hỏi paraphrase/typo và out-of-scope, chạy lại trên môi trường đã chốt; lưu commit, cấu hình và output gốc.
+
+## Cập nhật AUD-19: Phân định Regression Gate & Khóa mã băm SHA-256 (21/10/2026)
+
+- **Dataset Hashes (Khóa cố định):**
+  - `rag_questions.csv` (`1.0.0-draft`): `9a0fc80667527170c7dad3476a26374a5183a7b8374795b6ec35d1482ae5ad4d` (30 câu)
+  - `rag_holdout.csv` (`1.0.0-frozen`): `aaaf9673ed6d886ff5faa46f2a0bbcff92629cb024acd0cefb9e763706fad872` (60 câu)
+- **Phân định phạm vi:** Tập 60 câu `rag_holdout.csv` là **Frozen Fixed Regression Benchmark Gate Set** nhằm bảo vệ hệ thống không thoái lui tri thức trên 30 runbook hiện có. Đây không phải tập blinded evaluation độc lập.
+- **Tách bạch chỉ số Retrieval Gate và Answer/Evidence Rubric:**
+  - *Retrieval CI Gate:* Dev Hit@3 = 100.0%, Holdout Hit@1 = 76.7%, Holdout Hit@3 = 100.0%, Holdout MRR@3 = 0.878, Pure OOS Refusal = 100.0%, Near-domain OOS Refusal = 100.0%.
+  - *Answer & Evidence Rubric:* Holdout Evidence Hit@3 = 100.0% (30/30 câu in-scope trích xuất được bằng chứng), In-scope Average Evidence Coverage = 95.6%, Out-of-scope Refusal Justification = 100.0% (30/30 câu out-of-scope đưa ra giải thích từ chối rõ ràng).

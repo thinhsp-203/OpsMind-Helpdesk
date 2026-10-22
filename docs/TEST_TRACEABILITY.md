@@ -40,6 +40,8 @@
 
 ---
 
+- AUD-19: Bộ dữ liệu RAG evaluation (`rag_questions.csv` và `rag_holdout.csv`) được khóa mã băm SHA-256 cố định, có `DATASET_CARD.md` phân định rõ vai trò là Frozen Regression Benchmark Gate Set. Bổ sung 3 ca test tự động chấm điểm Answer & Evidence Rubric (`test_evaluation_datasets_provenance_and_frozen_hash`, `test_holdout_evidence_rubric_coverage`, `test_out_of_scope_refusal_rubric`), tách biệt rạch ròi giữa CI Retrieval Gate và Answer Quality Rubric.
+
 ## 1. Bảng tổng hợp độ phủ kiểm thử (Test Coverage Summary)
 
 | Loại kiểm thử | Công cụ / Framework | Số lượng test cases | Trạng thái thực thi |

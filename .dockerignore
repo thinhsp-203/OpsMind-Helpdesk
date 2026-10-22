@@ -8,6 +8,12 @@ venv
 .coverage
 coverage.xml
 htmlcov
-data/helpdesk.sqlite3
+# Configuration is injected at runtime; even example env files stay out of images.
+**/.env
+**/.env.*
+# Local runtime data and logs must not enter the build context.
+data/*.sqlite3
 data/*.sqlite3-*
 data/attachments
+runtime
+**/*.log

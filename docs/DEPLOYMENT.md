@@ -25,6 +25,10 @@ Secret demo ngẫu nhiên mới được tạo khi mỗi lần khởi động n�
 
 ## Chạy bằng Docker Compose
 
+Build context loại `.env`, `.env.*` ở mọi cấp (kể cả `.env.example`), SQLite trong `data`, attachment, thư mục `runtime` và log. Truyền cấu hình khi chạy qua môi trường/Compose; không sao chép secret vào source hoặc thêm vào Dockerfile. `.gitignore` không thay thế `.dockerignore`. Nội dung KB mặc định và `data/rag_dictionary.json` vẫn cần trong image.
+
+Kiểm chứng chính sách bằng Docker BuildKit với dữ liệu giả: `python -m pytest tests/test_docker_context.py -q -rs`. Test build một image `FROM scratch`, xuất filesystem rồi kiểm tra tệp bị loại và tài nguyên cần giữ; không khởi động ứng dụng hoặc đọc `.env` thật. Test tự bỏ qua khi không có Docker CLI; khi có CLI nhưng daemon/build lỗi thì test thất bại.
+
 Yêu cầu Docker Engine/Desktop và Docker Compose:
 
 ```powershell

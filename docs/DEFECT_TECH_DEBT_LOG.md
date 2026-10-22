@@ -44,6 +44,14 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-04 — Docker build context (21/10/2026)
+
+- **IMPLEMENTED LOCAL / chờ xác minh Docker**, chưa commit/push/merge/deploy, cùng nhánh `fix/aud-01-frontend-boot`; bảo toàn AUD-01/AUD-02.
+- `COPY . .` trước sửa có thể đưa `.env` không track vào image vì `.dockerignore` không loại. Thêm `**/.env` và `**/.env.*`, gồm cả ví dụ và cấu hình ở thư mục con; mở rộng loại SQLite local, runtime và log. Giữ tài nguyên KB mặc định/dictionary cần thiết.
+- Thêm `tests/test_docker_context.py`: Docker BuildKit thực, context tạm chứa sentinel giả, `FROM scratch` + `COPY . /`, xuất filesystem để kiểm tra secret/runtime bị loại và tài nguyên cần thiết còn nguyên. Pytest mặc định trong CI tự thu thập test này; test không đọc secret thật và không cần pull base image.
+- Ruff và `git diff --check` PASS. Local Docker test **1 skipped** vì không có Docker CLI; chưa chứng minh bằng build/image thực, chưa chạy CI patch mới. Issue chưa đạt gate đóng hoàn toàn; cần chạy test trên máy có Docker/CI rồi build Dockerfile ứng dụng hiện có.
+- Không thay cấu hình runtime/Compose, không triển khai. Bổ sung cách kiểm chứng và truyền cấu hình trong `docs/DEPLOYMENT.md`.
+
 ### Theo dõi audit AUD-02 — Knowledge Base path containment (21/10/2026)
 
 - **FIXED LOCAL / chưa commit, push, merge hoặc deploy**, trên nhánh `fix/aud-01-frontend-boot`; giữ nguyên sửa đổi AUD-01.

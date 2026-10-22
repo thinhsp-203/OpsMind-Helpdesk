@@ -44,6 +44,16 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-05 — RAG phục vụ lại filesystem khi published rỗng (21/10/2026)
+
+- **FIXED LOCAL / chưa commit/push/merge/deploy**, nhánh `fix/aud-01-frontend-boot`; bảo toàn AUD-01/AUD-02/AUD-04/AUD-03.
+- Hai regression FAIL trước sửa: archive qua API tới tài liệu published cuối cùng nhưng RAG vẫn grounded từ file gốc; giả lập lỗi truy vấn kho KB vẫn trả 200 từ filesystem.
+- Loader mặc định chỉ dùng tài liệu published trong DB, kể cả danh sách rỗng; bỏ fallback tự động sang file gốc/runtime. Lỗi đọc kho phát sinh `KnowledgeBaseUnavailableError`; API RAG trả 503 chung trước khi lưu chat. Exception không được cache nên đọc lại được khi DB phục hồi.
+- Regression sau sửa PASS: KB user rỗng, archived detail 404, RAG không matches/sources; publish lại dùng nội dung mới trong DB; lỗi KB không lộ thông tin giả lập, không ghi hội thoại và phục hồi không clear cache thủ công. Nhánh override thư mục phục vụ fixture vẫn hoạt động qua test ingest hiện có.
+- Nhóm RAG/KB **22 passed, 1 skipped**; toàn bộ pytest **95 passed, 7 skipped, 1 warning**, 74.02s; coverage kết hợp line/branch **81.56%**. Ruff, `git diff --check` và RAG evaluator dev/holdout PASS, holdout Hit@1 23/30 và Hit@3 30/30.
+- Skip: 5 PostgreSQL, 1 Docker, 1 symlink Windows. CI patch mới, Linux runtime, Docker/PostgreSQL và browser E2E mới chưa chạy. Warning TestClient/httpx đã có từ AUD-03.
+- AUD-08 về cache nóng/nhiều worker vẫn mở: bản sửa không buộc truy vấn DB mỗi request nếu index đã cache. 503 chỉ xử lý lỗi đọc kho trong lần nạp/rebuild, không phải handler toàn cục cho mọi lỗi DB. Không xóa runbook gốc hoặc thay cơ chế seed.
+
 ### Theo dõi audit AUD-03 — dependency advisories (21/10/2026)
 
 - **FIXED LOCAL / chờ CI Linux, PostgreSQL và Docker**, chưa commit/push/merge/deploy; nhánh `fix/aud-01-frontend-boot`, giữ AUD-01/AUD-02/AUD-04.

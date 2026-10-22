@@ -5,6 +5,13 @@
 **Phiên bản:** 2.0  
 **Ngày cập nhật:** 14/10/2026  
 
+### Bổ sung regression AUD-05 (21/10/2026, local)
+
+- `tests/test_api.py::test_rag_does_not_resurrect_files_after_last_document_is_archived`: archive qua API đến tài liệu published cuối cùng, RAG đang có index không đọc lại filesystem; KB user rỗng, chi tiết archived trả 404; publish lại thì phục vụ đúng nội dung DB mới.
+- `tests/test_api.py::test_rag_database_failure_returns_503_and_recovers_without_cache_clear`: lỗi đọc kho tri thức được kiểm soát bằng HTTP 503, không lộ chi tiết lỗi DB, không lưu chat exchange, phục hồi lần gọi sau mà không clear cache thủ công.
+- Hai regression FAIL trước sửa và PASS sau sửa trên SQLite tổng hợp. Nhóm RAG/KB 22 passed, 1 symlink skipped. Lệnh: `python -m pytest tests/test_api.py -k "resurrect_files or database_failure_returns or knowledge or rag" -q`.
+- Đây là kiểm chứng local cho AUD-05; số liệu/tuyên bố tổng hợp lịch sử ở các phần bên dưới không thay thế bằng chứng CI/deploy hiện tại. Cache nhiều worker và PostgreSQL vẫn cần kiểm chứng riêng.
+
 ---
 
 ## 1. Bảng tổng hợp độ phủ kiểm thử (Test Coverage Summary)

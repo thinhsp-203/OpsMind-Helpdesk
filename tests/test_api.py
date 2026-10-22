@@ -761,6 +761,74 @@ def test_analytics_and_ticket_filters() -> None:
     ).status_code == 422
 
 
+def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
+    admin_headers = auth("admin")
+    user_headers = auth()
+    documents = store.list_knowledge_documents(status="published")
+    last_slug = "vpn_forticlient.md"
+    assert any(doc["slug"] == last_slug for doc in documents)
+    for doc in documents:
+        if doc["slug"] != last_slug:
+            response = client.put(
+                f"/knowledge/{doc['slug']}", headers=admin_headers, json={"status": "archived"},
+            )
+            assert response.status_code == 200
+    question = {"question": "Tôi không kết nối được VPN FortiClient"}
+    before = client.post("/rag/ask", headers=user_headers, json=question)
+    assert before.status_code == 200
+    assert before.json()["grounded"] is True
+    archived = client.put(
+        f"/knowledge/{last_slug}", headers=admin_headers, json={"status": "archived"},
+    )
+    assert archived.status_code == 200
+    assert store.list_knowledge_documents(status="published") == []
+    from app.rag import BASE_KNOWLEDGE_DIR
+    assert (BASE_KNOWLEDGE_DIR / last_slug).is_file()
+    assert client.get("/knowledge", headers=user_headers).json() == []
+    assert client.get(f"/knowledge/{last_slug}", headers=user_headers).status_code == 404
+    after = client.post("/rag/ask", headers=user_headers, json=question)
+    assert after.status_code == 200
+    assert after.json()["grounded"] is False
+    assert after.json()["matches"] == []
+    assert after.json()["sources"] == []
+    assert after.json()["llm_generated"] is False
+    assert load_knowledge_base() == []
+    assert build_retrieval_index() == []
+
+    # Re-publishing invalidates the empty cache and reads the approved DB content.
+    published = client.put(
+        f"/knowledge/{last_slug}", headers=admin_headers,
+        json={"status": "published", "content": "# VPN FortiClient\nAUD05-DB-PUBLISHED VPN access"},
+    )
+    assert published.status_code == 200
+    restored = client.post("/rag/ask", headers=user_headers, json=question)
+    assert restored.status_code == 200
+    assert restored.json()["grounded"] is True
+    assert [doc["source"] for doc in restored.json()["sources"]] == [last_slug]
+    assert "AUD05-DB-PUBLISHED" in restored.json()["matches"][0]["content"]
+
+
+def test_rag_database_failure_returns_503_and_recovers_without_cache_clear(monkeypatch):
+    from sqlite3 import OperationalError
+
+    headers = auth()
+    question = {"question": "Tôi không kết nối được VPN FortiClient"}
+
+    def unavailable(*args, **kwargs):
+        raise OperationalError("AUD05-SYNTHETIC-PRIVATE-DB-DETAIL")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "list_knowledge_documents", unavailable)
+        response = client.post("/rag/ask", headers=headers, json=question)
+        assert response.status_code == 503
+        assert "AUD05-SYNTHETIC-PRIVATE-DB-DETAIL" not in response.text
+        assert "matches" not in response.json()
+        assert client.get("/rag/sessions", headers=headers).json() == []
+    recovered = client.post("/rag/ask", headers=headers, json=question)
+    assert recovered.status_code == 200
+    assert recovered.json()["grounded"] is True
+
+
 def test_rag_finds_vietnamese_printer_and_vpn_sources() -> None:
     printer = generate_answer("Máy in bị kẹt lệnh, tôi cần kiểm tra gì?")
     vpn = generate_answer("Tôi không kết nối được VPN FortiClient do chứng thư hết hạn")

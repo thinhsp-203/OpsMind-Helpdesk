@@ -75,6 +75,14 @@ sequenceDiagram
   end
 ```
 
+### Nguồn tri thức và trạng thái xuất bản (AUD-05)
+
+Ở cấu hình mặc định, `app/rag.py` nạp duy nhất tài liệu `published` từ DB rồi tạo retrieval index. Danh sách published rỗng là trạng thái hợp lệ: RAG trả `grounded=false`, không có matches/sources và đề nghị tạo ticket. Không đọc lại runbook gốc hoặc tài liệu runtime từ filesystem khi kho DB rỗng hoặc lỗi. Runbook mặc định vẫn được seed vào DB lúc khởi tạo; các dòng đã tồn tại với trạng thái archived không được xuất bản lại bởi loader.
+
+Nếu truy vấn kho tri thức lỗi lúc nạp/rebuild index, loader phát sinh `KnowledgeBaseUnavailableError`; `POST /rag/ask` trả HTTP 503 với thông báo chung, không lưu chat exchange từ lần gọi thất bại. Exception không bị cache nên lần gọi sau có thể thử lại khi DB phục hồi. Cache đã nóng và invalidation giữa nhiều worker chưa được giải quyết trong AUD-05; theo dõi riêng AUD-08.
+
+Nhánh đọc filesystem chỉ còn khi code chủ động override `KNOWLEDGE_DIR` sang thư mục khác, phục vụ fixture/thử nghiệm cách ly; không phải cơ chế failover hoặc một tùy chọn cấu hình production mới.
+
 ## 4. Sequence — Agent tiếp nhận và xử lý
 
 ```mermaid

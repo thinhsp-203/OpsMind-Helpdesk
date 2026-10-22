@@ -371,66 +371,48 @@ def _tokens(text: str) -> list[str]:
     return normalized
 
 
+class KnowledgeBaseUnavailableError(RuntimeError):
+    """The authoritative publication store could not be read."""
+
+
 @lru_cache(maxsize=1)
 def load_knowledge_base() -> list[dict[str, Any]]:
-    docs_by_source: dict[str, dict[str, Any]] = {}
     if KNOWLEDGE_DIR.resolve() == BASE_KNOWLEDGE_DIR.resolve():
         try:
             from app import store
             db_docs = store.list_knowledge_documents(status="published")
-            if db_docs:
-                return [
-                    {
-                        "title": doc["title"],
-                        "source": doc["slug"],
-                        "content": doc["content"],
-                        "category": doc["category"],
-                        "tags": doc["tags"],
-                        "is_builtin": bool(doc["is_builtin"]),
-                        "id": doc["id"],
-                    }
-                    for doc in sorted(db_docs, key=lambda d: d["slug"])
-                ]
         except Exception as exc:
-            logger.debug("Could not read knowledge docs from store, falling back to filesystem: %s", exc)
+            logger.warning("Could not read published knowledge documents from the store")
+            # Exceptions are not cached: a recovered store can be retried immediately.
+            raise KnowledgeBaseUnavailableError("Knowledge Base unavailable") from exc
+        # An empty published set is authoritative, not a reason to revive files.
+        return [
+            {
+                "title": doc["title"],
+                "source": doc["slug"],
+                "content": doc["content"],
+                "category": doc["category"],
+                "tags": doc["tags"],
+                "is_builtin": bool(doc["is_builtin"]),
+                "id": doc["id"],
+            }
+            for doc in sorted(db_docs, key=lambda d: d["slug"])
+        ]
 
-        if BASE_KNOWLEDGE_DIR.is_dir():
-            for path in sorted(BASE_KNOWLEDGE_DIR.glob("*.md")):
-                content = path.read_text(encoding="utf-8")
-                heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
-                docs_by_source[path.name] = {
-                    "title": heading.group(1) if heading else _normalize_title(path),
-                    "source": path.name,
-                    "content": content,
-                    "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
-                    "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
-                    "is_builtin": True,
-                }
-        if STORAGE_KNOWLEDGE_DIR.is_dir() and STORAGE_KNOWLEDGE_DIR.resolve() != BASE_KNOWLEDGE_DIR.resolve():
-            for path in sorted(STORAGE_KNOWLEDGE_DIR.glob("*.md")):
-                content = path.read_text(encoding="utf-8")
-                heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
-                docs_by_source[path.name] = {
-                    "title": heading.group(1) if heading else _normalize_title(path),
-                    "source": path.name,
-                    "content": content,
-                    "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
-                    "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
-                    "is_builtin": False,
-                }
-    else:
-        if KNOWLEDGE_DIR.is_dir():
-            for path in sorted(KNOWLEDGE_DIR.glob("*.md")):
-                content = path.read_text(encoding="utf-8")
-                heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
-                docs_by_source[path.name] = {
-                    "title": heading.group(1) if heading else _normalize_title(path),
-                    "source": path.name,
-                    "content": content,
-                    "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
-                    "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
-                    "is_builtin": False,
-                }
+    # Explicit directory overrides support isolated filesystem fixtures; never failover here.
+    docs_by_source: dict[str, dict[str, Any]] = {}
+    if KNOWLEDGE_DIR.is_dir():
+        for path in sorted(KNOWLEDGE_DIR.glob("*.md")):
+            content = path.read_text(encoding="utf-8")
+            heading = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+            docs_by_source[path.name] = {
+                "title": heading.group(1) if heading else _normalize_title(path),
+                "source": path.name,
+                "content": content,
+                "category": CATEGORY_BY_SOURCE.get(path.name, "general"),
+                "tags": f"{CATEGORY_BY_SOURCE.get(path.name, 'general')}, runbook",
+                "is_builtin": False,
+            }
     return sorted(docs_by_source.values(), key=lambda d: d["source"])
 
 

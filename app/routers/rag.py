@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app import store
 from app.dependencies import current_user
-from app.rag import generate_answer
+from app.rag import KnowledgeBaseUnavailableError, generate_answer
 from app.schemas import RAGFeedback, RAGQuestion
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,13 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 @router.post("/ask")
 async def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     user = await current_user(request)
-    result = generate_answer(payload.question.strip())
+    try:
+        result = generate_answer(payload.question.strip())
+    except KnowledgeBaseUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Kho tri thức tạm thời không khả dụng. Vui lòng thử lại sau.",
+        ) from exc
     try:
         result["session_id"] = store.save_chat_exchange(
             user["username"],

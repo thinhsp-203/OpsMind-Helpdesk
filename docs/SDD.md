@@ -426,3 +426,8 @@ erDiagram
 - BM25 và synonym map chỉ là baseline; điểm relevance không phải xác suất độ đúng.
 - Response `/rag/ask` kèm `triage`: danh mục theo source đứng đầu và ưu tiên heuristic theo các cụm từ tác động rõ ràng. Web hiển thị lý do và chỉ điền vào form khi người dùng chọn chuyển tiếp; mọi giá trị còn sửa được trước submit. Đây không phải dự đoán ML/chẩn đoán hay SLA được đơn vị nghiệp vụ phê duyệt.
 - SQLite phù hợp development/test đơn máy; Docker Compose dùng PostgreSQL persistent. Chưa có kết quả thử tải/HA hoặc bằng chứng vận hành production.
+
+
+### AUD-09 — Render storage boundary
+
+Blueprint đề xuất một web instance trả phí, disk mount `/app/runtime`, storage cùng đường; attachment ở `attachments/`, metadata Neon riêng. SQLite fallback cũng đặt trên disk nhưng không tự chuyển DB. Không có object storage, scale ngang hay migration tự động. Xem runbook AUD-09 trong DEPLOYMENT.md; cloud durability và quyền UID 10001 còn chờ nghiệm thu.

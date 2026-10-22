@@ -111,3 +111,8 @@ py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
 # 5. Đánh giá tự động độ chính xác của giải thuật RAG
 py -m scripts.evaluate_rag
 ```
+
+
+### AUD-09 — persistent attachment deployment
+
+Kiểm local: YAML parse, storage/SQLite path nằm dưới disk, một instance và gói trả phí; API upload/download/access-control hiện có. Gate cloud chưa chạy: validate Blueprint trên Render, UID 10001 ghi volume, di chuyển file/checksum + DB, restart/redeploy cùng disk và restore cách ly. Không thay kết quả cloud bằng test filesystem local.

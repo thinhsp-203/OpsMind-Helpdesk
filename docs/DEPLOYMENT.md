@@ -89,3 +89,53 @@ py -m scripts.evaluate_rag
 ## Giới hạn vận hành
 
 SQLite và file storage cục bộ chỉ dành cho development/demo đơn máy. Compose cung cấp PostgreSQL persistent, nhưng cấu hình hiện tại vẫn là demo: chưa cấu hình HTTPS/reverse proxy, rate limiting, email/WebSocket notifications, task queue, object storage, malware scan, backup tự động, monitoring, HA, thử tải hoặc quy trình nâng cấp production. Không đưa dữ liệu ticket/người dùng thật vào môi trường này.
+
+
+## AUD-09 — Render: attachment trên persistent disk
+
+`render.yaml` hiện là cấu hình đề xuất **trả phí**: `starter`, một instance,
+disk `opsmind-runtime` 1 GB mount tại `/app/runtime`, và
+`HELPDESK_STORAGE_PATH=/app/runtime`. Attachment đi vào
+`/app/runtime/attachments`; metadata vẫn dùng Neon qua `DATABASE_URL`.
+`HELPDESK_DB_PATH` trên disk chỉ là đường SQLite dự phòng, không tự migration
+Neon/SQLite. Phải kiểm tra DATABASE_URL trước triển khai.
+
+Render mặc định dùng filesystem tạm; chỉ dữ liệu dưới mount path được giữ.
+Disk cần dịch vụ trả phí, giới hạn một instance và làm deploy có gián đoạn.
+Xem [Render disks](https://render.com/docs/disks) và
+[Blueprint reference](https://render.com/docs/blueprint-spec).
+Thay đổi repository chưa tạo disk, nâng gói hay triển khai cloud.
+
+### Chuyển dữ liệu và nghiệm thu trước khi đóng AUD-09
+
+1. Trước **mọi** thao tác gây restart/redeploy (kể cả nâng gói/gắn disk),
+   tạm dừng upload và sao lưu attachment đang có từ instance còn sống cùng
+   metadata DB tại cùng mốc. Giữ nguyên tên file UUID lưu trong metadata,
+   không đổi sang tên hiển thị. Kiểm số lượng, kích thước và SHA-256.
+   Nếu instance hiện tại không cho xuất file, phải giải quyết việc xuất trước;
+   không redeploy để thử lấy lại file. File đã mất không thể tái tạo từ metadata.
+2. Kiểm tra Blueprint bằng Render CLI/API chính thức, rà soát chi phí và lịch
+   gián đoạn trước khi áp dụng. Không áp dụng trực tiếp vào production khi chưa
+   có bản sao lưu đã kiểm tra và cửa sổ bảo trì.
+3. Sau khi mount, kiểm tra đường storage và quyền ghi dưới đúng UID/GID
+   `10001:10001` của Dockerfile bằng runtime shell. Chown trong image không
+   chứng minh quyền trên volume được mount. Không đổi ứng dụng sang root để
+   bỏ qua lỗi quyền. Disk không có ở build/pre-deploy, nên kiểm ở runtime.
+4. Khôi phục file vào `/app/runtime/attachments`, giữ tên UUID, đối chiếu
+   checksum và bản ghi DB. Chỉ mở lại upload sau khi kiểm tra hoàn tất.
+5. Upload file giả qua API, ghi ticket/attachment ID và SHA-256. Download
+   phải đúng bytes; kiểm quyền requester/agent/admin và ticket khác.
+   Restart rồi redeploy **cùng disk**, đăng nhập lại, download ID cũ và so hash.
+   Lưu bằng chứng mount, UID, timestamp, hash; không ghi secret/dữ liệu thật.
+6. Sao lưu DB và file theo cùng mốc, giữ bản ngoài service và diễn tập restore
+   vào môi trường cách ly. Snapshot disk không phải backup đồng bộ với Neon.
+   Theo dõi dung lượng; 1 GB là cấu hình khởi đầu, chưa có quota/retention tự động.
+
+Rollback code phải giữ disk, mount path và biến storage. Không detach/xóa disk
+hoặc quay lại gói Free như một bước rollback. Nếu phục hồi dữ liệu, dừng ghi và
+phục hồi DB + file theo cùng checkpoint đã kiểm tra. Chưa có migration/restore
+tự động. Nếu cần nhiều instance hoặc giữ gói Free, cần thiết kế object storage;
+cấu hình này chưa triển khai phương án đó.
+
+Trạng thái: **IMPLEMENTED LOCAL; chờ Render validation, quyền volume thực và
+kiểm tra restart/redeploy cloud**. Kiểm thử local không chứng minh độ bền disk Render.

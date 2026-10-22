@@ -2,10 +2,21 @@ services:
   - type: web
     name: opsmind-helpdesk
     env: docker
-    plan: free
+    # Paid service + disk: applying this Blueprint incurs charges.
+    # Back up existing ephemeral attachments BEFORE any redeploy; see docs/DEPLOYMENT.md.
+    plan: starter
+    numInstances: 1
+    disk:
+      name: opsmind-runtime
+      mountPath: /app/runtime
+      sizeGB: 1
     region: singapore
     healthCheckPath: /health
     envVars:
+      - key: HELPDESK_STORAGE_PATH
+        value: /app/runtime
+      - key: HELPDESK_DB_PATH
+        value: /app/runtime/helpdesk.sqlite3
       - key: DEMO_MODE
         value: "false"
       - key: ALLOW_DEMO_CREDENTIALS
@@ -23,7 +34,7 @@ services:
       # Neon PostgreSQL connection string (khuyên dùng endpoint -pooler trên cùng region Singapore)
       - key: DATABASE_URL
         sync: false
-      # Kênh gửi Email trên Render Free: khuyên dùng 'resend' hoặc 'brevo' qua HTTPS API cổng 443
+      # Kênh gửi Email qua HTTPS: khuyên dùng 'resend' hoặc 'brevo' qua HTTPS API cổng 443
       - key: EMAIL_PROVIDER
         value: ""
       - key: RESEND_API_KEY

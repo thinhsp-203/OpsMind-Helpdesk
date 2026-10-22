@@ -134,3 +134,8 @@
 | TD-09 | P3 | Chưa có test tải 50 RPS; con số trong NFR vẫn là mục tiêu chưa đo | Benchmark với cấu hình/phương pháp được duyệt và báo cáo error rate/latency | **ĐÃ ĐÓNG (Closed)** qua script `scripts/benchmark_load.py` đo tải thực nghiệm (482 RPS cho health, 597 RPS cho config, 313 RPS cho knowledge, 35 RPS cho RAG BM25) |
 | TD-10 | P2 | CI có static source lint nhóm `S`, chưa có dependency/image vulnerability audit | Bổ sung scanner, xử lý findings và giữ report theo run CI | Đang mở |
 | TD-11 | P1 | Attachment chỉ allow-list và giới hạn dung lượng; chưa quét virus, quota tổng, retention hay sao lưu tệp | Chọn malware scanner, chính sách dữ liệu/retention và kiểm thử khôi phục trước pilot dữ liệu thật | Đang mở |
+
+
+### Theo dõi audit AUD-09 — Render attachment persistence (21/10/2026)
+
+**IMPLEMENTED LOCAL / CLOUD VERIFICATION PENDING**, chưa commit/push/deploy. Blueprint chuyển từ Free sang starter với disk 1 GB `/app/runtime`, storage và SQLite fallback cùng mount, một instance. Metadata vẫn Neon; có runbook sao lưu trước redeploy, migration UUID/checksum, quyền non-root, restart/redeploy, backup/restore và rollback giữ disk. Cấu hình áp dụng sẽ có phí; chưa tạo tài nguyên. Chưa có bằng chứng Render thực, chưa đóng hoàn toàn AUD-09; AUD-11 và TD-11 vẫn mở.

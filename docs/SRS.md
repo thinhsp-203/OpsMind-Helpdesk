@@ -362,3 +362,14 @@ chưa xác nhận server; khi có kết nối cần đăng nhập rồi logout l
 luồng đổi mật khẩu. Người dùng bị buộc đổi mật khẩu vẫn có thể logout.
 Request đã được xác thực trước khi thu hồi có thể hoàn thành; không có hủy
 in-flight hoặc xóa dữ liệu ứng dụng trong mọi tab theo thời gian thực.
+
+### AUD-24 — Mật khẩu là chuỗi nguyên trạng (22/10/2026)
+
+Create, login, change, admin-reset và reset bảo toàn nguyên chuỗi mật khẩu,
+bao gồm khoảng trắng đầu/cuối và Unicode; không trim, không chuẩn hóa NFC/NFD.
+Hai chuỗi khác code point là hai mật khẩu khác nhau. Ngưỡng hiện hành cho mật
+khẩu mới là 12–200 ký tự theo validator, tính trên chuỗi nhập nguyên trạng.
+Reset token vẫn trim riêng. Không tự thử mật khẩu trimmed/normalized khi login.
+Mật khẩu đã bị trim bởi bản cũ không thể suy ra khoảng trắng đã mất: người dùng
+cần reset lại bằng liên kết mới nếu không nhớ chuỗi đang có hiệu lực; không tự
+sửa hash hoặc thay đổi mật khẩu của tài khoản hiện có trong migration.

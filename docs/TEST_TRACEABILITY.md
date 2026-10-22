@@ -263,3 +263,14 @@ expected_status và surfacing 409, được thêm vào CI; không là browser E2
 `tests/test_postgres.py::test_postgres_aud23_concurrent_business_writes` có 7
 scenario dùng cùng helper hai connection thật; chưa chạy local vì thiếu PG.
 Acceptance local SQLite, API và Node có bằng chứng; PG/CI/staging vẫn pending.
+
+### AUD-24 — Password roundtrip
+
+`tests/test_aud24_password_roundtrip.py`: 16 ca API (create/change/reset/admin-reset
+× ASCII spaces/Unicode whitespace/Unicode NFC/Unicode NFD), xác minh PBKDF2 và
+login nguyên chuỗi thành công, trimmed hoặc canonical form khác bị từ chối;
+old_password có khoảng trắng vẫn được dùng nguyên trạng khi change. Reset token
+có padding được trim và chỉ dùng một lần. Bốn ca schema kiểm biên độ dài
+11/12/200/201 trên chuỗi có spaces. Baseline 7 FAIL, 13 PASS; sau sửa kiểm cùng
+test_password_reset và test_session_lifecycle. Dữ liệu/secret đều synthetic,
+SQLite sandbox; không gửi email thật hoặc sửa credential production.

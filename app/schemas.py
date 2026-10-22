@@ -132,9 +132,9 @@ class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=16, max_length=128)
     new_password: str = Field(min_length=12, max_length=200)
 
-    @field_validator("token", "new_password", mode="before")
+    @field_validator("token", mode="before")
     @classmethod
-    def trim_fields(cls, value: object) -> object:
+    def trim_token(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
 
 

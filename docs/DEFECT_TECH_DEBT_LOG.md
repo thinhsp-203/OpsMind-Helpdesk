@@ -293,3 +293,13 @@ rating update, expected_status được kiểm dưới khóa, KB row-lock + uniq
 Audit/document-version cùng transaction; tests có injected failure/rollback.
 Không đổi credentials/email, last-active-admin policy, runbook hay các issue khác.
 Migration duplicate dừng và yêu cầu owner đối chiếu, không sửa dữ liệu lịch sử.
+
+### AUD-24 — Reset tự trim mật khẩu (22/10/2026)
+
+**FIXED LOCAL; CI/staging pending**. ResetPasswordRequest validator trước sửa
+áp dụng strip cho cả token và new_password, làm đổi credential và kiểm length
+trên chuỗi đã cắt. Validator nay chỉ trim token; mật khẩu giữ nguyên như các
+luồng create/change/admin-reset/login. Regression baseline 7 FAIL/13 PASS gồm
+4 reset API và 3 biên length; bộ test tổng 20 ca. Không đổi policy độ dài, không
+thêm normalization/fallback login hoặc sửa mật khẩu lịch sử. Không mở rộng
+sang accessibility/i18n polish hay các gate PostgreSQL/cloud của issue trước.

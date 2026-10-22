@@ -175,10 +175,15 @@ sequenceDiagram
   U->>UI: Mở link email, nhập mật khẩu mới (≥12 ký tự)
   UI->>API: POST /auth/reset-password (token, new_password)
   API->>DB: Xác thực token_hash chưa dùng và chưa hết hạn
-  API->>DB: Cập nhật password_hash (PBKDF2), đánh dấu token used
-  API->>DB: Cập nhật password_changed_at = now
+  API->>DB: Consume reset token (transaction riêng)
+  API->>DB: Cập nhật password_hash (PBKDF2) và password_changed_at
+  API->>DB: Thu hồi token chưa dùng (cùng transaction cập nhật mật khẩu)
   API-->>UI: Thành công! Toàn bộ JWT token cũ bị vô hiệu hóa tức thì
 ```
+
+Liên kết reset đã cấp được thu hồi trong cùng transaction khi cập nhật mật khẩu, gồm đổi chủ động, Admin reset và reset bằng token. Đổi địa chỉ email thực sự hoặc chuyển trạng thái active/inactive cũng thu hồi token chưa dùng của tài khoản trong transaction cập nhật profile. Cập nhật tên hiển thị, giữ nguyên trạng thái active hoặc chỉ thay hoa/thường/khoảng trắng của cùng email không thu hồi token. Việc thu hồi không tác động token của tài khoản khác; token mới sau thay đổi vẫn dùng được một lần.
+
+AUD-06 dùng cơ chế đánh dấu `used` và đối chiếu `created_at` của token với `password_changed_at` để từ chối cả liên kết cũ tồn tại trước bản vá; không thêm cột/schema mới. Consume token và cập nhật mật khẩu vẫn là hai transaction; tính nguyên tử và các interleaving đồng thời thuộc AUD-07. Vòng đời JWT khi khóa/mở khóa tài khoản thuộc AUD-15, chưa được giải quyết bởi việc thu hồi reset token.
 
 ### 6.3. Quy trình thông báo sự cố đa kênh (Telegram & Discord)
 

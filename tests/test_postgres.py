@@ -215,6 +215,25 @@ def test_postgres_knowledge_version_history_and_restore(
     assert "Version 1 content" in updated_doc["content"]
 
 
+def test_postgres_reset_links_are_revoked_on_security_updates() -> None:
+    store.initialize_store()
+    store.reset_store()
+    store.create_user("pg.reset", "AUD06-InitialPassword-2026!", "user")
+    token = store.create_password_reset_token("pg.reset")
+    store.update_user_password("pg.reset", "AUD06-NewPassword-2026!")
+    assert store.verify_and_consume_reset_token(token) is None
+    token = store.create_password_reset_token("pg.reset")
+    store.update_user("pg.reset", {"email": "new@example.com"})
+    assert store.verify_and_consume_reset_token(token) is None
+    token = store.create_password_reset_token("pg.reset")
+    store.update_user("pg.reset", {"is_active": False})
+    store.update_user("pg.reset", {"is_active": True})
+    assert store.verify_and_consume_reset_token(token) is None
+    token = store.create_password_reset_token("pg.reset")
+    assert store.reset_password_with_token(token, "AUD06-RecoveredPassword-2026!") == "pg.reset"
+    assert store.verify_and_consume_reset_token(token) is None
+
+
 def test_postgres_user_profile_and_force_password_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

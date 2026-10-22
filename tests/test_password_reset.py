@@ -37,6 +37,133 @@ def clean_test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
     build_retrieval_index.cache_clear()
 
 
+@pytest.mark.parametrize("change_path", ["self", "admin", "store"])
+def test_old_reset_link_is_revoked_after_password_change(change_path: str) -> None:
+    login = client.post("/auth/login", json={"username": "user", "password": "user"})
+    user_headers = {"Authorization": f"Bearer {login.json()['token']}"}
+    old_link = store.create_password_reset_token("user")
+    other_link = store.create_password_reset_token("agent")
+    new_password = "AUD06-NewPassword-2026!"  # noqa: S105
+    if change_path == "self":
+        changed = client.post(
+            "/auth/change-password", headers=user_headers,
+            json={"old_password": "user", "new_password": new_password},
+        )
+        assert changed.status_code == 200
+    elif change_path == "admin":
+        admin = client.post("/auth/login", json={"username": "admin", "password": "admin"})
+        changed = client.post(
+            "/admin/users/user/reset-password",
+            headers={"Authorization": f"Bearer {admin.json()['token']}"},
+            json={"new_password": new_password, "force_change": False},
+        )
+        assert changed.status_code == 200
+    else:
+        store.update_user_password("user", new_password)
+    assert client.get("/auth/me", headers=user_headers).status_code == 401
+    stale = client.post(
+        "/auth/reset-password",
+        json={"token": old_link, "new_password": "AUD06-UnwantedPassword-2026!"},
+    )
+    assert stale.status_code == 400
+    assert client.post(
+        "/auth/login", json={"username": "user", "password": new_password},
+    ).status_code == 200
+    assert store.verify_and_consume_reset_token(other_link) == "agent"
+    fresh = store.create_password_reset_token("user")
+    payload = {"token": fresh, "new_password": "AUD06-RecoveredPassword-2026!"}
+    assert client.post("/auth/reset-password", json=payload).status_code == 200
+    assert client.post("/auth/reset-password", json=payload).status_code == 400
+
+
+@pytest.mark.parametrize("change_path", ["profile_email", "admin_email", "disable_enable"])
+def test_old_reset_link_is_revoked_after_security_profile_change(change_path: str) -> None:
+    store.update_user("user", {"email": "old@example.com"})
+    user = client.post("/auth/login", json={"username": "user", "password": "user"})
+    admin = client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    admin_headers = {"Authorization": f"Bearer {admin.json()['token']}"}
+    old_link = store.create_password_reset_token("user")
+    if change_path == "profile_email":
+        changed = client.patch(
+            "/auth/profile", headers={"Authorization": f"Bearer {user.json()['token']}"},
+            json={"email": "new@example.com", "current_password": "user"},
+        )
+        assert changed.status_code == 200
+    elif change_path == "admin_email":
+        changed = client.patch(
+            "/admin/users/user", headers=admin_headers, json={"email": "new@example.com"},
+        )
+        assert changed.status_code == 200
+    else:
+        assert client.patch(
+            "/admin/users/user", headers=admin_headers, json={"is_active": False},
+        ).status_code == 200
+        assert client.patch(
+            "/admin/users/user", headers=admin_headers, json={"is_active": True},
+        ).status_code == 200
+    assert client.post(
+        "/auth/reset-password",
+        json={"token": old_link, "new_password": "AUD06-UnwantedPassword-2026!"},
+    ).status_code == 400
+    assert client.post(
+        "/auth/login", json={"username": "user", "password": "user"},
+    ).status_code == 200
+    fresh = store.create_password_reset_token("user")
+    assert client.post(
+        "/auth/reset-password",
+        json={"token": fresh, "new_password": "AUD06-RecoveredPassword-2026!"},
+    ).status_code == 200
+
+
+def test_legacy_unused_reset_link_before_password_epoch_is_rejected() -> None:
+    token = store.create_password_reset_token("user")
+    # Emulate a persisted password change from the old implementation, without revocation.
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE users SET password_changed_at = ? WHERE username = ?",
+            (store._now(), "user"),
+        )
+    assert store.verify_and_consume_reset_token(token) is None
+    fresh = store.create_password_reset_token("user")
+    assert store.verify_and_consume_reset_token(fresh) == "user"
+
+
+@pytest.mark.parametrize("updates", [
+    {"full_name": "Updated Display Name"},
+    {"email": "USER@EXAMPLE.COM"},
+    {"is_active": True},
+])
+def test_reset_link_remains_valid_after_non_security_profile_update(updates: dict) -> None:
+    store.update_user("user", {"email": "user@example.com"})
+    token = store.create_password_reset_token("user")
+    store.update_user("user", updates)
+    assert store.verify_and_consume_reset_token(token) == "user"
+
+
+@pytest.mark.parametrize("change_path", ["password", "email", "disable"])
+def test_security_update_rolls_back_when_reset_link_revocation_fails(change_path: str) -> None:
+    import sqlite3
+
+    token = store.create_password_reset_token("user")
+    before = store.get_user_credentials("user")
+    with store._connect() as connection:
+        connection.executescript(
+            "CREATE TRIGGER fail_reset_revocation BEFORE UPDATE ON password_reset_tokens "
+            "BEGIN SELECT RAISE(ABORT, 'AUD06 revocation failure'); END;"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="AUD06 revocation failure"):
+        if change_path == "password":
+            store.update_user_password("user", "AUD06-NewPassword-2026!")
+        elif change_path == "email":
+            store.update_user("user", {"email": "changed@example.com"})
+        else:
+            store.update_user("user", {"is_active": False})
+    assert store.get_user_credentials("user") == before
+    with store._connect() as connection:
+        connection.execute("DROP TRIGGER fail_reset_revocation")
+    assert store.verify_and_consume_reset_token(token) == "user"
+
+
 def test_forgot_password_nonexistent_user_returns_uniform_success() -> None:
     response = client.post(
         "/auth/forgot-password",

@@ -5,6 +5,16 @@
 **Phiên bản:** 2.0  
 **Ngày cập nhật:** 14/10/2026  
 
+### Bổ sung regression AUD-06 (21/10/2026, local)
+
+- `test_old_reset_link_is_revoked_after_password_change` trong `tests/test_password_reset.py`: ba đường đổi mật khẩu (self/API Admin/store), JWT cũ bị từ chối, link reset cũ trả 400, token tài khoản khác còn hợp lệ, token mới dùng được một lần.
+- `test_old_reset_link_is_revoked_after_security_profile_change`: đổi email qua profile/Admin và khóa rồi mở khóa tài khoản không làm link cũ có hiệu lực trở lại.
+- `test_reset_link_remains_valid_after_non_security_profile_update`: không thu hồi nhầm khi đổi tên, cùng email khác hoa/thường hoặc active không đổi.
+- `test_legacy_unused_reset_link_before_password_epoch_is_rejected`: token chưa used còn trong DB nhưng được tạo trước mốc đổi mật khẩu bị từ chối; token mới sau mốc đó vẫn dùng được. Regression bổ sung FAIL trước khi thêm kiểm tra mốc thời gian.
+- `test_security_update_rolls_back_when_reset_link_revocation_fails`: SQLite trigger giả lập lỗi thu hồi; ba trường hợp password/email/disable rollback toàn bộ thay đổi tài khoản.
+- `tests/test_postgres.py::test_postgres_reset_links_are_revoked_on_security_updates`: thêm gate cho PostgreSQL trong CI, chưa chạy local do không có dịch vụ DB.
+- Trước sửa: 9 regression thất bại, 3 ca giữ hành vi hợp lệ pass; regression token lịch sử bổ sung cũng FAIL trước khi thêm guard mốc thời gian. Sau sửa cuối: nhóm password-reset/store 44 passed. Không coi các test này là chứng minh chống race của AUD-07 hoặc thu hồi JWT sau disable/enable của AUD-15.
+
 ### Bổ sung regression AUD-05 (21/10/2026, local)
 
 - `tests/test_api.py::test_rag_does_not_resurrect_files_after_last_document_is_archived`: archive qua API đến tài liệu published cuối cùng, RAG đang có index không đọc lại filesystem; KB user rỗng, chi tiết archived trả 404; publish lại thì phục vụ đúng nội dung DB mới.

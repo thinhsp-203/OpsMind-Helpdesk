@@ -44,6 +44,16 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-06 — thu hồi reset link khi thay đổi bảo mật tài khoản (21/10/2026)
+
+- **FIXED LOCAL / chưa commit/push/merge/deploy**, cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Tái hiện trước sửa: 9 regression FAIL (self/Admin/store password change, hai đường đổi email, disable-enable, và rollback khi thu hồi lỗi), 3 ca giữ hành vi hợp lệ PASS. Regression token lịch sử bổ sung FAIL trước khi thêm guard mốc thời gian.
+- Thu hồi token chưa dùng trong cùng transaction với cập nhật mật khẩu; dùng chung cho self change, Admin reset và reset qua token. Đổi email thực sự hoặc chuyển trạng thái active/inactive cũng thu hồi trong transaction cập nhật profile. Tên hiển thị, email chỉ khác hoa/thường/khoảng trắng và trạng thái active không đổi không thu hồi nhầm.
+- Verify token đối chiếu `created_at` với `password_changed_at` để từ chối link chưa used có từ trước lần đổi mật khẩu đã lưu, kể cả dữ liệu tồn trước bản vá. Không thêm schema; token tài khoản khác không bị thu hồi, token mới sau thay đổi vẫn hoạt động một lần.
+- Nhóm password-reset/store cuối **44 passed**; toàn bộ pytest **108 passed, 8 skipped, 1 warning**, 83.09s; coverage kết hợp line/branch **81.58%**. Ruff và `git diff --check` PASS. SQLite trigger giả lập lỗi thu hồi xác minh password/email/disable đều rollback thay đổi tài khoản.
+- Thêm test PostgreSQL cho password/email/disable-enable và fresh token trong suite CI hiện có; local **6 PostgreSQL skipped**, cùng 1 Docker và 1 symlink Windows. Chưa chạy CI patch mới, PostgreSQL/Docker/Linux runtime hoặc browser E2E mới. Warning TestClient/httpx đã có từ AUD-03.
+- **AUD-07 còn mở:** consume token và cập nhật mật khẩu vẫn hai transaction, chưa chứng minh chống race/interleaving. **AUD-15 còn mở:** thu hồi reset link không sửa vòng đời JWT sau logout hoặc disable/enable. Không coi các token gửi tới email cũ sau các request phát hành đồng thời là đã được kiểm chứng.
+
 ### Theo dõi audit AUD-05 — RAG phục vụ lại filesystem khi published rỗng (21/10/2026)
 
 - **FIXED LOCAL / chưa commit/push/merge/deploy**, nhánh `fix/aud-01-frontend-boot`; bảo toàn AUD-01/AUD-02/AUD-04/AUD-03.

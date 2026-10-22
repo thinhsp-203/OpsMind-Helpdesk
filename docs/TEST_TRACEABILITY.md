@@ -5,6 +5,14 @@
 **Phiên bản:** 2.0  
 **Ngày cập nhật:** 14/10/2026  
 
+### Bổ sung regression AUD-08 (21/10/2026, local)
+
+- `tests/test_api.py::test_knowledge_changes_reach_an_independent_warm_reader`: sáu trường hợp edit/archive/reject/restore/delete/publish qua API process cha; process con đã warm tiếp tục sống và không nhận lệnh clear cache, đọc đúng kết quả sau commit.
+- `test_warm_retrieval_cache_fails_closed_on_store_error`: API đã warm nhưng lỗi truy vấn KB vẫn trả 503, không lộ lỗi giả, không ghi thêm chat; phục hồi không clear cache thủ công.
+- Cả 7 ca FAIL trước sửa. Sau sửa nhóm RAG/KB 29 passed, 1 symlink skipped; riêng 7 ca vẫn PASS sau khi chuyển process fixture vào `tests/conftest.py` để chia sẻ với PostgreSQL.
+- `tests/test_postgres.py::test_postgres_kb_changes_reach_independent_warm_reader`: thêm sáu trường hợp store mutation và process đọc độc lập dùng PostgreSQL cho CI; local chưa có DB nên skip. Không suy kết quả SQLite thành PostgreSQL PASS.
+- RAG evaluator dev/holdout đạt các gate, holdout Hit@1 23/30, Hit@3 30/30, MRR@3 0.878. Không phải phép đo tải hoặc answer quality. Không khẳng định request đã đọc trước commit bị thu hồi.
+
 ### Bổ sung regression AUD-07 (21/10/2026, local)
 
 - `tests/test_password_reset.py::test_atomic_reset_rolls_back_token_and_password_on_failure`: hai trigger SQLite giả lập lỗi ghi password và lỗi thu hồi link còn lại; token, hash/epoch/force flag cùng rollback, link dùng lại được sau khi bỏ lỗi.

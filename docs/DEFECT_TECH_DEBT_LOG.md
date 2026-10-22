@@ -44,6 +44,16 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-08 — cache KB giữa các process (21/10/2026)
+
+- **FIXED LOCAL / chờ PostgreSQL và deployment nhiều worker**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Tái hiện **7 regression FAIL trước sửa**: process đọc độc lập đã warm không thấy edit/archive/reject/restore/delete/publish từ API process cha; cache nóng vẫn trả 200 khi truy vấn KB bị lỗi. Đây là hai process thật trên SQLite, không chỉ mock cache_clear.
+- Bỏ cache lâu dài của danh sách DB; mỗi retrieval đọc tập published hiện hành. Chỉ cache index chunk/tokenize theo tuple immutable đầy đủ title/source/category/tags/content, tối đa một snapshot. Giữ hook cache_clear hiện có để tương thích reindex/reload dictionary; không thêm schema/revision table/TTL/dịch vụ.
+- Sau sửa nhóm RAG/KB **29 passed, 1 skipped**, riêng 7 regression PASS sau khi đưa process fixture vào conftest dùng chung cho PG. Thêm 6 integration cases PostgreSQL cho CI; local chưa có DB.
+- Toàn bộ pytest **123 passed, 18 skipped, 1 warning**, 107.93s; combined line/branch coverage **81.76%**. Ruff, git diff --check và RAG dev/holdout PASS; holdout Hit@1 23/30, Hit@3 30/30, MRR@3 0.878.
+- Skip: **16 PostgreSQL, 1 Docker, 1 symlink Windows**. Chưa chạy CI patch mới, PostgreSQL runtime, Linux/Docker hoặc deployment nhiều Uvicorn worker. Warning TestClient/httpx có từ AUD-03.
+- Freshness theo snapshot DB: lượt đọc bắt đầu sau commit thấy trạng thái mới; request đã đọc trước commit có thể hoàn tất với snapshot cũ. Không thu hồi hội thoại lịch sử hoặc đồng bộ dictionary toàn cục giữa worker. Mỗi retrieval cần đọc DB, không trả index cache khi đọc KB lỗi; chưa benchmark tải.
+
 ### Theo dõi audit AUD-07 — reset mật khẩu nguyên tử và consume token đồng thời (21/10/2026)
 
 - **FIXED LOCAL / chờ PostgreSQL runtime**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, giữ các sửa đổi trước.

@@ -375,7 +375,6 @@ class KnowledgeBaseUnavailableError(RuntimeError):
     """The authoritative publication store could not be read."""
 
 
-@lru_cache(maxsize=1)
 def load_knowledge_base() -> list[dict[str, Any]]:
     if KNOWLEDGE_DIR.resolve() == BASE_KNOWLEDGE_DIR.resolve():
         try:
@@ -490,22 +489,47 @@ def chunk_markdown(text: str, chunk_size: int = 650) -> list[str]:
 
 
 @lru_cache(maxsize=1)
-def build_retrieval_index() -> list[dict[str, Any]]:
+def _cached_retrieval_index(
+    snapshot: tuple[tuple[str, str, str, str, str], ...],
+) -> list[dict[str, Any]]:
     passages: list[dict[str, Any]] = []
-    for document in load_knowledge_base():
-        for chunk in chunk_markdown(document["content"]):
-            words = _tokens(f"{document['title']} {chunk}")
+    for title, source, category, tags, content in snapshot:
+        for chunk in chunk_markdown(content):
+            words = _tokens(f"{title} {chunk}")
             passages.append(
                 {
-                    "title": document["title"],
-                    "source": document["source"],
-                    "category": document.get("category", CATEGORY_BY_SOURCE.get(document["source"], "general")),
-                    "tags": document.get("tags", ""),
+                    "title": title,
+                    "source": source,
+                    "category": category,
+                    "tags": tags,
                     "content": chunk,
                     "tokens": words,
                 }
             )
     return passages
+
+
+def build_retrieval_index() -> list[dict[str, Any]]:
+    # Read publication state on every lookup, including when a local index is warm.
+    # Immutable content keys let workers observe commits without shared cache invalidation.
+    snapshot = tuple(
+        (
+            document["title"], document["source"],
+            document.get("category", CATEGORY_BY_SOURCE.get(document["source"], "general")),
+            document.get("tags", ""), document["content"],
+        )
+        for document in load_knowledge_base()
+    )
+    return _cached_retrieval_index(snapshot)
+
+
+def clear_retrieval_cache() -> None:
+    _cached_retrieval_index.cache_clear()
+
+
+# Preserve existing internal invalidation hooks; DB documents themselves are never cached.
+load_knowledge_base.cache_clear = clear_retrieval_cache
+build_retrieval_index.cache_clear = clear_retrieval_cache
 
 
 def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]]:

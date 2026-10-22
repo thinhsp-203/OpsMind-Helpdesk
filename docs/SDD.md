@@ -79,9 +79,17 @@ sequenceDiagram
 
 Ở cấu hình mặc định, `app/rag.py` nạp duy nhất tài liệu `published` từ DB rồi tạo retrieval index. Danh sách published rỗng là trạng thái hợp lệ: RAG trả `grounded=false`, không có matches/sources và đề nghị tạo ticket. Không đọc lại runbook gốc hoặc tài liệu runtime từ filesystem khi kho DB rỗng hoặc lỗi. Runbook mặc định vẫn được seed vào DB lúc khởi tạo; các dòng đã tồn tại với trạng thái archived không được xuất bản lại bởi loader.
 
-Nếu truy vấn kho tri thức lỗi lúc nạp/rebuild index, loader phát sinh `KnowledgeBaseUnavailableError`; `POST /rag/ask` trả HTTP 503 với thông báo chung, không lưu chat exchange từ lần gọi thất bại. Exception không bị cache nên lần gọi sau có thể thử lại khi DB phục hồi. Cache đã nóng và invalidation giữa nhiều worker chưa được giải quyết trong AUD-05; theo dõi riêng AUD-08.
+Nếu truy vấn kho tri thức lỗi, loader phát sinh `KnowledgeBaseUnavailableError`; `POST /rag/ask` trả HTTP 503 với thông báo chung, không lưu chat exchange từ lần gọi thất bại. Exception không bị cache nên lần gọi sau có thể thử lại khi DB phục hồi. Từ AUD-08, mỗi retrieval đều đọc trạng thái xuất bản hiện hành, kể cả khi index trong process đã nóng; lỗi đọc KB không được thay bằng kết quả cache cũ.
 
 Nhánh đọc filesystem chỉ còn khi code chủ động override `KNOWLEDGE_DIR` sang thư mục khác, phục vụ fixture/thử nghiệm cách ly; không phải cơ chế failover hoặc một tùy chọn cấu hình production mới.
+
+### Tính nhất quán giữa worker (AUD-08)
+
+Không cache lâu dài danh sách tài liệu từ DB. Mỗi lần dựng/lấy index đều đọc tập `published` hiện hành, chuẩn hóa thứ tự theo source rồi tạo khóa immutable gồm title, source, category, tags và content. Chỉ phần chunk/tokenize được cache theo khóa nội dung đầy đủ này với tối đa một snapshot trong mỗi process. Nội dung không đổi thì tái sử dụng index; edit, archive, review, restore, delete hoặc publish thay đổi tập dữ liệu và tự chọn index tương ứng, không phụ thuộc process nhận mutation gọi cache_clear.
+
+Các hook `load_knowledge_base.cache_clear()` và `build_retrieval_index.cache_clear()` hiện có được giữ để clear cache index, gồm khi reload dictionary/reindex. Không thêm schema, revision table, TTL hoặc dịch vụ cache. Đổi lại, mỗi retrieval cần đọc DB; kết quả cache nóng không được phục vụ khi đọc KB lỗi.
+
+Cam kết là snapshot của lần đọc DB: retrieval bắt đầu đọc sau commit sẽ thấy trạng thái đã commit. Request đã đọc snapshot trước mutation có thể hoàn tất với dữ liệu trước mutation; không hủy hoặc thu hồi câu trả lời đang xử lý hay hội thoại lịch sử. Local kiểm process API và process đọc Python riêng, cùng SQLite, đã warm trước mutation; chưa phải kiểm deployment nhiều Uvicorn worker qua load balancer. PostgreSQL có test tương ứng trong CI, chưa chạy runtime local. Dictionary cấu hình toàn cục của worker không thuộc cơ chế đồng bộ tài liệu này.
 
 ## 4. Sequence — Agent tiếp nhận và xử lý
 

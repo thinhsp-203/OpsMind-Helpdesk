@@ -761,6 +761,81 @@ def test_analytics_and_ticket_filters() -> None:
     ).status_code == 422
 
 
+@pytest.mark.parametrize("change", ["edit", "archive", "reject", "restore", "delete", "publish"])
+def test_knowledge_changes_reach_an_independent_warm_reader(change: str, knowledge_reader_process) -> None:
+    # Setup only touches the isolated fixture DB; keep a single controlled document.
+    with store._connect() as connection:
+        connection.execute("UPDATE knowledge_documents SET status = 'archived'")
+    admin_headers = auth("admin")
+    user_headers = auth()
+    initial = "# VPN FortiClient\nAUD08-INITIAL FortiClient VPN troubleshooting policy"
+    revised = "# VPN FortiClient\nAUD08-REVISED FortiClient VPN troubleshooting policy"
+    created = client.post(
+        "/knowledge", headers=admin_headers,
+        json={"title": "VPN Worker Policy", "category": "network", "content": initial,
+              "status": "draft" if change == "publish" else "published"},
+    )
+    assert created.status_code == 201
+    slug = created.json()["slug"]
+    if change == "restore":
+        assert client.put(
+            f"/knowledge/{slug}", headers=admin_headers, json={"content": revised},
+        ).status_code == 200
+    question = "Tôi không kết nối được VPN FortiClient"
+    before = client.post("/rag/ask", headers=user_headers, json={"question": question})
+    assert before.status_code == 200
+    with knowledge_reader_process() as ask:
+        warm = ask(question)
+        assert warm["grounded"] is (change != "publish")
+        if change in {"edit", "archive"}:
+            payload = {"content": revised} if change == "edit" else {"status": "archived"}
+            updated = client.put(f"/knowledge/{slug}", headers=admin_headers, json=payload)
+        elif change in {"reject", "publish"}:
+            updated = client.post(
+                f"/knowledge/{slug}/review", headers=admin_headers,
+                json={"action": "approve" if change == "publish" else "reject"},
+            )
+        elif change == "restore":
+            updated = client.post(f"/knowledge/{slug}/restore/1", headers=admin_headers)
+        else:
+            updated = client.delete(f"/knowledge/{slug}", headers=admin_headers)
+        assert updated.status_code == 200
+        parent = client.post("/rag/ask", headers=user_headers, json={"question": question}).json()
+        remote = ask(question)
+        assert remote["pid"] == warm["pid"]
+        assert remote["matches"] == parent["matches"]
+        visible = change in {"edit", "restore", "publish"}
+        assert remote["grounded"] is visible
+        if visible:
+            marker = "AUD08-REVISED" if change == "edit" else "AUD08-INITIAL"
+            assert marker in remote["matches"][0]["content"]
+        else:
+            assert remote["matches"] == remote["sources"] == []
+
+
+def test_warm_retrieval_cache_fails_closed_on_store_error(monkeypatch):
+    from sqlite3 import OperationalError
+
+    headers = auth()
+    question = {"question": "Tôi không kết nối được VPN FortiClient"}
+    warm = client.post("/rag/ask", headers=headers, json=question)
+    assert warm.status_code == 200 and warm.json()["grounded"] is True
+    session_id = warm.json()["session_id"]
+
+    def unavailable(*args, **kwargs):
+        raise OperationalError("AUD08-SYNTHETIC-DB-ERROR")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "list_knowledge_documents", unavailable)
+        failed = client.post("/rag/ask", headers=headers, json=question)
+        assert failed.status_code == 503
+        assert "AUD08-SYNTHETIC-DB-ERROR" not in failed.text
+        session = client.get(f"/rag/sessions/{session_id}", headers=headers).json()
+        assert len(session["messages"]) == 2
+    recovered = client.post("/rag/ask", headers=headers, json=question)
+    assert recovered.status_code == 200 and recovered.json()["grounded"] is True
+
+
 def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
     admin_headers = auth("admin")
     user_headers = auth()

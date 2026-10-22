@@ -215,6 +215,52 @@ def test_postgres_knowledge_version_history_and_restore(
     assert "Version 1 content" in updated_doc["content"]
 
 
+@pytest.mark.parametrize("change", ["edit", "archive", "reject", "restore", "delete", "publish"])
+def test_postgres_kb_changes_reach_independent_warm_reader(change: str, knowledge_reader_process):
+    from app.rag import build_retrieval_index, generate_answer, load_knowledge_base
+
+    store.initialize_store()
+    store.reset_store()
+    with store._connect() as connection:
+        connection.execute("UPDATE knowledge_documents SET status = 'archived'")
+    load_knowledge_base.cache_clear()
+    build_retrieval_index.cache_clear()
+    initial = "# VPN FortiClient\nAUD08-INITIAL FortiClient VPN troubleshooting policy"
+    revised = "# VPN FortiClient\nAUD08-REVISED FortiClient VPN troubleshooting policy"
+    doc = store.create_knowledge_document(
+        "VPN Worker Policy", "network", initial,
+        status="draft" if change == "publish" else "published", author="admin",
+    )
+    if change == "restore":
+        store.update_knowledge_document(doc["id"], {"content": revised}, "admin")
+    question = "Tôi không kết nối được VPN FortiClient"
+    assert generate_answer(question)["grounded"] is (change != "publish")
+    with knowledge_reader_process() as ask:
+        warm = ask(question)
+        assert warm["grounded"] is (change != "publish")
+        if change == "edit":
+            store.update_knowledge_document(doc["id"], {"content": revised}, "admin")
+        elif change == "archive":
+            store.update_knowledge_document(doc["id"], {"status": "archived"}, "admin")
+        elif change in {"reject", "publish"}:
+            store.review_knowledge_document(doc["id"], "approve" if change == "publish" else "reject", "admin")
+        elif change == "restore":
+            store.restore_knowledge_version(doc["id"], 1, "admin")
+        else:
+            store.delete_knowledge_document(doc["id"])
+        # No local cache clear in either process after the committed mutation.
+        parent = generate_answer(question)
+        remote = ask(question)
+        assert remote["pid"] == warm["pid"]
+        assert remote["matches"] == parent["matches"]
+        assert remote["grounded"] is (change in {"edit", "restore", "publish"})
+        if remote["grounded"]:
+            marker = "AUD08-REVISED" if change == "edit" else "AUD08-INITIAL"
+            assert marker in remote["matches"][0]["content"]
+        else:
+            assert remote["matches"] == remote["sources"] == []
+
+
 @pytest.mark.parametrize("operation", ["reset", "consume", "issue"])
 def test_postgres_concurrent_reset_operations_have_one_winner(operation: str) -> None:
     from concurrent.futures import ThreadPoolExecutor

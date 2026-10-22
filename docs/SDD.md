@@ -174,16 +174,24 @@ sequenceDiagram
 
   U->>UI: Mở link email, nhập mật khẩu mới (≥12 ký tự)
   UI->>API: POST /auth/reset-password (token, new_password)
-  API->>DB: Xác thực token_hash chưa dùng và chưa hết hạn
-  API->>DB: Consume reset token (transaction riêng)
-  API->>DB: Cập nhật password_hash (PBKDF2) và password_changed_at
-  API->>DB: Thu hồi token chưa dùng (cùng transaction cập nhật mật khẩu)
+  rect rgb(240, 245, 255)
+    API->>DB: Bắt đầu transaction, khóa writer SQLite hoặc hàng user PostgreSQL
+    API->>DB: Đọc lại token, kiểm hạn/active/password epoch
+    API->>DB: Claim token bằng UPDATE used=1 WHERE used=0, yêu cầu đúng 1 row
+    API->>DB: Cập nhật password_hash, password_changed_at, force flag
+    API->>DB: Thu hồi các reset token chưa dùng còn lại của user
+  end
+  API->>DB: COMMIT khi thành công; lỗi ghi => ROLLBACK toàn bộ
   API-->>UI: Thành công! Toàn bộ JWT token cũ bị vô hiệu hóa tức thì
 ```
 
 Liên kết reset đã cấp được thu hồi trong cùng transaction khi cập nhật mật khẩu, gồm đổi chủ động, Admin reset và reset bằng token. Đổi địa chỉ email thực sự hoặc chuyển trạng thái active/inactive cũng thu hồi token chưa dùng của tài khoản trong transaction cập nhật profile. Cập nhật tên hiển thị, giữ nguyên trạng thái active hoặc chỉ thay hoa/thường/khoảng trắng của cùng email không thu hồi token. Việc thu hồi không tác động token của tài khoản khác; token mới sau thay đổi vẫn dùng được một lần.
 
-AUD-06 dùng cơ chế đánh dấu `used` và đối chiếu `created_at` của token với `password_changed_at` để từ chối cả liên kết cũ tồn tại trước bản vá; không thêm cột/schema mới. Consume token và cập nhật mật khẩu vẫn là hai transaction; tính nguyên tử và các interleaving đồng thời thuộc AUD-07. Vòng đời JWT khi khóa/mở khóa tài khoản thuộc AUD-15, chưa được giải quyết bởi việc thu hồi reset token.
+AUD-06 dùng cơ chế đánh dấu `used` và đối chiếu `created_at` của token với `password_changed_at` để từ chối cả liên kết cũ tồn tại trước bản vá; không thêm cột/schema mới. Vòng đời JWT khi khóa/mở khóa tài khoản thuộc AUD-15, chưa được giải quyết bởi việc thu hồi reset token.
+
+AUD-07 đưa verify/consume token, cập nhật mật khẩu/epoch/force flag và thu hồi link còn lại vào một connection/transaction. SQLite dùng `BEGIN IMMEDIATE` trước khi đọc trạng thái; PostgreSQL dùng `SELECT ... FOR UPDATE` trên hàng user. Token được đọc lại sau khi có khóa và claim bằng UPDATE có điều kiện `used=0`, kiểm `rowcount == 1`. Lỗi ghi làm rollback cả token lẫn mật khẩu; không gọi hai public store function mở transaction riêng trong luồng reset nữa.
+
+Cấp link, đổi mật khẩu trực tiếp và reset đều khóa user trước khi đụng hàng token trên PostgreSQL. Mốc phát hành/hết hạn link được tính sau khi lấy khóa, tránh link mới có thời điểm tạo cũ hơn lần đổi mật khẩu vừa commit. SQLite khóa writer cho toàn DB trong transaction này; test local kiểm hai connection đồng thời ở DELETE và WAL, không phải benchmark tải. Nhánh PostgreSQL có test concurrency/rollback trong CI nhưng chưa có runtime local. Lookup email của request forgot-password và gửi email vẫn nằm ngoài transaction; không coi mọi race liên quan địa chỉ nhận email là đã được giải quyết.
 
 ### 6.3. Quy trình thông báo sự cố đa kênh (Telegram & Discord)
 

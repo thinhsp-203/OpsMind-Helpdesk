@@ -37,6 +37,81 @@ def clean_test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
     build_retrieval_index.cache_clear()
 
 
+@pytest.mark.parametrize("failure_phase", ["password_write", "revoke_other_links"])
+def test_atomic_reset_rolls_back_token_and_password_on_failure(failure_phase: str) -> None:
+    import sqlite3
+
+    token = store.create_password_reset_token("user")
+    other = store.create_password_reset_token("user")
+    before = store.get_user_credentials("user")
+    with store._connect() as connection:
+        # Model legacy data with two outstanding links for the same account.
+        connection.execute("UPDATE password_reset_tokens SET used = 0 WHERE username = 'user'")
+        if failure_phase == "password_write":
+            trigger = (
+                "CREATE TRIGGER aud07_fail BEFORE UPDATE OF password_hash ON users "
+                "BEGIN SELECT RAISE(ABORT, 'AUD07 synthetic failure'); END;"
+            )
+        else:
+            trigger = (
+                "CREATE TRIGGER aud07_fail BEFORE UPDATE ON password_reset_tokens "
+                "WHEN OLD.id = (SELECT MAX(id) FROM password_reset_tokens WHERE username = 'user') "
+                "BEGIN SELECT RAISE(ABORT, 'AUD07 synthetic failure'); END;"
+            )
+        connection.execute(trigger)
+    with pytest.raises(sqlite3.IntegrityError, match="AUD07 synthetic failure"):
+        store.reset_password_with_token(token, "AUD07-ResetPassword-2026!")
+    assert store.get_user_credentials("user") == before
+    with store._connect() as connection:
+        flags = connection.execute(
+            "SELECT used FROM password_reset_tokens WHERE username = 'user' ORDER BY id"
+        ).fetchall()
+        assert [row["used"] for row in flags] == [0, 0]
+        connection.execute("DROP TRIGGER aud07_fail")
+    assert store.reset_password_with_token(token, "AUD07-ResetPassword-2026!") == "user"
+    assert store.verify_and_consume_reset_token(token) is None
+    assert store.verify_and_consume_reset_token(other) is None
+
+
+@pytest.mark.parametrize("journal_mode", ["DELETE", "WAL"])
+@pytest.mark.parametrize("operation", ["reset", "consume", "issue"])
+def test_concurrent_reset_operations_have_one_winner(journal_mode: str, operation: str) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    with store._connect() as connection:
+        # Two fixed test modes; no caller-controlled SQL.
+        connection.execute("PRAGMA journal_mode = WAL" if journal_mode == "WAL" else "PRAGMA journal_mode = DELETE")
+    token = store.create_password_reset_token("user")
+    gate = Barrier(3)
+    passwords = ["AUD07-FirstPassword-2026!", "AUD07-SecondPassword-2026!"]
+
+    def run(index):
+        gate.wait(timeout=10)
+        if operation == "consume":
+            return store.verify_and_consume_reset_token(token)
+        if operation == "issue" and index == 1:
+            return store.create_password_reset_token("user")
+        return store.reset_password_with_token(token, passwords[index])
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(run, index) for index in range(2)]
+        gate.wait(timeout=10)
+        results = [future.result(timeout=20) for future in futures]
+    if operation == "issue":
+        assert results[0] in {None, "user"}
+        assert store.reset_password_with_token(results[1], passwords[1]) == "user"
+    else:
+        assert results.count("user") == 1
+        assert results.count(None) == 1
+        if operation == "reset":
+            credentials = store.get_user_credentials("user")
+            winner = results.index("user")
+            assert store.verify_password(passwords[winner], credentials["password_hash"])
+            assert not store.verify_password(passwords[1 - winner], credentials["password_hash"])
+    assert store.verify_and_consume_reset_token(token) is None
+
+
 @pytest.mark.parametrize("change_path", ["self", "admin", "store"])
 def test_old_reset_link_is_revoked_after_password_change(change_path: str) -> None:
     login = client.post("/auth/login", json={"username": "user", "password": "user"})

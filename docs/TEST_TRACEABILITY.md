@@ -5,6 +5,14 @@
 **Phiên bản:** 2.0  
 **Ngày cập nhật:** 14/10/2026  
 
+### Bổ sung regression AUD-07 (21/10/2026, local)
+
+- `tests/test_password_reset.py::test_atomic_reset_rolls_back_token_and_password_on_failure`: hai trigger SQLite giả lập lỗi ghi password và lỗi thu hồi link còn lại; token, hash/epoch/force flag cùng rollback, link dùng lại được sau khi bỏ lỗi.
+- `test_concurrent_reset_operations_have_one_winner`: hai connection/luồng cùng reset, cùng consume hoặc reset trong lúc cấp link; chạy ở cả DELETE và WAL. Chỉ một reset/consume thành công với một token, hash cuối cùng thuộc yêu cầu thắng; link cấp đồng thời vẫn dùng được theo thứ tự serialize.
+- Trước sửa cả 8 ca FAIL, quan sát được hai yêu cầu cùng thành công với một token và token bị consume dù ghi password lỗi. Sau sửa nhóm password-reset/store 52 passed.
+- `tests/test_postgres.py` thêm ba ca concurrency và một ca trigger rollback tương ứng để CI kiểm nhánh khóa hàng PostgreSQL; chưa chạy local vì thiếu dịch vụ DB. Không dùng kết quả SQLite để khẳng định PostgreSQL đã PASS.
+- Không phải load test hoặc kiểm chứng mọi interleaving/mọi process; AUD-15 JWT và race địa chỉ nhận email ngoài transaction vẫn cần xử lý riêng.
+
 ### Bổ sung regression AUD-06 (21/10/2026, local)
 
 - `test_old_reset_link_is_revoked_after_password_change` trong `tests/test_password_reset.py`: ba đường đổi mật khẩu (self/API Admin/store), JWT cũ bị từ chối, link reset cũ trả 400, token tài khoản khác còn hợp lệ, token mới dùng được một lần.

@@ -627,6 +627,22 @@ def create_user(
     return {"username": username, "role": role}
 
 
+def _begin_credential_write(connection: sqlite3.Connection | _PostgresConnection) -> None:
+    if isinstance(connection, sqlite3.Connection):
+        # Acquire the writer before reading state; avoid deferred read-to-write races.
+        connection.execute("BEGIN IMMEDIATE")
+
+
+def _lock_credential_user(
+    connection: sqlite3.Connection | _PostgresConnection,
+    username: str,
+) -> sqlite3.Row | dict[str, Any] | None:
+    query = "SELECT is_active, password_changed_at FROM users WHERE username = ?"
+    if isinstance(connection, _PostgresConnection):
+        query += " FOR UPDATE"
+    return connection.execute(query, (username,)).fetchone()
+
+
 def _revoke_password_reset_tokens(
     connection: sqlite3.Connection | _PostgresConnection,
     username: str,
@@ -637,19 +653,31 @@ def _revoke_password_reset_tokens(
     )
 
 
+def _set_user_password(
+    connection: sqlite3.Connection | _PostgresConnection,
+    username: str,
+    new_password: str,
+    force_password_change: int = 0,
+) -> None:
+    encoded = _password_hash(new_password)
+    now_str = _now()
+    connection.execute(
+        "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ? "
+        "WHERE username = ?",
+        (encoded, now_str, force_password_change, username),
+    )
+    _revoke_password_reset_tokens(connection, username)
+
+
 def update_user_password(
     username: str,
     new_password: str,
     force_password_change: int = 0,
 ) -> None:
-    now_str = _now()
     with _connect() as connection:
-        connection.execute(
-            "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ? "
-            "WHERE username = ?",
-            (_password_hash(new_password), now_str, force_password_change, username),
-        )
-        _revoke_password_reset_tokens(connection, username)
+        _begin_credential_write(connection)
+        _lock_credential_user(connection, username)
+        _set_user_password(connection, username, new_password, force_password_change)
 
 
 def admin_reset_password(
@@ -676,72 +704,83 @@ def find_user_for_password_reset(identifier: str) -> dict[str, Any] | None:
 def create_password_reset_token(username: str, expires_minutes: int = 15) -> str:
     raw_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    now_dt = datetime.now(timezone.utc)
-    expires_dt = now_dt + timedelta(minutes=expires_minutes)
-    created_at = now_dt.isoformat()
-    expires_at = expires_dt.isoformat()
 
     with _connect() as connection:
+        _begin_credential_write(connection)
+        # All credential flows lock the user before touching token rows.
+        _lock_credential_user(connection, username)
+        now_dt = datetime.now(timezone.utc)
+        expires_dt = now_dt + timedelta(minutes=expires_minutes)
         _revoke_password_reset_tokens(connection, username)
         connection.execute(
             "INSERT INTO password_reset_tokens (username, token_hash, expires_at, used, created_at) "
             "VALUES (?, ?, ?, 0, ?)",
-            (username, token_hash, expires_at, created_at),
+            (username, token_hash, expires_dt.isoformat(), now_dt.isoformat()),
         )
     return raw_token
+
+
+def _consume_reset_token(
+    connection: sqlite3.Connection | _PostgresConnection,
+    raw_token: str,
+) -> str | None:
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    identity = connection.execute(
+        "SELECT username FROM password_reset_tokens WHERE token_hash = ?", (token_hash,),
+    ).fetchone()
+    if not identity:
+        return None
+    user = _lock_credential_user(connection, identity["username"])
+    if not user or not user["is_active"]:
+        return None
+    # Re-read after acquiring the user lock: issuance or revocation may have won first.
+    row = connection.execute(
+        "SELECT username, expires_at, used, created_at FROM password_reset_tokens WHERE token_hash = ?",
+        (token_hash,),
+    ).fetchone()
+    if not row or row["used"] == 1:
+        return None
+    now_dt = datetime.now(timezone.utc)
+    try:
+        if datetime.fromisoformat(row["expires_at"]) < now_dt:
+            return None
+    except (TypeError, ValueError):
+        return None
+
+    if user["password_changed_at"]:
+        try:
+            if datetime.fromisoformat(row["created_at"]) < datetime.fromisoformat(
+                user["password_changed_at"]
+            ):
+                return None
+        except (TypeError, ValueError):
+            return None
+
+    claimed = connection.execute(
+        "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ? AND used = 0",
+        (token_hash,),
+    )
+    return str(row["username"]) if claimed.rowcount == 1 else None
 
 
 def verify_and_consume_reset_token(raw_token: str) -> str | None:
     if not raw_token or len(raw_token) < 16:
         return None
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    now_dt = datetime.now(timezone.utc)
     with _connect() as connection:
-        row = connection.execute(
-            "SELECT username, expires_at, used, created_at FROM password_reset_tokens WHERE token_hash = ?",
-            (token_hash,),
-        ).fetchone()
-        if not row:
-            return None
-        if row["used"] == 1:
-            return None
-        try:
-            exp_time = datetime.fromisoformat(row["expires_at"])
-            if exp_time < now_dt:
-                return None
-        except Exception:
-            return None
-
-        user = connection.execute(
-            "SELECT is_active, password_changed_at FROM users WHERE username = ?",
-            (row["username"],),
-        ).fetchone()
-        if not user or not user["is_active"]:
-            return None
-
-        # Also reject legacy outstanding links issued before a persisted password change.
-        if user["password_changed_at"]:
-            try:
-                if datetime.fromisoformat(row["created_at"]) < datetime.fromisoformat(
-                    user["password_changed_at"]
-                ):
-                    return None
-            except (TypeError, ValueError):
-                return None
-
-        connection.execute(
-            "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
-            (token_hash,),
-        )
-        return str(row["username"])
+        _begin_credential_write(connection)
+        return _consume_reset_token(connection, raw_token)
 
 
 def reset_password_with_token(raw_token: str, new_password: str) -> str | None:
-    username = verify_and_consume_reset_token(raw_token)
-    if not username:
+    if not raw_token or len(raw_token) < 16:
         return None
-    update_user_password(username, new_password, force_password_change=0)
-    return username
+    with _connect() as connection:
+        _begin_credential_write(connection)
+        username = _consume_reset_token(connection, raw_token)
+        if username is None:
+            return None
+        _set_user_password(connection, username, new_password, force_password_change=0)
+        return username
 
 
 _failed_login_attempts: dict[str, list[float]] = {}

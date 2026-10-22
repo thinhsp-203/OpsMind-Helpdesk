@@ -44,6 +44,16 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-07 — reset mật khẩu nguyên tử và consume token đồng thời (21/10/2026)
+
+- **FIXED LOCAL / chờ PostgreSQL runtime**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, giữ các sửa đổi trước.
+- Finding ban đầu là potential race; phiên này cả **8 regression FAIL trước sửa**, quan sát được hai reset/consume cùng thành công với một token, token đã used dù ghi password lỗi và link cấp đồng thời bị vô hiệu hóa ngoài ý muốn.
+- Gộp kiểm token, claim, ghi hash/epoch/force flag và thu hồi link còn lại vào một connection/transaction. SQLite `BEGIN IMMEDIATE` trước đọc; PostgreSQL khóa user `FOR UPDATE`, đọc lại token sau khóa. Claim dùng UPDATE có điều kiện used=0 và kiểm rowcount=1.
+- Cấp link và đổi mật khẩu trực tiếp dùng cùng thứ tự user trước token; thời điểm cấp/hết hạn link tính sau khóa. Lỗi ghi password hoặc thu hồi link còn lại rollback cả trạng thái token và tài khoản; API invalid-token/success không đổi contract.
+- Nhóm password-reset/store **52 passed**. Toàn bộ pytest **116 passed, 12 skipped, 1 warning**, 87.95s; combined line/branch coverage **81.63%**; Ruff và `git diff --check` PASS. SQLite kiểm hai connection ở DELETE/WAL cho reset/reset, consume/consume và reset/issue; trigger giả lập hai pha lỗi và kiểm retry.
+- Thêm 4 ca PostgreSQL (3 concurrency + 1 trigger rollback) vào suite CI hiện có. Local skip gồm **10 PostgreSQL, 1 Docker, 1 symlink Windows**; chưa chạy PostgreSQL runtime hoặc CI patch mới, không suy kết quả SQLite thành PG PASS. Warning TestClient/httpx có từ AUD-03.
+- Không phải load test, multi-process E2E hoặc chứng minh mọi interleaving. Lookup email/gửi mail ngoài transaction, JWT logout/disable-enable (AUD-15), cache KB (AUD-08) và gate Docker (AUD-04) vẫn còn mở. Không thêm schema/dependency.
+
 ### Theo dõi audit AUD-06 — thu hồi reset link khi thay đổi bảo mật tài khoản (21/10/2026)
 
 - **FIXED LOCAL / chưa commit/push/merge/deploy**, cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.

@@ -215,6 +215,74 @@ def test_postgres_knowledge_version_history_and_restore(
     assert "Version 1 content" in updated_doc["content"]
 
 
+@pytest.mark.parametrize("operation", ["reset", "consume", "issue"])
+def test_postgres_concurrent_reset_operations_have_one_winner(operation: str) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    store.initialize_store()
+    store.reset_store()
+    token = store.create_password_reset_token("user")
+    passwords = ["AUD07-FirstPassword-2026!", "AUD07-SecondPassword-2026!"]
+    gate = Barrier(3)
+
+    def run(index):
+        gate.wait(timeout=10)
+        if operation == "consume":
+            return store.verify_and_consume_reset_token(token)
+        if operation == "issue" and index == 1:
+            return store.create_password_reset_token("user")
+        return store.reset_password_with_token(token, passwords[index])
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(run, index) for index in range(2)]
+        gate.wait(timeout=10)
+        results = [future.result(timeout=20) for future in futures]
+    if operation == "issue":
+        assert results[0] in {None, "user"}
+        assert store.reset_password_with_token(results[1], passwords[1]) == "user"
+    else:
+        assert results.count("user") == 1
+        assert results.count(None) == 1
+        if operation == "reset":
+            credentials = store.get_user_credentials("user")
+            winner = results.index("user")
+            assert store.verify_password(passwords[winner], credentials["password_hash"])
+            assert not store.verify_password(passwords[1 - winner], credentials["password_hash"])
+    assert store.verify_and_consume_reset_token(token) is None
+
+
+def test_postgres_atomic_reset_rolls_back_token_on_password_write_failure() -> None:
+    store.initialize_store()
+    store.reset_store()
+    token = store.create_password_reset_token("user")
+    before = store.get_user_credentials("user")
+    with store._connect() as connection:
+        connection.execute(
+            "CREATE OR REPLACE FUNCTION aud07_fail_password_write() RETURNS trigger "
+            "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'AUD07 synthetic failure'; END; $$"
+        )
+    try:
+        with store._connect() as connection:
+            connection.execute(
+                "CREATE TRIGGER aud07_fail_password BEFORE UPDATE OF password_hash ON users "
+                "FOR EACH ROW EXECUTE FUNCTION aud07_fail_password_write()"
+            )
+        with pytest.raises(store.DatabaseError, match="AUD07 synthetic failure"):
+            store.reset_password_with_token(token, "AUD07-ResetPassword-2026!")
+        assert store.get_user_credentials("user") == before
+        with store._connect() as connection:
+            row = connection.execute(
+                "SELECT used FROM password_reset_tokens WHERE username = 'user'"
+            ).fetchone()
+            assert row["used"] == 0
+    finally:
+        with store._connect() as connection:
+            connection.execute("DROP TRIGGER IF EXISTS aud07_fail_password ON users")
+            connection.execute("DROP FUNCTION aud07_fail_password_write()")
+    assert store.reset_password_with_token(token, "AUD07-ResetPassword-2026!") == "user"
+
+
 def test_postgres_reset_links_are_revoked_on_security_updates() -> None:
     store.initialize_store()
     store.reset_store()

@@ -123,8 +123,15 @@ def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate, backgr
                 status_code=403,
                 detail="Chỉ người gửi mới xác nhận đóng ticket đã giải quyết.",
             )
+    if payload.expected_status is not None and payload.expected_status != ticket["status"]:
+        raise HTTPException(status_code=409, detail="Ticket changed since it was read; refresh before changing status")
     try:
-        ticket = store.update_ticket_status(ticket_id, payload.status, user["username"])
+        ticket = store.update_ticket_status(
+            ticket_id, payload.status, user["username"],
+            expected_status=ticket["status"],
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ticket.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload.status == "escalated":
@@ -202,7 +209,12 @@ def add_ticket_comment(request: Request, ticket_id: int, payload: CommentCreate)
     ticket = visible_ticket(ticket_id, user)
     if ticket["status"] == "closed":
         raise HTTPException(status_code=409, detail="Ticket đã đóng, không thể thêm trao đổi.")
-    ticket = store.add_comment(ticket_id, user["username"], payload.comment.strip())
+    try:
+        ticket = store.add_comment(ticket_id, user["username"], payload.comment.strip())
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ticket.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"message": "Đã thêm trao đổi.", "ticket": ticket}
 
 
@@ -301,6 +313,8 @@ def rate_resolved_ticket(
         raise HTTPException(status_code=403, detail="Chỉ người tạo ticket mới được đánh giá.")
     try:
         rated = store.rate_ticket(ticket_id, payload.rating, payload.comment, user["username"])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ticket.") from exc
     except ValueError as exc:
         msg = (
             "Yêu cầu này đã được đánh giá trước đó."

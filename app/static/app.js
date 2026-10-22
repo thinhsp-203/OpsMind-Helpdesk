@@ -980,10 +980,10 @@ function createTicketCard(ticket) {
     const confirmation = node("div", "ticket-actions customer-confirmation");
     const resolvedButton = node("button", "button button-primary", "Đã giải quyết");
     resolvedButton.type = "button";
-    resolvedButton.addEventListener("click", () => changeTicketStatus(ticket.id, "closed"));
+    resolvedButton.addEventListener("click", () => changeTicketStatus(ticket.id, "closed", ticket.status));
     const reopenButton = node("button", "button button-soft", "Chưa xong · yêu cầu xử lý lại");
     reopenButton.type = "button";
-    reopenButton.addEventListener("click", () => changeTicketStatus(ticket.id, "in_progress"));
+    reopenButton.addEventListener("click", () => changeTicketStatus(ticket.id, "in_progress", ticket.status));
     confirmation.append(resolvedButton, reopenButton);
     detailsBody.append(confirmation);
   }
@@ -1165,7 +1165,7 @@ function createStaffActions(ticket) {
     try {
       await api(`/tickets/${ticket.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: statusSelect.value }),
+        body: JSON.stringify({ status: statusSelect.value, expected_status: ticket.status }),
       });
       await refreshWorkspace();
     } catch (error) {
@@ -1261,7 +1261,7 @@ async function submitComment(event) {
   }
 }
 
-async function changeTicketStatus(ticketId, status) {
+async function changeTicketStatus(ticketId, status, expectedStatus) {
   const prompt = status === "in_progress"
     ? "Yêu cầu IT tiếp tục xử lý ticket này?"
     : status === "closed"
@@ -1271,7 +1271,7 @@ async function changeTicketStatus(ticketId, status) {
   try {
     await api(`/tickets/${ticketId}`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, expected_status: expectedStatus }),
     });
     await refreshWorkspace();
   } catch (error) {

@@ -338,6 +338,11 @@ def initialize_store() -> None:
         if _database_url:
             schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
         connection.executescript(schema)
+        try:
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_document_version "
+                               "ON knowledge_versions(document_id, version_number)")
+        except DatabaseIntegrityError as exc:
+            raise RuntimeError("AUD-23: duplicate KB version numbers; stop and reconcile history before migration") from exc
         if _database_url:
             for table, column, definition in (
                 ("tickets", "archived_at", "TEXT"),
@@ -1085,8 +1090,11 @@ def update_ticket_fields(
     if not updates or not set(updates).issubset(allowed):
         raise ValueError("Invalid ticket update fields")
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
@@ -1126,8 +1134,11 @@ def update_ticket_fields(
 
 def archive_ticket(ticket_id: int, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
@@ -1150,7 +1161,7 @@ def archive_ticket(ticket_id: int, actor: str) -> dict[str, Any]:
         return _ticket_dict(connection, archived)
 
 
-def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[str, Any]:
+def update_ticket_status(ticket_id: int, new_status: str, actor: str, expected_status: str | None = None) -> dict[str, Any]:
     with _connect() as connection:
         if not _database_url:
             connection.execute("BEGIN IMMEDIATE")
@@ -1160,6 +1171,8 @@ def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[st
         if row is None:
             raise LookupError("Ticket not found")
         previous_status = row["status"]
+        if expected_status is not None and previous_status != expected_status:
+            raise ValueError("Ticket changed since it was read; refresh before changing status")
         if new_status not in TRANSITIONS[previous_status]:
             raise ValueError(f"Cannot move ticket from {previous_status} to {new_status}")
         timestamp = _now()
@@ -1200,11 +1213,16 @@ def assign_ticket(ticket_id: int, assignee: str, actor: str) -> dict[str, Any]:
 
 def add_comment(ticket_id: int, author: str, comment: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] == "closed":
+            raise ValueError("Closed tickets cannot receive comments")
         timestamp = _now()
         connection.execute(
             "INSERT INTO comments (ticket_id, author, comment, created_at) VALUES (?, ?, ?, ?)",
@@ -1279,8 +1297,10 @@ def get_attachment(attachment_id: str) -> dict[str, Any] | None:
 
 def rate_ticket(ticket_id: int, rating: int, comment: str | None, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT status, requester, rating FROM tickets WHERE id = ? AND archived_at IS NULL",
+            "SELECT status, requester, rating FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
             (ticket_id,),
         ).fetchone()
         if row is None:
@@ -1291,10 +1311,13 @@ def rate_ticket(ticket_id: int, rating: int, comment: str | None, actor: str) ->
             raise PermissionError("Only the requester can rate this ticket")
         if row["rating"] is not None:
             raise ValueError("Ticket has already been rated")
-        connection.execute(
-            "UPDATE tickets SET rating = ?, rating_comment = ?, updated_at = ? WHERE id = ?",
+        changed = connection.execute(
+            "UPDATE tickets SET rating = ?, rating_comment = ?, updated_at = ? "
+            "WHERE id = ? AND rating IS NULL AND status IN ('resolved', 'closed') AND archived_at IS NULL",
             (rating, comment, _now(), ticket_id),
         )
+        if changed.rowcount != 1:
+            raise ValueError("Ticket can no longer be rated")
         _record_audit(connection, ticket_id, actor, "rated", row["status"], row["status"], str(rating))
         updated = connection.execute(
             "SELECT * FROM tickets WHERE id = ?", (ticket_id,)
@@ -1701,30 +1724,44 @@ def create_knowledge_document(
     return get_knowledge_document(doc_id)  # type: ignore[return-value]
 
 
+def _lock_knowledge_document(connection, identifier: int | str):
+    if not _database_url:
+        connection.execute("BEGIN IMMEDIATE")
+    suffix = " FOR UPDATE" if _database_url else ""
+    if isinstance(identifier, int) or str(identifier).isdigit():
+        return connection.execute("SELECT * FROM knowledge_documents WHERE id = ?" + suffix,  # noqa: S608 -- fixed dialect suffix
+                                  (int(identifier),)).fetchone()
+    slug = str(identifier)
+    if not slug.endswith(".md"):
+        slug += ".md"
+    return connection.execute("SELECT * FROM knowledge_documents WHERE slug = ?" + suffix,  # noqa: S608 -- fixed dialect suffix
+                              (slug,)).fetchone()
+
+
 def update_knowledge_document(
     identifier: int | str,
     updates: dict[str, Any],
     actor: str,
     change_summary: str = "Cập nhật nội dung",
 ) -> dict[str, Any] | None:
-    doc = get_knowledge_document(identifier)
-    if not doc:
-        return None
-
-    new_title = updates.get("title", doc["title"]).strip() if updates.get("title") is not None else doc["title"]
-    new_category = updates.get("category", doc["category"]) if updates.get("category") is not None else doc["category"]
-    new_tags = updates.get("tags", doc["tags"]).strip() if updates.get("tags") is not None else doc["tags"]
-    new_content = updates.get("content", doc["content"]).strip() if updates.get("content") is not None else doc["content"]
-    new_status = updates.get("status", doc["status"]) if updates.get("status") is not None else doc["status"]
-
-    content_changed = (
-        new_title != doc["title"]
-        or new_category != doc["category"]
-        or new_tags != doc["tags"]
-        or new_content != doc["content"]
-    )
-
     with _connect() as connection:
+        doc = _lock_knowledge_document(connection, identifier)
+        if not doc:
+            return None
+
+        new_title = updates.get("title", doc["title"]).strip() if updates.get("title") is not None else doc["title"]
+        new_category = updates.get("category", doc["category"]) if updates.get("category") is not None else doc["category"]
+        new_tags = updates.get("tags", doc["tags"]).strip() if updates.get("tags") is not None else doc["tags"]
+        new_content = updates.get("content", doc["content"]).strip() if updates.get("content") is not None else doc["content"]
+        new_status = updates.get("status", doc["status"]) if updates.get("status") is not None else doc["status"]
+
+        content_changed = (
+            new_title != doc["title"]
+            or new_category != doc["category"]
+            or new_tags != doc["tags"]
+            or new_content != doc["content"]
+        )
+
         now = _now()
         reviewer = doc["reviewer"]
         approved_at = doc["approved_at"]
@@ -1769,11 +1806,11 @@ def review_knowledge_document(
     reviewer: str,
     feedback: str = "",
 ) -> dict[str, Any] | None:
-    doc = get_knowledge_document(identifier)
-    if not doc:
-        return None
 
     with _connect() as connection:
+        doc = _lock_knowledge_document(connection, identifier)
+        if not doc:
+            return None
         now = _now()
         if action == "approve":
             summary = f"Duyệt và xuất bản bởi {reviewer}"
@@ -1849,10 +1886,10 @@ def restore_knowledge_version(
     version_number: int,
     actor: str,
 ) -> dict[str, Any] | None:
-    doc = get_knowledge_document(identifier)
-    if not doc:
-        return None
     with _connect() as connection:
+        doc = _lock_knowledge_document(connection, identifier)
+        if not doc:
+            return None
         v_row = connection.execute(
             """
             SELECT title, category, tags, content

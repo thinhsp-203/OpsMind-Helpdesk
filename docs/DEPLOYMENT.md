@@ -270,3 +270,25 @@ Nếu restore DB snapshot cũ, epoch trước khi revoke có thể quay lại; p
 hợp xoay SECRET_KEY trên mọi worker và buộc đăng nhập lại. Không restore bảng
 users riêng khỏi password/reset-token state mà không có kế hoạch nhất quán.
 Chưa deploy/rotate key/account production hoặc diễn tập restore trong phiên local.
+
+### AUD-23 — Gate migration version và kiểm concurrency (22/10/2026)
+
+Chưa triển khai từ phiên audit. Trước khi nâng cấp: backup DB, dừng/drain worker
+ghi và chạy SELECT document_id, version_number, COUNT(*) FROM knowledge_versions
+GROUP BY document_id, version_number HAVING COUNT(*) > 1 trên bản sao trước.
+Nếu có bản ghi: dừng rollout, export đầy đủ history/ID/content/tác giả/thời gian,
+nhờ owner đối chiếu; không xóa, gộp hoặc renumber tự động. Initializer tạo unique
+index mới và từ chối migration có duplicate với lỗi AUD-23. Nó không repair dữ liệu.
+Tạo index trên DB lớn có thể khóa bảng; lên lịch bảo trì và kiểm thời gian staging.
+
+Chạy một initializer, kiểm index tồn tại và version/count/content không đổi, sau
+đó chạy tests/test_postgres.py trên PostgreSQL sandbox riêng (các test reset/truncate
+DB, tuyệt đối không trỏ DATABASE_URL test vào DB thật). CI có PostgreSQL 16; phiên
+local chưa có PG/Docker, không coi ca skip là pass. Chỉ mở lại workers khi gate đạt.
+Reload frontend để tải app.js phiên AUD23 và gửi expected_status; 409 yêu cầu
+refresh trước thao tác mới. Không chạy lẫn old writer không khóa với new writer.
+
+Rollback code cũ làm mất bảo đảm serialize dù unique index còn bảo vệ số version.
+Giữ backup và index; không tự drop index để cho writer cũ tiếp tục lỗi. Nếu phải
+restore, dừng ghi và theo runbook restore/session-key hiện có, đối chiếu history
+trước khi mở lại. Phiên này không chạy migration hay restore trên dữ liệu thật.

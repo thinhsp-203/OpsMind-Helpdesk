@@ -162,6 +162,7 @@ class TicketCreate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: TicketStatus
+    expected_status: TicketStatus | None = None
 
 
 class TicketUpdate(BaseModel):

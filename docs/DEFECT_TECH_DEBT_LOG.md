@@ -281,3 +281,15 @@ Baseline 16 FAIL/2 PASS; nhóm session/password-reset 62 passed. Bốn PG case
 mới chưa chạy local. Không có revoke từng thiết bị, cancellation in-flight,
 session audit riêng hay xử lý mọi race AUD-23; rollback/DB restore cần kế
 hoạch key rotation để không làm JWT đã thu hồi hợp lệ lại.
+
+### AUD-23 — CSAT/FSM/versioning concurrency (22/10/2026)
+
+**FIXED LOCAL; PostgreSQL/CI/staging pending**. Không coi finding đóng production.
+Baseline HEAD 811fe81, nhánh fix/aud-01-frontend-boot đã có AUD01–22 chưa commit.
+Tái hiện 8 failure trên snapshot trước phiên: CSAT double acceptance, comment
+undo resolution, KB lost partial fields/history stale, duplicate version được
+nhận, API không trả 409 cho snapshot status cũ. Thêm DB locks trước read, guarded
+rating update, expected_status được kiểm dưới khóa, KB row-lock + unique index.
+Audit/document-version cùng transaction; tests có injected failure/rollback.
+Không đổi credentials/email, last-active-admin policy, runbook hay các issue khác.
+Migration duplicate dừng và yêu cầu owner đối chiếu, không sửa dữ liệu lịch sử.

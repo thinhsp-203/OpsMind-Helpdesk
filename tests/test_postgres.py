@@ -560,3 +560,25 @@ def test_postgres_session_epoch_rolls_back_with_account_change(monkeypatch):
         store.update_user('user', {'is_active': False})
     user = store.get_user_credentials('user')
     assert user['is_active'] == 1 and user['session_epoch'] == epoch
+
+
+@pytest.mark.parametrize('scenario', ['csat', 'comment', 'status', 'kb_partial', 'kb_review', 'kb_restore', 'unique'])
+def test_postgres_aud23_concurrent_business_writes(monkeypatch, scenario):
+    from test_aud23_concurrency import (
+        assert_csat_one_winner, assert_comment_does_not_undo_resolution,
+        assert_status_one_winner, assert_kb_partial_updates_preserved,
+        test_kb_all_version_writers_lock_current_document,
+        test_database_rejects_duplicate_kb_version,
+    )
+    store.initialize_store()
+    store.reset_store()
+    actions = {
+        'csat': lambda: assert_csat_one_winner(monkeypatch),
+        'comment': lambda: assert_comment_does_not_undo_resolution(monkeypatch),
+        'status': lambda: assert_status_one_winner(monkeypatch),
+        'kb_partial': lambda: assert_kb_partial_updates_preserved(monkeypatch),
+        'kb_review': lambda: test_kb_all_version_writers_lock_current_document(monkeypatch, 'review'),
+        'kb_restore': lambda: test_kb_all_version_writers_lock_current_document(monkeypatch, 'restore'),
+        'unique': test_database_rejects_duplicate_kb_version,
+    }
+    actions[scenario]()

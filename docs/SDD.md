@@ -594,3 +594,32 @@ lại và last-active-admin trên hai user khác nhau vẫn thuộc AUD-23/17.
 
 - **Ngưỡng độ dài mật khẩu thống nhất**: Toàn bộ hệ thống áp dụng chung một ngưỡng tối thiểu 12 ký tự (`MIN_PASSWORD_LENGTH = 12`) cho tất cả các luồng: khởi tạo tài khoản quản trị ban đầu (`INITIAL_ADMIN_PASSWORD`), API tạo người dùng (`UserCreate`), đổi mật khẩu (`ChangePasswordRequest`) và đặt lại mật khẩu (`ResetPasswordRequest`). Mọi mật khẩu dưới 12 ký tự đều bị từ chối ở cả bootstrap lẫn runtime API.
 - **Quy định cờ ALLOW_DEMO_CREDENTIALS**: Mặc định là `false`. Chỉ được bật làm cơ chế ngoại lệ tạm thời trong môi trường thử nghiệm hoặc di trú dữ liệu staging; không được phép xem là cấu hình production hợp lệ.
+
+### AUD-23 — Transaction và cạnh tranh ghi nghiệp vụ (22/10/2026)
+
+CSAT khóa ticket trước khi kiểm owner/status/rating; UPDATE còn có predicate
+rating IS NULL, completed và chưa archive, kiểm rowcount. Rating và audit cùng
+transaction. Mọi writer đọc status rồi có thể ghi trạng thái hoặc dùng status
+để xét quyền ghi (status, assignment, comment, edit fields, archive) dùng cùng
+SQLite BEGIN IMMEDIATE / PostgreSQL SELECT FOR UPDATE theo ticket. Comment
+đọc lại status sau khóa; không khôi phục status cũ hay nhận comment khi closed.
+
+PATCH /tickets/{id} nhận expected_status tùy chọn. UI gửi status đang hiển thị;
+router kiểm client khớp snapshot visible_ticket đã xét quyền (client cũ không
+gửi thì dùng snapshot này). Store luôn nhận snapshot route và so expected
+với status dưới khóa, khác trả 409 trước write/audit/outbox; mất ticket trả 404.
+Direct store callers không truyền expected_status vẫn dùng FSM của row đã khóa.
+Đây là kiểm giá trị status, không phải revision/ETag: không phát hiện chu kỳ
+A→B→A hoặc mọi thay đổi nội dung giữa hai lần đọc. Client cũ không phát hiện
+snapshot UI từ trước request; phải refresh sau 409, không tự retry chuyển trạng thái.
+
+KB update/review/restore đọc current document và tính các field/version trong
+cùng transaction có khóa document (SQLite writer / PG row lock). MAX(version)+1
+được thực hiện sau khóa; unique index uq_knowledge_document_version bảo vệ
+(document_id, version_number). Document và version rollback cùng nhau. Partial
+updates không xóa field vừa đổi của writer trước; cùng field vẫn theo thứ tự ghi
+đã serialize, không có optimistic revision cho KB. Không tự repair version cũ.
+
+Phạm vi này không giải quyết race last-active-admin giữa hai user, attachment
+file/DB atomicity, bootstrap đồng thời hay mọi race authorization ngoài transaction.
+Các race đó không nằm trong ba acceptance criteria của finding AUD-23 gốc.

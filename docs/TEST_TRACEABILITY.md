@@ -247,3 +247,19 @@ UI khác PASS. Chrome kiểm logout thường, account active/role cycles và lo
 trong forced-password modal, copied token 401, localStorage/password clear,
 không page error. FastAPI TestClient/SQLite bridge stdio, không là socket HTTP
 E2E/cloud. Bốn PG case local skip, không coi PG runtime đã kiểm.
+
+### AUD-23 — CSAT/FSM/versioning concurrency
+
+`tests/test_aud23_concurrency.py`: hai connections có pause sau read và writer
+cạnh tranh; CSAT một accepted/một conflict và một audit; comment không undo
+resolution; competing expected_status chỉ một winner; status stale API 409
+(explicit expected_status và legacy route snapshot); priority edit xét lại
+completed dưới khóa; closed/comment race; partial KB updates giữ field;
+review/restore giữ version snapshot đúng; unique constraint; rollback khi
+audit/version insert lỗi; migration idempotent và duplicate legacy không repair.
+8 ca đầu FAIL trên working tree trước phiên (AUD01–22), rồi PASS sau bản sửa.
+`tests/test_status_concurrency.js` thực thi handler UI trong VM, kiểm payload
+expected_status và surfacing 409, được thêm vào CI; không là browser E2E.
+`tests/test_postgres.py::test_postgres_aud23_concurrent_business_writes` có 7
+scenario dùng cùng helper hai connection thật; chưa chạy local vì thiếu PG.
+Acceptance local SQLite, API và Node có bằng chứng; PG/CI/staging vẫn pending.

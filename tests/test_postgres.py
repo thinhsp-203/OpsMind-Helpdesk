@@ -15,6 +15,26 @@ def setup_postgres_test(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(store, "DEMO_MODE", True)
 
 
+def test_postgres_builtin_seed_updates_existing_document_by_named_columns() -> None:
+    store.initialize_store()
+    store.reset_store()
+    with store._connect() as connection:
+        original = connection.execute(
+            "SELECT id, content FROM knowledge_documents WHERE is_builtin = 1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        assert original is not None
+        connection.execute(
+            "UPDATE knowledge_documents SET content = ? WHERE id = ?",
+            ("Synthetic stale builtin content", original["id"]),
+        )
+    with store._connect() as connection:
+        store.seed_builtin_knowledge(connection)
+        restored = connection.execute(
+            "SELECT id, content FROM knowledge_documents WHERE id = ?", (original["id"],)
+        ).fetchone()
+    assert dict(restored) == dict(original)
+
+
 def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works() -> None:
     store.initialize_store()
     store.initialize_store()

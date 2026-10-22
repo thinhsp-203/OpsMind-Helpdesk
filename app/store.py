@@ -156,14 +156,14 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
             (path.name,),
         ).fetchone()
         if existing:
-            if existing[1] != content:
+            if existing["content"] != content:
                 connection.execute(
                     """
                     UPDATE knowledge_documents
                     SET title = ?, category = ?, tags = ?, content = ?, updated_at = ?
                     WHERE id = ? AND is_builtin = 1
                     """,
-                    (title, category, tags, content, now, existing[0]),
+                    (title, category, tags, content, now, existing["id"]),
                 )
             continue
         connection.execute(

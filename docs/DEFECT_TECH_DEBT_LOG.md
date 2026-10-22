@@ -44,6 +44,14 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-16 — validate enum email provider và loại bỏ silent mock fallback (21/10/2026)
+
+- **FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Typo `EMAIL_PROVIDER=smpt` báo `enabled=True, is_mock=False`, `dispatch_email` âm thầm append RAM và return `True`.
+- Giải pháp: Khai báo `_VALID_EMAIL_PROVIDERS = frozenset({"smtp", "resend", "brevo", "webhook", "console"})`. `resolve_email_provider()` ném `ValueError` khi tên provider không hợp lệ. `dispatch_email()` bắt lỗi cấu hình, ghi nhận `_last_send_error`, log lỗi và trả về `False`. Loại bỏ silent mock outbox fallback trong nhánh `else`.
+- Kiểm thử: `tests/test_aud16_provider_typo.py` với 9 test case trực tiếp gọi code sản phẩm (bắt typo, dispatch trả về False, outbox trống, startup validate, và non-regression cho toàn bộ 5 provider hợp lệ + fallback console). Cập nhật `tests/test_password_reset.py` kiểm tra cấu hình sai ném `ValueError` và trả về `False`. Nhóm kiểm thử 47/47 passed trong 24.27s.
+- Rủi ro còn lại: Môi trường thật nếu cấu hình sai biến môi trường sẽ fail-fast khi startup hoặc từ chối gửi email, cần cấu hình đúng chính tả biến môi trường theo tài liệu.
+
 ### Theo dõi audit AUD-08 — cache KB giữa các process (21/10/2026)
 
 - **FIXED LOCAL / chờ PostgreSQL và deployment nhiều worker**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.

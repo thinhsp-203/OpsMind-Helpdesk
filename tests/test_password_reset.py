@@ -675,8 +675,16 @@ def test_email_sender_edge_cases_and_branch_coverage(monkeypatch: pytest.MonkeyP
     st = email_sender.get_email_status()
     assert st["provider"] == "webhook"
 
+    # AUD-16 FIX: unknown/typo'd provider must be rejected, not fall through to mock.
     monkeypatch.setattr(config, "EMAIL_PROVIDER", "unknown_custom")
-    assert email_sender.dispatch_email("user@example.com", "Subject", "Body") is True
+    assert email_sender.dispatch_email("user@example.com", "Subject", "Body") is False, (
+        "dispatch_email must return False for unknown EMAIL_PROVIDER (AUD-16)"
+    )
+    with pytest.raises(ValueError, match="unknown_custom"):
+        email_sender.get_email_status()
+    assert email_sender.get_last_send_error() != "", (
+        "last_send_error must be set after invalid provider dispatch"
+    )
 
     # 4. Missing API keys for direct helper calls
     monkeypatch.setattr(config, "RESEND_API_KEY", "")

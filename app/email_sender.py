@@ -42,6 +42,9 @@ def _mask_token(token: str) -> str:
     return f"{token[:4]}...{token[-4:]}"
 
 
+_VALID_EMAIL_PROVIDERS = frozenset({"smtp", "resend", "brevo", "webhook", "console", "mock"})
+
+
 def resolve_email_provider() -> str:
     """Xác định email provider đang kích hoạt:
     - Nếu EMAIL_PROVIDER được cấu hình cụ thể: 'smtp', 'resend', 'brevo', 'webhook', 'console'.
@@ -50,9 +53,21 @@ def resolve_email_provider() -> str:
         2. brevo (nếu có BREVO_API_KEY)
         3. smtp (nếu SMTP_ENABLED=True)
         4. console (fallback mặc định cho local dev/test)
+
+    Raises:
+        ValueError: Nếu EMAIL_PROVIDER được đặt thành tên không hợp lệ (typo).
+            Giá trị hợp lệ: smtp, resend, brevo, webhook, console.
+            AUD-16: Validates enum to prevent silent mock fallback on misconfiguration.
     """
     configured = (config.EMAIL_PROVIDER or "").lower()
     if configured:
+        # AUD-16: Reject unknown/typo'd provider names — do NOT silently fall back to mock.
+        if configured not in _VALID_EMAIL_PROVIDERS:
+            raise ValueError(
+                f"EMAIL_PROVIDER='{configured}' is not a recognised provider. "
+                f"Valid values: {', '.join(sorted(_VALID_EMAIL_PROVIDERS))}. "
+                "Check for typos (e.g. 'smpt' instead of 'smtp')."
+            )
         return configured
     if config.RESEND_API_KEY:
         return "resend"
@@ -95,7 +110,7 @@ def get_email_status() -> dict[str, Any]:
         "enabled": enabled,
         "from_email": from_email,
         "target": target,
-        "is_mock": provider == "console" or (provider == "smtp" and not config.SMTP_ENABLED),
+        "is_mock": provider in ("console", "mock") or (provider == "smtp" and not config.SMTP_ENABLED),
     }
 
 
@@ -246,9 +261,17 @@ def dispatch_email(
         logger.warning("Không thể gửi email: địa chỉ email không hợp lệ: %s", to_email)
         return False
 
-    provider = resolve_email_provider()
+    # AUD-16: resolve_email_provider raises ValueError for unknown/typo'd providers.
+    # Catch it so dispatch_email returns False (not raises) on misconfiguration.
+    global _last_send_error
+    try:
+        provider = resolve_email_provider()
+    except ValueError as cfg_err:
+        _last_send_error = str(cfg_err)
+        logger.error("Email dispatch aborted — invalid EMAIL_PROVIDER: %s", cfg_err)
+        return False
 
-    if provider == "console" or (provider == "smtp" and not config.SMTP_ENABLED):
+    if provider in ("console", "mock") or (provider == "smtp" and not config.SMTP_ENABLED):
         rec = {
             "to": to_email,
             "subject": subject,
@@ -271,15 +294,19 @@ def dispatch_email(
         elif provider == "webhook":
             ok = _send_via_webhook(to_email, subject, body_text)
         else:
-            logger.warning("Unknown EMAIL_PROVIDER: %s. Falling back to mock outbox.", provider)
-            _outbox.append({"to": to_email, "subject": subject, "body": body_text})
-            return True
+            # AUD-16: This branch is unreachable: resolve_email_provider() already
+            # raised ValueError for any unknown provider. Guard kept for defense-in-depth.
+            _last_send_error = f"EMAIL_PROVIDER='{provider}' is not a recognised provider."
+            logger.error(
+                "Unknown EMAIL_PROVIDER: %s. Refusing to send — no silent mock fallback.",
+                provider,
+            )
+            return False
 
         if ok:
             logger.info("Email sent successfully via %s to %s", provider, to_email)
         return ok
     except Exception as exc:
-        global _last_send_error
         _last_send_error = str(exc)
         logger.error("Failed to send email via %s to %s: %s", provider, to_email, exc)
         return False

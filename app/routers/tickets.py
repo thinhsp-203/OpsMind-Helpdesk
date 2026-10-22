@@ -50,14 +50,14 @@ def _get_attachments_dir() -> Path:
 
 
 @router.get("/staff")
-async def get_staff_directory(request: Request) -> list[dict[str, str]]:
-    user = await current_user(request)
+def get_staff_directory(request: Request) -> list[dict[str, str]]:
+    user = current_user(request)
     require_staff(user)
     return store.list_staff()
 
 
 @router.get("/tickets")
-async def get_tickets(
+def get_tickets(
     request: Request,
     status_filter: TicketStatus | None = Query(default=None, alias="status"),
     category: str | None = Query(default=None, max_length=50),
@@ -65,7 +65,7 @@ async def get_tickets(
     from_date: date | None = Query(default=None, alias="from"),
     to_date: date | None = Query(default=None, alias="to"),
 ) -> list[dict]:
-    user = await current_user(request)
+    user = current_user(request)
     if from_date and to_date and from_date > to_date:
         raise HTTPException(status_code=422, detail="Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.")
     return store.list_tickets(
@@ -80,12 +80,12 @@ async def get_tickets(
 
 
 @router.post("/tickets", status_code=status.HTTP_201_CREATED)
-async def create_new_ticket(
+def create_new_ticket(
     request: Request,
     payload: TicketCreate,
     background_tasks: BackgroundTasks,
 ) -> dict:
-    user = await current_user(request)
+    user = current_user(request)
     ticket = store.create_ticket(
         title=payload.title.strip(),
         description=payload.description.strip(),
@@ -98,14 +98,14 @@ async def create_new_ticket(
 
 
 @router.get("/tickets/{ticket_id}")
-async def get_one_ticket(request: Request, ticket_id: int) -> dict:
-    user = await current_user(request)
+def get_one_ticket(request: Request, ticket_id: int) -> dict:
+    user = current_user(request)
     return visible_ticket(ticket_id, user)
 
 
 @router.patch("/tickets/{ticket_id}")
-async def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate) -> dict:
-    user = await current_user(request)
+def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate) -> dict:
+    user = current_user(request)
     ticket = visible_ticket(ticket_id, user)
     if user["role"] == "user":
         if not (
@@ -131,8 +131,8 @@ async def patch_ticket(request: Request, ticket_id: int, payload: StatusUpdate) 
 
 
 @router.put("/tickets/{ticket_id}")
-async def update_ticket(request: Request, ticket_id: int, payload: TicketUpdate) -> dict:
-    user = await current_user(request)
+def update_ticket(request: Request, ticket_id: int, payload: TicketUpdate) -> dict:
+    user = current_user(request)
     ticket = visible_ticket(ticket_id, user)
     if user["role"] == "user":
         if ticket["status"] != "new":
@@ -162,8 +162,8 @@ async def update_ticket(request: Request, ticket_id: int, payload: TicketUpdate)
 
 
 @router.delete("/tickets/{ticket_id}")
-async def delete_ticket(request: Request, ticket_id: int) -> dict[str, str]:
-    user = await current_user(request)
+def delete_ticket(request: Request, ticket_id: int) -> dict[str, str]:
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được lưu trữ ticket.")
     visible_ticket(ticket_id, user)
@@ -172,8 +172,8 @@ async def delete_ticket(request: Request, ticket_id: int) -> dict[str, str]:
 
 
 @router.put("/tickets/{ticket_id}/assignment")
-async def assign_ticket(request: Request, ticket_id: int, payload: AssignmentUpdate) -> dict:
-    user = await current_user(request)
+def assign_ticket(request: Request, ticket_id: int, payload: AssignmentUpdate) -> dict:
+    user = current_user(request)
     require_staff(user)
     visible_ticket(ticket_id, user)
     assignee = store.get_user_credentials(payload.assignee)
@@ -190,8 +190,8 @@ async def assign_ticket(request: Request, ticket_id: int, payload: AssignmentUpd
 
 
 @router.post("/tickets/{ticket_id}/comments")
-async def add_ticket_comment(request: Request, ticket_id: int, payload: CommentCreate) -> dict:
-    user = await current_user(request)
+def add_ticket_comment(request: Request, ticket_id: int, payload: CommentCreate) -> dict:
+    user = current_user(request)
     ticket = visible_ticket(ticket_id, user)
     if ticket["status"] == "closed":
         raise HTTPException(status_code=409, detail="Ticket đã đóng, không thể thêm trao đổi.")
@@ -200,12 +200,12 @@ async def add_ticket_comment(request: Request, ticket_id: int, payload: CommentC
 
 
 @router.post("/tickets/{ticket_id}/attachments", status_code=status.HTTP_201_CREATED)
-async def upload_ticket_attachment(
+def upload_ticket_attachment(
     request: Request,
     ticket_id: int,
     file: UploadFile = File(...),
 ) -> dict:
-    user = await current_user(request)
+    user = current_user(request)
     ticket = visible_ticket(ticket_id, user)
     if ticket["status"] == "closed":
         raise HTTPException(status_code=409, detail="Ticket đã đóng, không thể thêm tệp.")
@@ -222,7 +222,7 @@ async def upload_ticket_attachment(
     extension = Path(filename).suffix.lower()
     if extension not in allowed_types:
         raise HTTPException(status_code=415, detail="Chỉ hỗ trợ ảnh PNG/JPG và tệp TXT/LOG.")
-    content = await file.read(10_485_761)
+    content = file.file.read(10_485_761)
     if len(content) > 10_485_760:
         raise HTTPException(status_code=413, detail="Tệp vượt quá giới hạn 10 MiB.")
     if not content:
@@ -259,12 +259,12 @@ async def upload_ticket_attachment(
 
 
 @router.get("/tickets/{ticket_id}/attachments/{attachment_id}")
-async def download_ticket_attachment(
+def download_ticket_attachment(
     request: Request,
     ticket_id: int,
     attachment_id: str,
 ) -> FileResponse:
-    user = await current_user(request)
+    user = current_user(request)
     visible_ticket(ticket_id, user)
     attachment = store.get_attachment(attachment_id)
     if attachment is None or attachment["ticket_id"] != ticket_id:
@@ -283,12 +283,12 @@ async def download_ticket_attachment(
 
 
 @router.post("/tickets/{ticket_id}/rate")
-async def rate_resolved_ticket(
+def rate_resolved_ticket(
     request: Request,
     ticket_id: int,
     payload: TicketRating,
 ) -> dict:
-    user = await current_user(request)
+    user = current_user(request)
     ticket = visible_ticket(ticket_id, user)
     if ticket["requester"] != user["username"]:
         raise HTTPException(status_code=403, detail="Chỉ người tạo ticket mới được đánh giá.")
@@ -305,7 +305,7 @@ async def rate_resolved_ticket(
 
 
 @router.get("/tickets/{ticket_id}/audit")
-async def ticket_audit(request: Request, ticket_id: int) -> list[dict]:
-    user = await current_user(request)
+def ticket_audit(request: Request, ticket_id: int) -> list[dict]:
+    user = current_user(request)
     visible_ticket(ticket_id, user)
     return store.get_ticket_audit(ticket_id)

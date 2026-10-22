@@ -36,7 +36,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login")
-async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
+def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
     client_ip = request.client.host if request.client else "unknown"
     combo_key = f"attempt:{client_ip}:{payload.username.lower()}"
     ip_key = f"ip:{client_ip}"
@@ -83,8 +83,8 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 
 
 @router.post("/change-password")
-async def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, Any]:
-    actor = await current_user(request)
+def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, Any]:
+    actor = current_user(request)
     user_key = f"user:{actor['username'].lower()}"
     _check_change_password_rate_limit(user_key)
 
@@ -122,8 +122,8 @@ async def change_password(request: Request, payload: ChangePasswordRequest) -> d
 
 
 @router.get("/me")
-async def who_am_i(request: Request) -> dict[str, Any]:
-    user = await current_user(request)
+def who_am_i(request: Request) -> dict[str, Any]:
+    user = current_user(request)
     profile = store.get_user_credentials(user["username"])
     if not profile:
         return user
@@ -142,8 +142,8 @@ async def who_am_i(request: Request) -> dict[str, Any]:
 
 
 @router.patch("/profile")
-async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[str, Any]:
-    actor = await current_user(request)
+def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[str, Any]:
+    actor = current_user(request)
     user = store.get_user_credentials(actor["username"])
     if user is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
@@ -196,7 +196,7 @@ async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[st
 
 
 @router.post("/forgot-password")
-async def forgot_password(
+def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
@@ -266,7 +266,7 @@ async def forgot_password(
 
 
 @router.post("/reset-password")
-async def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
+def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
     if len(payload.new_password) < 12:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

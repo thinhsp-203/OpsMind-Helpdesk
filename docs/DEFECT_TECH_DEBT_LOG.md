@@ -139,3 +139,14 @@
 ### Theo dõi audit AUD-09 — Render attachment persistence (21/10/2026)
 
 **IMPLEMENTED LOCAL / CLOUD VERIFICATION PENDING**, chưa commit/push/deploy. Blueprint chuyển từ Free sang starter với disk 1 GB `/app/runtime`, storage và SQLite fallback cùng mount, một instance. Metadata vẫn Neon; có runbook sao lưu trước redeploy, migration UUID/checksum, quyền non-root, restart/redeploy, backup/restore và rollback giữ disk. Cấu hình áp dụng sẽ có phí; chưa tạo tài nguyên. Chưa có bằng chứng Render thực, chưa đóng hoàn toàn AUD-09; AUD-11 và TD-11 vẫn mở.
+
+
+### Theo dõi audit AUD-10 — I/O trong async handler (21/10/2026)
+
+**FIXED LOCAL / chờ staging**, chưa commit/push/deploy. Chuyển router đồng bộ
+sang `def` để FastAPI offload; current_user đồng bộ, async KB upload offload
+DB/file; attachment dùng file handle trong worker; cleanup rate limit offload.
+Tái hiện ca HTTP RAG trước sửa bị health timeout; sau sửa 7 ca concurrency PASS.
+Không đổi timeout, transaction, payload hay quyền truy cập. Pool vẫn hữu hạn;
+không tuyên bố giải quyết saturation, CPU throughput hay race nghiệp vụ.
+Chi tiết kết quả suite và bằng chứng được lưu trong báo cáo phiên AUD-10.

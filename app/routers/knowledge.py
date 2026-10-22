@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
+from starlette.concurrency import run_in_threadpool
 
 from app import store
 from app.dependencies import current_user, require_staff
@@ -38,13 +39,13 @@ def _get_knowledge_dir() -> Path:
 
 
 @router.get("")
-async def knowledge_documents(
+def knowledge_documents(
     request: Request,
     status_filter: str | None = Query(default=None, alias="status"),
     category: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ) -> list[dict[str, Any]]:
-    user = await current_user(request)
+    user = current_user(request)
     is_staff = user["role"] in {"agent", "admin"}
     effective_status = status_filter if is_staff else "published"
     docs = store.list_knowledge_documents(
@@ -68,11 +69,11 @@ async def knowledge_documents(
 
 
 @router.get("/{identifier}")
-async def get_single_knowledge_document(
+def get_single_knowledge_document(
     request: Request,
     identifier: str,
 ) -> dict[str, Any]:
-    user = await current_user(request)
+    user = current_user(request)
     doc = store.get_knowledge_document(identifier)
     knowledge_dir = _get_knowledge_dir()
     if not doc:
@@ -111,12 +112,12 @@ async def get_single_knowledge_document(
 
 
 @router.put("/{identifier}")
-async def edit_knowledge_document(
+def edit_knowledge_document(
     request: Request,
     identifier: str,
     payload: KnowledgeDocumentUpdate,
 ) -> dict[str, Any]:
-    user = await current_user(request)
+    user = current_user(request)
     require_staff(user)
     doc = store.get_knowledge_document(identifier)
     if not doc:
@@ -153,12 +154,12 @@ async def edit_knowledge_document(
 
 
 @router.post("/{identifier}/review")
-async def review_knowledge_document_endpoint(
+def review_knowledge_document_endpoint(
     request: Request,
     identifier: str,
     payload: KnowledgeReviewRequest,
 ) -> dict[str, Any]:
-    user = await current_user(request)
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền duyệt tài liệu.")
     doc = store.get_knowledge_document(identifier)
@@ -186,11 +187,11 @@ async def review_knowledge_document_endpoint(
 
 
 @router.get("/{identifier}/versions")
-async def get_knowledge_versions(
+def get_knowledge_versions(
     request: Request,
     identifier: str,
 ) -> list[dict[str, Any]]:
-    user = await current_user(request)
+    user = current_user(request)
     require_staff(user)
     doc = store.get_knowledge_document(identifier)
     if not doc:
@@ -199,12 +200,12 @@ async def get_knowledge_versions(
 
 
 @router.post("/{identifier}/restore/{version_number}")
-async def restore_knowledge_version_endpoint(
+def restore_knowledge_version_endpoint(
     request: Request,
     identifier: str,
     version_number: int,
 ) -> dict[str, Any]:
-    user = await current_user(request)
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền khôi phục phiên bản.")
     doc = store.get_knowledge_document(identifier)
@@ -227,8 +228,8 @@ async def restore_knowledge_version_endpoint(
 
 
 @router.delete("/{source}")
-async def delete_knowledge_document(request: Request, source: str) -> dict[str, str]:
-    user = await current_user(request)
+def delete_knowledge_document(request: Request, source: str) -> dict[str, str]:
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
@@ -270,8 +271,8 @@ async def delete_knowledge_document(request: Request, source: str) -> dict[str, 
 
 
 @router.post("/{source}/reindex")
-async def reindex_knowledge_document(request: Request, source: str) -> dict[str, str]:
-    user = await current_user(request)
+def reindex_knowledge_document(request: Request, source: str) -> dict[str, str]:
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
@@ -296,7 +297,7 @@ async def upload_knowledge_document(
 ) -> dict[str, Any]:
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
-        user = await current_user(request)
+        user = await run_in_threadpool(current_user, request)
         if user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Chỉ Admin mới được nạp tài liệu tri thức.")
         form = await request.form()
@@ -327,7 +328,8 @@ async def upload_knowledge_document(
         if not text or not re.search(r"(?m)^#\s+\S+", text):
             raise HTTPException(status_code=422, detail="Tài liệu cần có tiêu đề Markdown cấp 1.")
         try:
-            saved = save_knowledge_document(
+            saved = await run_in_threadpool(
+                save_knowledge_document,
                 _get_knowledge_dir(),
                 original_name,
                 cleaned_title,
@@ -343,7 +345,7 @@ async def upload_knowledge_document(
             raise HTTPException(status_code=500, detail="Không thể lưu tài liệu tri thức.") from exc
         return {"message": "Đã nạp tài liệu tri thức.", **saved}
 
-    user = await current_user(request)
+    user = await run_in_threadpool(current_user, request)
     require_staff(user)
     try:
         data = await request.json()
@@ -364,7 +366,8 @@ async def upload_knowledge_document(
     if user["role"] == "agent" and target_status not in ("draft", "pending_review"):
         target_status = "draft"
 
-    doc = store.create_knowledge_document(
+    doc = await run_in_threadpool(
+        store.create_knowledge_document,
         title=payload.title,
         category=payload.category,
         content=payload.content,

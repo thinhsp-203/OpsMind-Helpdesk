@@ -139,3 +139,23 @@ cấu hình này chưa triển khai phương án đó.
 
 Trạng thái: **IMPLEMENTED LOCAL; chờ Render validation, quyền volume thực và
 kiểm tra restart/redeploy cloud**. Kiểm thử local không chứng minh độ bền disk Render.
+
+
+## AUD-10 — kiểm chứng event loop
+
+Chạy `python -m pytest tests/test_event_loop.py -q -s` từ repository.
+Test khởi động Uvicorn một process/worker, không reload, cổng loopback ngẫu
+nhiên; DB/storage/dữ liệu giả được cách ly trong pytest tmp. Client HTTP ở
+process pytest riêng với process server. Không gọi LLM/email provider thật.
+Mỗi ca giữ một thao tác đồng bộ chờ file release, gửi 8 HTTP health đồng thời
+với timeout 1.5s và chỉ release sau khi nhận health; safety deadline tác vụ 8s.
+Ghi p95 nearest-rank của 8 mẫu (chính là max); số mẫu nhỏ, không là benchmark tải.
+Ca gồm generate_answer, DB list, PBKDF2 verify, notification, lưu KB file,
+attachment metadata sau khi ghi file và xác thực DB trên async upload KB.
+Test được pytest/CI thu thập tự động; Linux/CI chưa được xác nhận local.
+
+LLM vẫn dùng timeout cấu hình `LLM_TIMEOUT_SECONDS` (mặc định 8s), SQLite
+connection timeout 15s; không thay timeout hay thêm retry. Test giữ toàn bộ hàm
+generate_answer, không đo provider thật. Cần đo lại staging với DB/provider
+thật, nhiều request đồng thời, worker count và pool saturation trước khi chốt
+p95/error budget production. PostgreSQL runtime và multi-worker còn chờ kiểm.

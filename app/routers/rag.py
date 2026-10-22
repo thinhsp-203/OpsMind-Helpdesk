@@ -15,8 +15,9 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 
 
 @router.post("/ask")
-async def ask_rag(request: Request, payload: RAGQuestion) -> dict:
-    user = await current_user(request)
+def ask_rag(request: Request, payload: RAGQuestion) -> dict:
+    # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
+    user = current_user(request)
     try:
         result = generate_answer(payload.question.strip())
     except KnowledgeBaseUnavailableError as exc:
@@ -40,14 +41,14 @@ async def ask_rag(request: Request, payload: RAGQuestion) -> dict:
 
 
 @router.get("/sessions")
-async def get_rag_sessions(request: Request) -> list[dict]:
-    user = await current_user(request)
+def get_rag_sessions(request: Request) -> list[dict]:
+    user = current_user(request)
     return store.list_chat_sessions(user["username"])
 
 
 @router.get("/sessions/{session_id}")
-async def get_rag_session(request: Request, session_id: str) -> dict:
-    user = await current_user(request)
+def get_rag_session(request: Request, session_id: str) -> dict:
+    user = current_user(request)
     session = store.get_chat_session(user["username"], session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.")
@@ -55,8 +56,8 @@ async def get_rag_session(request: Request, session_id: str) -> dict:
 
 
 @router.post("/feedback")
-async def provide_rag_feedback(request: Request, payload: RAGFeedback) -> dict[str, str]:
-    user = await current_user(request)
+def provide_rag_feedback(request: Request, payload: RAGFeedback) -> dict[str, str]:
+    user = current_user(request)
     if not store.set_chat_feedback(user["username"], payload.message_id, payload.feedback):
         raise HTTPException(status_code=404, detail="Không tìm thấy câu trả lời để đánh giá.")
     return {"message": "Đã ghi nhận phản hồi."}

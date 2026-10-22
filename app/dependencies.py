@@ -156,7 +156,8 @@ def _clear_change_password_attempts(key: str) -> None:
     _change_password_attempts.pop(key, None)
 
 
-async def current_user(request: Request) -> dict[str, str]:
+def current_user(request: Request) -> dict[str, str]:
+    """Read credentials synchronously; async callers must offload this DB-backed helper."""
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
     if scheme.lower() != "bearer" or not token:

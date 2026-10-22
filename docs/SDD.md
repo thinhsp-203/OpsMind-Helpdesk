@@ -431,3 +431,23 @@ erDiagram
 ### AUD-09 — Render storage boundary
 
 Blueprint đề xuất một web instance trả phí, disk mount `/app/runtime`, storage cùng đường; attachment ở `attachments/`, metadata Neon riêng. SQLite fallback cũng đặt trên disk nhưng không tự chuyển DB. Không có object storage, scale ngang hay migration tự động. Xem runbook AUD-09 trong DEPLOYMENT.md; cloud durability và quyền UID 10001 còn chờ nghiệm thu.
+
+
+### AUD-10 — ranh giới xử lý đồng bộ
+
+Các endpoint dùng store (SQLite/psycopg), PBKDF2, RAG/httpx và notification
+đồng bộ khai báo `def`; FastAPI thực thi chúng trong worker threadpool.
+Helper `current_user` cũng đồng bộ và phải được offload khi gọi từ async.
+Upload attachment đọc `UploadFile.file` trong sync endpoint, giới hạn đọc
+10 MiB + 1 byte giữ nguyên. Upload KB giữ async để parse request/form và đọc
+UploadFile; xác thực DB, lưu Markdown và tạo tài liệu DB qua `run_in_threadpool`.
+Cleanup rate limit lúc startup và định kỳ cũng được offload. Health/config
+không I/O vẫn async. Không chia sẻ connection/transaction giữa các thread;
+store tiếp tục tạo và đóng connection trong mỗi lời gọi nghiệp vụ.
+
+Cách dùng phù hợp [FastAPI async](https://fastapi.tiangolo.com/async/) và
+[Starlette threadpool](https://starlette.dev/threadpool/). Threadpool mặc định
+có 40 token dùng chung cả endpoint/background/file operations; chưa tăng limit.
+Khi pool đầy, các request cần thread vẫn phải chờ. Đây không phải async DB,
+connection pooling, process pool cho CPU hay bảo đảm throughput. Các race về
+rate limit/cooldown và version/FSM vẫn cần xử lý riêng, không được coi đã đóng.

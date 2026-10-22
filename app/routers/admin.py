@@ -24,20 +24,20 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/users")
-async def get_users(request: Request) -> list[dict[str, object]]:
-    user = await current_user(request)
+def get_users(request: Request) -> list[dict[str, object]]:
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
     return store.list_users()
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
-async def add_user(
+def add_user(
     request: Request,
     payload: UserCreate,
     background_tasks: BackgroundTasks,
 ) -> dict[str, str]:
-    user = await current_user(request)
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được tạo tài khoản.")
     try:
@@ -67,12 +67,12 @@ async def add_user(
 
 
 @router.patch("/users/{username}")
-async def update_admin_user(
+def update_admin_user(
     request: Request,
     username: str,
     payload: UserUpdate,
 ) -> dict[str, object]:
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
     existing = store.get_user_credentials(username)
@@ -106,12 +106,12 @@ async def update_admin_user(
 
 
 @router.post("/users/{username}/reset-password")
-async def admin_reset_user_password(
+def admin_reset_user_password(
     request: Request,
     username: str,
     payload: AdminResetPasswordRequest,
 ) -> dict[str, Any]:
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
     existing = store.get_user_credentials(username)
@@ -138,9 +138,9 @@ async def admin_reset_user_password(
 
 
 @router.post("/users/{username}/create-reset-token")
-async def admin_create_user_reset_token(request: Request, username: str) -> dict[str, Any]:
+def admin_create_user_reset_token(request: Request, username: str) -> dict[str, Any]:
     """Cấp mã xác thực và liên kết khôi phục mật khẩu dùng một lần (Dành cho IT Support hỗ trợ trực tiếp)."""
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(
             status_code=403, detail="Chỉ Admin mới được cấp mã khôi phục mật khẩu."
@@ -165,18 +165,18 @@ async def admin_create_user_reset_token(request: Request, username: str) -> dict
 
 
 @router.get("/notifications/status")
-async def get_notifications_status(request: Request) -> dict:
-    actor = await current_user(request)
+def get_notifications_status(request: Request) -> dict:
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được xem cấu hình thông báo.")
     return get_notification_channels_status()
 
 
 @router.post("/notifications/test")
-async def test_notification_channel(
+def test_notification_channel(
     request: Request, payload: NotificationTestRequest
 ) -> dict:
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được gửi thông báo thử nghiệm.")
     ok, msg = send_test_notification_result(payload.channel, target_email=payload.target_email or "")

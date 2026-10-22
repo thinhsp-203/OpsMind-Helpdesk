@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from app import config, email_sender, store
 from app.config import DEMO_MODE
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
         )
     # OPS-03: Dọn dẹp bản ghi giới hạn tốc độ (rate-limit attempts) hết hạn
     try:
-        store.cleanup_expired_rate_limits()
+        await run_in_threadpool(store.cleanup_expired_rate_limits)
     except Exception as exc:
         logger.debug("Initial rate-limit cleanup skipped: %s", exc)
 
@@ -74,7 +75,7 @@ async def lifespan(app: FastAPI):
         while True:
             await asyncio.sleep(3600)
             try:
-                store.cleanup_expired_rate_limits()
+                await run_in_threadpool(store.cleanup_expired_rate_limits)
             except Exception as exc:
                 logger.warning("Periodic rate-limit cleanup failed: %s", exc)
 

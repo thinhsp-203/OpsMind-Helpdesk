@@ -116,3 +116,13 @@ py -m scripts.evaluate_rag
 ### AUD-09 — persistent attachment deployment
 
 Kiểm local: YAML parse, storage/SQLite path nằm dưới disk, một instance và gói trả phí; API upload/download/access-control hiện có. Gate cloud chưa chạy: validate Blueprint trên Render, UID 10001 ghi volume, di chuyển file/checksum + DB, restart/redeploy cùng disk và restore cách ly. Không thay kết quả cloud bằng test filesystem local.
+
+
+### AUD-10 — không chặn event loop
+
+`tests/test_event_loop.py`: 7 ca HTTP thật với một Uvicorn process riêng;
+chờ marker xác nhận tác vụ đồng bộ đã bắt đầu, `/health` phải trả trước release.
+Trước sửa, ca RAG timeout (FAIL); sau sửa cả 7 ca PASS, mỗi ca 8 health probes.
+Kiểm đầy đủ nghiệp vụ/phân quyền bằng suite hiện có; test không mock auth hay
+store trả về thành công giả. Hook chỉ giữ chờ rồi gọi implementation thật.
+Không chứng minh throughput, provider thật, PostgreSQL, Linux hay cloud.

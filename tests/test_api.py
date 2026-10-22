@@ -388,6 +388,25 @@ def test_knowledge_upload_rejects_invalid_documents(
     assert response.status_code == expected_status
 
 
+def test_knowledge_multipart_parser_rejects_oversized_text_part(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_save(*args, **kwargs):
+        pytest.fail("Oversized multipart text must be rejected before document save")
+
+    monkeypatch.setattr("app.routers.knowledge.save_knowledge_document", unexpected_save)
+    response = client.post(
+        "/knowledge",
+        headers=auth("admin"),
+        files={
+            "title": (None, "x" * (1024 * 1024 + 1)),
+            "document": ("bounded-test.md", "# Test\nLocal regression", "text/markdown"),
+        },
+    )
+    assert response.status_code == 400
+    assert "Part exceeded maximum size" in response.json()["detail"]
+
+
 def test_whitespace_only_ticket_comment_and_rag_input_are_rejected() -> None:
     headers = auth()
     ticket = make_ticket(headers)

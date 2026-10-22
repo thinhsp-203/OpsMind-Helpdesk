@@ -44,6 +44,17 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-03 — dependency advisories (21/10/2026)
+
+- **FIXED LOCAL / chờ CI Linux, PostgreSQL và Docker**, chưa commit/push/merge/deploy; nhánh `fix/aud-01-frontend-boot`, giữ AUD-01/AUD-02/AUD-04.
+- Nâng FastAPI 0.115.0 → 0.156.8, Starlette resolve 0.38.6 → pin 1.9.0, python-multipart 0.0.9 → 0.0.32, PyJWT 2.9.0 → 2.15.1, pytest 8.3.3 → 9.1.1. PyPI/advisory hiện tại cho thấy chỉ dùng các bản vá multipart/Starlette năm 2024 vẫn để lại advisory mới.
+- `requirements.in` quản lý dependency trực tiếp; `requirements.txt` được uv 0.13.4 sinh universal cho Python >=3.11, 39 package/version, gồm marker nền tảng và SHA-256. Docker/CI dùng `--require-hashes`; thêm CI pip-audit 2.10.1 trên Windows/Linux, upload JSON kể cả khi scan thất bại, không ignore advisory.
+- Pip-audit baseline Windows ghi 51 advisory records (có alias) trong 4 package; không diễn giải thành 51 lỗ hổng khai thác được. Bản mới: Windows 37 package và tập gộp mọi version trong lock 39 package đều **0 advisory**, không package skip. SBOM CycloneDX cho Windows được lưu trong outputs. Scan không bao gồm OS/base image hoặc lỗ hổng chưa công bố.
+- Cài sạch bằng uv có hash và bằng pip `--require-hashes` PASS; dependency check PASS. Linux resolver dry-run PASS, không phải cài/chạy Linux thật.
+- Regression parser text part 1 MiB + 1 byte: dependency cũ trả 422 ở validation handler (FAIL kỳ vọng parser), bản mới chặn 400 ở parser (PASS); save không được gọi. Chỉ chạy dữ liệu tổng hợp local, không gửi payload gây tải tới deployment.
+- Pytest cuối **93 passed, 7 skipped, 1 warning**, 73.32s; line coverage **84.05%** (không đo branch coverage lần này). Skip: 5 PostgreSQL, 1 Docker, 1 symlink Windows. Ruff, 4 runner Node, RAG retrieval dev/holdout và browser smoke ba vai trò PASS. Browser dùng frontend thật + TestClient/SQLite cách ly qua route interception; không phải cloud/HTTP E2E đầy đủ.
+- Warning còn lại: Starlette thông báo TestClient dùng httpx cũ sẽ bị deprecated; phiên này giữ httpx tương thích đã kiểm thử, không tắt warning. GitHub Actions patch mới, Linux runtime, Docker build và PostgreSQL chưa chạy. AUD-04 vẫn chờ xác minh Docker; các lỗi nghiệp vụ/reset/cache khác vẫn mở.
+
 ### Theo dõi audit AUD-04 — Docker build context (21/10/2026)
 
 - **IMPLEMENTED LOCAL / chờ xác minh Docker**, chưa commit/push/merge/deploy, cùng nhánh `fix/aud-01-frontend-boot`; bảo toàn AUD-01/AUD-02.

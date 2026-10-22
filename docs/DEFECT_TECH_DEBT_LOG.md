@@ -203,3 +203,17 @@ API trả 409, lookup mất sau visibility trả 404. UI disabled cả select/n�
 callback. Baseline API/store/concurrency 7 FAIL, Node resolved FAIL; sau sửa
 nhóm ban đầu 13 passed, thêm hai ca API vào full suite. Quyền/target eligibility
 giữ nguyên; không tuyên bố đã giải quyết các race khác thuộc AUD-23.
+
+
+### Theo dõi audit AUD-15 — logout và JWT resurrection (21/10/2026)
+
+**FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/deploy. JWT gắn nonce
+session_epoch lưu users; logout CAS thu hồi mọi token thuộc epoch xác thực,
+đổi active/role/password rotate cùng transaction, không hồi sinh token khi trả
+giá trị cũ. Migration idempotent, nonce tài khoản mới khác nhau; không nới hỗ
+trợ JWT cũ thiếu epoch. UI dùng endpoint, local clear và thông báo server chưa
+xác nhận khi lỗi, force-change vẫn logout được, không dọn nhầm login mới.
+Baseline 16 FAIL/2 PASS; nhóm session/password-reset 62 passed. Bốn PG case
+mới chưa chạy local. Không có revoke từng thiết bị, cancellation in-flight,
+session audit riêng hay xử lý mọi race AUD-23; rollback/DB restore cần kế
+hoạch key rotation để không làm JWT đã thu hồi hợp lệ lại.

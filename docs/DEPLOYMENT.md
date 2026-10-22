@@ -237,3 +237,35 @@ Không drop outbox để xử lý backlog. Bản cũ gửi trực tiếp và kh�
 giai đoạn rollback có khoảng trống outbox; review event trước khi bật lại worker
 để tránh gửi lặp. Chưa có exactly-once hay đồng bộ receipt provider tự động.
 Chưa deploy, gửi provider thật hoặc diễn tập restore/cloud trong phiên local.
+
+
+## AUD-15 — nâng cấp và vận hành thu hồi JWT
+
+Backup DB trước upgrade. Migration additive thêm users.session_epoch và khởi
+tạo giá trị cho tài khoản cũ; không log/export JWT, signing key hoặc nonce.
+Với DB cũ, chạy một initializer và kiểm migration thành công trước khi mở
+nhiều worker; chưa chứng minh concurrent ALTER TABLE trên SQLite legacy.
+Tất cả JWT trước bản vá thiếu claim phải đăng nhập lại. Dừng/drain worker cũ
+và rollout đồng bộ backend/frontend v9; không chạy lẫn worker cũ bỏ qua epoch
+với worker mới. Reload tab cũ để nút logout gọi endpoint server. Client cũ chỉ
+xóa localStorage không tự có semantics logout mới nếu tiếp tục dùng bundle cũ.
+
+Staging cần kiểm cùng DB và SECRET_KEY ổn định: login hai client, logout một,
+token đã chép ở client khác phải 401; login mới hợp lệ. Kiểm disable-enable và
+role downgrade-upgrade không hồi sinh JWT, forced-password logout, no-op/profile
+không ngắt phiên. Restart worker rồi kiểm token revoked vẫn 401. Bốn case PG
+đã thêm (hai account cycle, concurrent CAS/idempotent init, atomic rollback)
+chưa chạy local. Token cũ phải kiểm qua endpoint có auth; /health không có auth.
+
+Logout DB lỗi/timeout không được coi là revoke thành công. Kiểm kết nối DB,
+đăng nhập rồi logout lại khi có kết nối; nonce có thể đã rotate nếu response
+mất sau commit, nên UI báo chưa xác nhận. Logout không reset password, thu hồi
+reset link/email hay tắt tài khoản. Không có endpoint admin revoke-all riêng;
+quản trị viên dùng khóa tài khoản/đổi mật khẩu theo policy để thu hồi khi cần.
+
+Rollback về backend cũ bỏ qua epoch sẽ làm mất bảo đảm thu hồi, có thể nhận
+lại JWT cùng signing key: không dùng rollback đó như một cách phục hồi auth.
+Nếu restore DB snapshot cũ, epoch trước khi revoke có thể quay lại; phải phối
+hợp xoay SECRET_KEY trên mọi worker và buộc đăng nhập lại. Không restore bảng
+users riêng khỏi password/reset-token state mà không có kế hoạch nhất quán.
+Chưa deploy/rotate key/account production hoặc diễn tập restore trong phiên local.

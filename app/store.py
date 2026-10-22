@@ -187,6 +187,15 @@ INSECURE_ADMIN_PASSWORDS: set[str] = {
 }
 
 
+def _ensure_session_epochs(connection) -> None:
+    # Conditional initialization is safe across concurrent initializers and never
+    # resets epochs already used by live sessions.
+    rows = connection.execute("SELECT username FROM users WHERE session_epoch = ''").fetchall()
+    for row in rows:
+        connection.execute("UPDATE users SET session_epoch = ? WHERE username = ? AND session_epoch = ''",
+                           (secrets.token_hex(32), row["username"]))
+
+
 def initialize_store() -> None:
     with _connect() as connection:
         schema = """
@@ -200,6 +209,7 @@ def initialize_store() -> None:
                 phone TEXT NOT NULL DEFAULT '',
                 is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
                 password_changed_at TEXT,
+                session_epoch TEXT NOT NULL DEFAULT '',
                 force_password_change INTEGER NOT NULL DEFAULT 0 CHECK (force_password_change IN (0, 1))
             );
             CREATE TABLE IF NOT EXISTS tickets (
@@ -331,6 +341,7 @@ def initialize_store() -> None:
                 ("users", "phone", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "is_active", "INTEGER NOT NULL DEFAULT 1"),
                 ("users", "password_changed_at", "TEXT"),
+                ("users", "session_epoch", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "force_password_change", "INTEGER NOT NULL DEFAULT 0"),
                 ("knowledge_documents", "is_builtin", "INTEGER NOT NULL DEFAULT 0"),
             ):
@@ -353,6 +364,7 @@ def initialize_store() -> None:
                 ("phone", "TEXT NOT NULL DEFAULT ''"),
                 ("is_active", "INTEGER NOT NULL DEFAULT 1"),
                 ("password_changed_at", "TEXT"),
+                ("session_epoch", "TEXT NOT NULL DEFAULT ''"),
                 ("force_password_change", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if column not in user_columns:
@@ -496,6 +508,7 @@ def initialize_store() -> None:
                     "INITIAL_ADMIN_PASSWORD (at least 8 characters, not using known placeholder passwords) "
                     "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
+        _ensure_session_epochs(connection)
         seed_builtin_knowledge(connection)
         from app.notification_outbox import initialize
         initialize(connection)
@@ -527,6 +540,7 @@ def reset_store() -> None:
                     "INSERT INTO users (username, password_hash, role, force_password_change) VALUES (?, ?, 'admin', 1)",
                     (admin_name, _password_hash(admin_pwd)),
                 )
+            _ensure_session_epochs(connection)
             seed_builtin_knowledge(connection)
             return
         connection.execute("DELETE FROM notification_outbox")
@@ -550,11 +564,20 @@ def get_user_credentials(username: str) -> dict[str, Any] | None:
     with _connect() as connection:
         row = connection.execute(
             "SELECT username, password_hash, role, full_name, email, department, phone, is_active, "
-            "password_changed_at, force_password_change "
+            "password_changed_at, force_password_change, session_epoch "
             "FROM users WHERE username = ?",
             (username,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def revoke_user_sessions(username: str, expected_epoch: str) -> bool:
+    """Revoke the authenticated epoch without invalidating a newer epoch on retry."""
+    with _connect() as connection:
+        result = connection.execute(
+            "UPDATE users SET session_epoch = ? WHERE username = ? AND session_epoch = ?",
+            (secrets.token_hex(32), username, expected_epoch))
+        return result.rowcount == 1
 
 
 def get_user_activity(username: str) -> dict[str, int]:
@@ -621,9 +644,9 @@ def create_user(
         try:
             connection.execute(
                 "INSERT INTO users "
-                "(username, password_hash, role, full_name, email, department, phone, password_changed_at, force_password_change) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (username, _password_hash(password), role, full_name, email, department, phone, now_str, force_password_change),
+                "(username, password_hash, role, full_name, email, department, phone, password_changed_at, force_password_change, session_epoch) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (username, _password_hash(password), role, full_name, email, department, phone, now_str, force_password_change, secrets.token_hex(32)),
             )
         except DatabaseIntegrityError as exc:
             raise ValueError("Username already exists.") from exc
@@ -665,9 +688,9 @@ def _set_user_password(
     encoded = _password_hash(new_password)
     now_str = _now()
     connection.execute(
-        "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ? "
+        "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ?, session_epoch = ? "
         "WHERE username = ?",
-        (encoded, now_str, force_password_change, username),
+        (encoded, now_str, force_password_change, secrets.token_hex(32), username),
     )
     _revoke_password_reset_tokens(connection, username)
 
@@ -880,6 +903,8 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
     if "is_active" in normalized:
         normalized["is_active"] = int(normalized["is_active"])
     with _connect() as connection:
+        _begin_credential_write(connection)
+        _lock_credential_user(connection, username)
         existing = connection.execute(
             "SELECT username, role, is_active, email FROM users WHERE username = ?", (username,)
         ).fetchone()
@@ -908,6 +933,10 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
         active_state_changed = (
             "is_active" in normalized and normalized["is_active"] != existing["is_active"]
         )
+        role_changed = "role" in normalized and normalized["role"] != existing["role"]
+        if role_changed or active_state_changed:
+            connection.execute("UPDATE users SET session_epoch = ? WHERE username = ?",
+                               (secrets.token_hex(32), username))
         if email_changed or active_state_changed:
             _revoke_password_reset_tokens(connection, username)
         row = connection.execute(

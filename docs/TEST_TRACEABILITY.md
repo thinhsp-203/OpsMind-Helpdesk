@@ -195,3 +195,22 @@ suite. tests/test_assignment_policy.js baseline FAIL ở resolved, sau sửa PAS
 select/button read-only và callback không gọi API sau hoàn tất, active vẫn gọi.
 CI thêm runner, cache v8/i18n tooltip. Ba PG case (hai trạng thái và read/write
 serialization dùng helper chung) local skip, chưa coi PG runtime đã kiểm.
+
+
+### AUD-15 — session revocation
+
+tests/test_session_lifecycle.py: logout copies/all epoch tokens, account cycles,
+no-op/profile, missing/invalid/non-ASCII claim, expiry/signature/required claims,
+password/admin reset + forced logout, stale CAS, account rollback, DB failure,
+own-account-only/auth required, legacy SQLite schema migration/idempotence,
+new-user nonce, new-process recovery và concurrent CAS. Baseline 16 failed,
+2 passed trong 18 ca đầu; sau sửa 18 passed, thêm 6 ca vào nhóm cuối.
+Nhóm session + password reset 62 passed, warning TestClient/httpx hiện có.
+
+tests/test_logout.js kiểm captured bearer, local clear, server ack/401/false,
+503/malformed/abort, duplicate click, response cũ không xóa login mới và /me
+401 không dựng lại signed-in view. CI thêm runner; i18n/boot và các regression
+UI khác PASS. Chrome kiểm logout thường, account active/role cycles và logout
+trong forced-password modal, copied token 401, localStorage/password clear,
+không page error. FastAPI TestClient/SQLite bridge stdio, không là socket HTTP
+E2E/cloud. Bốn PG case local skip, không coi PG runtime đã kiểm.

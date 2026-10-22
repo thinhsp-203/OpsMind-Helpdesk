@@ -58,8 +58,8 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 
     _clear_failed_login(combo_key)
 
-    if not user["password_hash"].startswith("pbkdf2_sha256$"):
-        store.update_user_password(payload.username, payload.password)
+    if not isinstance(user.get("session_epoch"), str) or len(user["session_epoch"]) != 64:
+        raise HTTPException(status_code=503, detail="Tài khoản chưa sẵn sàng tạo phiên. Vui lòng thử lại sau.")
 
     issued_at = datetime.now(timezone.utc)
     token = jwt.encode(
@@ -69,6 +69,7 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
             "iat": int(issued_at.timestamp()),
             "exp": issued_at + timedelta(minutes=TOKEN_EXPIRE_MINUTES),
             "pwd_at": user.get("password_changed_at"),
+            "session_epoch": user["session_epoch"],
             "force_pwd": bool(user.get("force_password_change", 0)),
         },
         SECRET_KEY,
@@ -80,6 +81,16 @@ def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
         "role": user["role"],
         "force_password_change": bool(user.get("force_password_change", 0)),
     }
+
+
+@router.post("/logout")
+def logout(request: Request) -> dict[str, Any]:
+    actor = current_user(request)
+    try:
+        revoked = store.revoke_user_sessions(actor["username"], actor["session_epoch"])
+    except store.DatabaseError as exc:
+        raise HTTPException(status_code=503, detail="Chưa xác nhận thu hồi phiên trên máy chủ.") from exc
+    return {"status": "success", "revoked": revoked, "scope": "all_sessions_in_authenticated_epoch"}
 
 
 @router.post("/change-password")

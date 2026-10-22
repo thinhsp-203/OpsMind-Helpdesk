@@ -623,6 +623,11 @@
     "Gửi thông báo khi tạo ticket hoặc chuyển cấp qua kênh đã cấu hình. Chưa có cảnh báo tự động khi quá hạn SLA.": "Send notifications when tickets are created or escalated through configured channels. Automatic SLA overdue alerts are not implemented.",
     "Tạo ticket, chuyển cấp": "Ticket creation, escalation",
     "Không thể đổi phân công khi ticket đã giải quyết hoặc đóng.": "Assignment cannot change after a ticket is resolved or closed.",
+    "Đang xác nhận thu hồi phiên trên máy chủ...": "Confirming server session revocation...",
+    "Phiên gửi lên không còn hiệu lực; dữ liệu đăng nhập trên trình duyệt đã được xóa.": "The submitted session is no longer valid; browser sign-in data has been cleared.",
+    "Đã đăng xuất và thu hồi các phiên đăng nhập hiện hành của tài khoản.": "Signed out and revoked the account’s current sign-in sessions.",
+    "Chỉ đã xóa phiên trên trình duyệt; chưa xác nhận thu hồi trên máy chủ. Khi có kết nối, đăng nhập rồi đăng xuất lại.": "Browser sign-in data was cleared; server revocation is unconfirmed. Once connected, sign in and sign out again.",
+    "Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.": "Your session was revoked. Please sign in again.",
   };
 
   const englishToVietnamese = Object.fromEntries(

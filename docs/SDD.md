@@ -556,3 +556,36 @@ resolution thì owner mới được ghi nhận; resolution commit trước thì
 bị từ chối. Không thay schema, không có bypass Admin, không thêm resolved_by.
 Reopen in_progress cho phép phân công và KPI chu kỳ sau tính theo owner mới.
 Không giải quyết các race comment/FSM/CSAT/version/account khác của AUD-23.
+
+
+### AUD-15 — durable session epoch
+
+users.session_epoch TEXT NOT NULL DEFAULT '' là nonce 256-bit (64 hex chars).
+Initializer thêm cột cho SQLite/PG và điền nonce có điều kiện cho row rỗng;
+không đổi nonce đã có khi restart. create_user luôn có nonce mới; reset_store
+cấp nonce mới cho tài khoản tạo lại. JWT thêm session_epoch; current_user yêu
+cầu sub/exp/iat/epoch, kiểm role/active/pwd_at như trước và so epoch với DB
+bằng compare_digest. Không cache credentials giữa request/process. pwd_at
+được kiểm trước epoch để giữ thông báo đổi mật khẩu hiện có.
+
+Đổi password/reset/admin reset đổi epoch cùng transaction hash/reset tokens.
+update_user khóa user trước read/write, đổi epoch cùng transaction khi active
+hoặc role thay đổi thực sự; profile/email/no-op không rotate JWT epoch. Thu
+hồi reset link khi email/active/password vẫn theo AUD-06/07. Logout dùng
+UPDATE ... WHERE username=? AND session_epoch=?; stale/concurrent logout
+không rotate epoch mới hơn. Response revoked=false nghĩa epoch gửi lên đã
+không còn hiện hành, không phải mọi phiên mới hơn đều đã bị thu hồi.
+
+Frontend tách logout async khỏi signOut (local cleanup cho 401/reset flow).
+Logout chụp token trước local clear, fetch trực tiếp tránh dùng token đăng
+nhập sau đó, AbortController 8s, chặn submit lặp, không clear phiên đăng nhập
+mới khi response cũ đến. 401/already-revoked không được báo global revoke mới.
+Force-password modal có nút logout; signOut dỡ modal forced và xóa password
+input. /auth/me bị 401 giữa login không được fallback sang signed-in view.
+Backend giữ hỗ trợ password PBKDF2 hiện có; bỏ nhánh nâng hash không thể tới
+vì verify_password đã từ chối thuật toán khác, không thêm legacy hash support.
+
+Không có session table/jti deny-list/per-device revoke, audit logout riêng,
+refresh token hay WebSocket broadcast. Epoch nằm cùng DB nên request tiếp
+theo thấy revoke; request đã qua auth không bị cancel. Các race business còn
+lại và last-active-admin trên hai user khác nhau vẫn thuộc AUD-23/17.

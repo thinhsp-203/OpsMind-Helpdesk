@@ -517,3 +517,46 @@ def test_postgres_assignment_serializes_with_resolution(monkeypatch):
     store.initialize_store()
     store.reset_store()
     assert_assignment_serializes_with_resolution(monkeypatch)
+
+
+@pytest.mark.parametrize('changes', [({'is_active': False}, {'is_active': True}), ({'role': 'agent'}, {'role': 'user'})])
+def test_postgres_old_sessions_do_not_resurrect(changes):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    store.initialize_store()
+    store.reset_store()
+    client = TestClient(app)
+    token = client.post('/auth/login', json={'username': 'user', 'password': 'user'}).json()['token']
+    for change in changes:
+        store.update_user('user', change)
+        assert client.get('/auth/me', headers={'Authorization': 'Bearer ' + token}).status_code == 401
+    fresh = client.post('/auth/login', json={'username': 'user', 'password': 'user'}).json()['token']
+    assert client.get('/auth/me', headers={'Authorization': 'Bearer ' + fresh}).status_code == 200
+
+
+def test_postgres_session_epoch_cas_and_initializer_preserve_new_sessions():
+    from concurrent.futures import ThreadPoolExecutor
+    store.initialize_store()
+    store.reset_store()
+    epoch = store.get_user_credentials('user')['session_epoch']
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: store.revoke_user_sessions('user', epoch), range(2))) == [False, True]
+    current = store.get_user_credentials('user')['session_epoch']
+    assert len(current) == 64 and current != epoch
+    store.initialize_store()
+    assert store.get_user_credentials('user')['session_epoch'] == current
+
+
+def test_postgres_session_epoch_rolls_back_with_account_change(monkeypatch):
+    store.initialize_store()
+    store.reset_store()
+    epoch = store.get_user_credentials('user')['session_epoch']
+
+    def fail(*args):
+        raise RuntimeError('AUD15 synthetic account rollback')
+
+    monkeypatch.setattr(store, '_revoke_password_reset_tokens', fail)
+    with pytest.raises(RuntimeError):
+        store.update_user('user', {'is_active': False})
+    user = store.get_user_credentials('user')
+    assert user['is_active'] == 1 and user['session_epoch'] == epoch

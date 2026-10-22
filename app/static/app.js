@@ -257,7 +257,8 @@ async function login(event) {
     try {
       const me = await api("/auth/me");
       setSignedIn(me);
-    } catch {
+    } catch (error) {
+      if (!state.token) throw error;
       setSignedIn({ username: result.username, role: result.role });
     }
     if (result.force_password_change) {
@@ -265,6 +266,46 @@ async function login(event) {
     }
   } catch (error) {
     setMessage("loginMessage", error.message);
+  }
+}
+
+async function logout() {
+  if (state.logoutBusy) return;
+  state.logoutBusy = true;
+  const token = state.token;
+  signOut();
+  if (!token) {
+    state.logoutBusy = false;
+    return;
+  }
+  setMessage("loginMessage", "Đang xác nhận thu hồi phiên trên máy chủ...", false);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    // Use the captured token, independently of any subsequent login in this tab.
+    const response = await fetch("/auth/logout", {
+      method: "POST", headers: {Authorization: `Bearer ${token}`}, signal: controller.signal,
+    });
+    let message;
+    if (response.status === 401) {
+      message = "Phiên gửi lên không còn hiệu lực; dữ liệu đăng nhập trên trình duyệt đã được xóa.";
+    } else {
+      if (!response.ok) throw new Error("logout unconfirmed");
+      const result = await response.json();
+      if (result.revoked === true) {
+        message = "Đã đăng xuất và thu hồi các phiên đăng nhập hiện hành của tài khoản.";
+      } else if (result.revoked === false) {
+        message = "Phiên gửi lên không còn hiệu lực; dữ liệu đăng nhập trên trình duyệt đã được xóa.";
+      } else {
+        throw new Error("logout response unconfirmed");
+      }
+    }
+    if (!state.token) setMessage("loginMessage", message, false);
+  } catch {
+    if (!state.token) setMessage("loginMessage", "Chỉ đã xóa phiên trên trình duyệt; chưa xác nhận thu hồi trên máy chủ. Khi có kết nối, đăng nhập rồi đăng xuất lại.");
+  } finally {
+    clearTimeout(timer);
+    state.logoutBusy = false;
   }
 }
 
@@ -281,11 +322,13 @@ function signOut() {
   state.tickets = [];
   state.chatSessionId = null;
   localStorage.removeItem("helpdesk-token");
+  if (byId("password")) byId("password").value = "";
   byId("workspaceView").classList.add("hidden");
   byId("userMenuWrapper")?.classList.add("hidden");
   closeUserDropdown();
   byId("userBadge")?.classList.add("hidden");
   closeUserProfileModal();
+  if (byId("changePasswordModal")) byId("changePasswordModal").dataset.forced = "false";
   closeChangePasswordModal();
   closeForgotPasswordModal();
   closeResetPasswordModal();
@@ -301,7 +344,10 @@ function openChangePasswordModal(isForced = false) {
   if (!modal) return;
   modal.dataset.forced = isForced ? "true" : "false";
   const cancelBtn = byId("cancelChangePasswordBtn");
-  if (cancelBtn) cancelBtn.classList.toggle("hidden", isForced);
+  if (cancelBtn) {
+    cancelBtn.classList.remove("hidden");
+    cancelBtn.textContent = window.helpdeskI18n.translate(isForced ? "Đăng xuất" : "Hủy");
+  }
   const subtitle = byId("changePasswordSubtitle");
   if (subtitle) {
     subtitle.textContent = window.helpdeskI18n.translate(
@@ -1714,9 +1760,12 @@ window.addEventListener("helpdesk-language-changed", () => {
 });
 loadPublicConfig();
 byId("loginForm").addEventListener("submit", login);
-byId("logoutBtn").addEventListener("click", signOut);
+byId("logoutBtn").addEventListener("click", logout);
 byId("changePasswordBtn").addEventListener("click", () => openChangePasswordModal(false));
-byId("cancelChangePasswordBtn").addEventListener("click", closeChangePasswordModal);
+byId("cancelChangePasswordBtn").addEventListener("click", () => {
+  if (byId("changePasswordModal")?.dataset.forced === "true") logout();
+  else closeChangePasswordModal();
+});
 byId("changePasswordForm").addEventListener("submit", handleChangePassword);
 const changePasswordModal = byId("changePasswordModal");
 if (changePasswordModal) {

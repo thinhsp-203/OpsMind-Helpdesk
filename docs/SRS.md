@@ -344,3 +344,21 @@ Không có ngoại lệ Admin hoặc endpoint sửa lịch sử. Số liệu hi�
 assignee của chu kỳ hoàn tất hiện hành; không thêm resolved_by hay sổ KPI bất
 biến qua các lần mở lại. Dữ liệu bị phân công sai từ trước cần đối chiếu audit
 và quy trình hiệu chỉnh riêng, bản vá không tự sửa lịch sử.
+
+
+### Chính sách thu hồi phiên — AUD-15
+
+Logout là hành động có xác nhận server: POST /auth/logout thu hồi mọi JWT đang
+dùng epoch của tài khoản được xác thực, trên mọi thiết bị. Không nhận username
+để thu hồi tài khoản khác. Không hỗ trợ logout riêng từng thiết bị hay refresh
+token. Khóa/mở khóa, đổi quyền thực sự, đổi/reset mật khẩu đổi session epoch;
+đưa quyền/trạng thái về giá trị cũ không làm JWT cũ sống lại. Update role/active
+không đổi giá trị và sửa thông tin hồ sơ thông thường không đổi epoch.
+
+JWT thiếu epoch (phát hành trước bản vá) phải đăng nhập lại. UI xóa token local
+và mật khẩu đang nhập ngay khi logout; chỉ báo thu hồi các phiên khi server
+xác nhận revoked=true. Khi mạng lỗi/timeout, nêu chỉ xóa phiên trình duyệt,
+chưa xác nhận server; khi có kết nối cần đăng nhập rồi logout lại hoặc dùng
+luồng đổi mật khẩu. Người dùng bị buộc đổi mật khẩu vẫn có thể logout.
+Request đã được xác thực trước khi thu hồi có thể hoàn thành; không có hủy
+in-flight hoặc xóa dữ liệu ứng dụng trong mọi tab theo thời gian thực.

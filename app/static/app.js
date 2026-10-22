@@ -1127,7 +1127,12 @@ function createStaffActions(ticket) {
     }
   });
 
+  const assignmentLocked = ["resolved", "closed"].includes(ticket.status);
   const assigneeSelect = document.createElement("select");
+  assigneeSelect.disabled = assignmentLocked;
+  if (assignmentLocked) {
+    assigneeSelect.title = window.helpdeskI18n.translate("Không thể đổi phân công khi ticket đã giải quyết hoặc đóng.");
+  }
   assigneeSelect.setAttribute("aria-label", `Người xử lý ticket ${ticket.id}`);
   const unassigned = node("option", "", "Chọn nhân viên IT");
   unassigned.value = "";
@@ -1141,11 +1146,12 @@ function createStaffActions(ticket) {
   });
   const assignButton = node("button", "button button-quiet", "Giao cho IT");
   assignButton.type = "button";
-  assignButton.disabled = !state.staff.length || !ticket.assignee;
+  assignButton.disabled = assignmentLocked || !state.staff.length || !ticket.assignee;
   assigneeSelect.addEventListener("change", () => {
-    assignButton.disabled = !assigneeSelect.value;
+    assignButton.disabled = assignmentLocked || !assigneeSelect.value;
   });
   assignButton.addEventListener("click", async () => {
+    if (assignmentLocked) return;
     try {
       await api(`/tickets/${ticket.id}/assignment`, {
         method: "PUT",

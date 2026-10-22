@@ -622,6 +622,7 @@
     "Tài khoản": "Account",
     "Gửi thông báo khi tạo ticket hoặc chuyển cấp qua kênh đã cấu hình. Chưa có cảnh báo tự động khi quá hạn SLA.": "Send notifications when tickets are created or escalated through configured channels. Automatic SLA overdue alerts are not implemented.",
     "Tạo ticket, chuyển cấp": "Ticket creation, escalation",
+    "Không thể đổi phân công khi ticket đã giải quyết hoặc đóng.": "Assignment cannot change after a ticket is resolved or closed.",
   };
 
   const englishToVietnamese = Object.fromEntries(

@@ -107,7 +107,7 @@ Hệ thống cung cấp trải nghiệm giao diện người dùng được thi�
 | | Xem danh sách ticket | ✔ (Chỉ vé của mình) | ✔ (Toàn bộ hàng đợi) | ✔ (Toàn bộ hàng đợi) | Kiểm tra quyền truy cập ở mức API và CSDL |
 | | Sửa nội dung ticket | ✔ (Chỉ khi `new`) | ✔ (Trước `closed`) | ✔ (Trước `closed`) | Tính lại SLA nếu thay đổi Mức độ ưu tiên |
 | | Chuyển trạng thái (FSM) | ✖ | ✔ (new $\rightarrow$ in_prog, v.v.) | ✔ (Toàn quyền FSM) | Tuân thủ nghiêm ngặt máy trạng thái hữu hạn |
-| | Tự nhận / Phân công ticket | ✖ | ✔ | ✔ | Chỉ gán cho tài khoản có vai trò Agent/Admin |
+| | Tự nhận / Phân công ticket | ✖ | ✔ | ✔ | Chỉ gán cho Agent/Admin khi ticket chưa resolved/closed |
 | | Trao đổi bình luận | ✔ (Vé của mình) | ✔ (Vé được giao/xem) | ✔ (Toàn bộ vé) | Người tạo bình luận tự động mở lại vé chờ |
 | | Đính kèm tệp tin | ✔ (Vé của mình) | ✔ (Vé được giao/xem) | ✔ (Toàn bộ vé) | Allow-list PNG/JPG/TXT/LOG $\le$ 10 MiB |
 | | Tải về tệp đính kèm | ✔ (Vé của mình) | ✔ (Vé được giao/xem) | ✔ (Toàn bộ vé) | Xác thực JWT trước khi cho phép tải stream |
@@ -327,3 +327,20 @@ Các con số sau là **mục tiêu dự kiến trong kế hoạch**, không ph�
 - **Tính toán SLA nâng cao:** Chưa xử lý ca làm việc linh hoạt, ngày nghỉ lễ hay múi giờ phức tạp; áp dụng SLA giờ lịch liên tục phục vụ môi trường thực nghiệm.
 - **Định dạng tri thức nâng cao:** Tập trung tối ưu Markdown chuẩn hóa cho 30 runbook; chưa hỗ trợ tự động bóc tách PDF/DOCX phức tạp có biểu bảng và hình ảnh lồng ghép.
 - **Kênh thoại & Mạng xã hội:** Không mở tổng đài VoIP hoặc tích hợp trả phí với WhatsApp Business / Viber do rào cản chi phí và thủ tục xác minh doanh nghiệp; tập trung vào Web Portal, Telegram Bot và Discord Webhook.
+
+
+### Chính sách phân công sau hoàn tất — AUD-14
+
+Agent và Admin chỉ được nhận/chuyển giao ticket ở new, in_progress,
+pending_waiting_user hoặc escalated. Khi resolved/closed, mọi PUT assignment
+(kể cả gửi lại cùng assignee) trả 409, không đổi assignee/updated_at/audit/KPI.
+Chính sách áp dụng cả service store, không chỉ UI/API. Requester vẫn không có
+quyền phân công; ticket archived/missing trả 404 theo hợp đồng hiện hành.
+
+Nếu cần chuyển người xử lý sau resolved, dùng luồng mở lại hợp lệ về in_progress,
+sau đó phân công và xử lý lại. Phân công trước khi hoàn tất vẫn được phép;
+ticket không có assignee cũng không được bổ sung owner sau hoàn tất qua API.
+Không có ngoại lệ Admin hoặc endpoint sửa lịch sử. Số liệu hiện tính theo
+assignee của chu kỳ hoàn tất hiện hành; không thêm resolved_by hay sổ KPI bất
+biến qua các lần mở lại. Dữ liệu bị phân công sai từ trước cần đối chiếu audit
+và quy trình hiệu chỉnh riêng, bản vá không tự sửa lịch sử.

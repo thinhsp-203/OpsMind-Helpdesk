@@ -492,3 +492,28 @@ def test_postgres_manual_notification_retry_is_serialized(monkeypatch):
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(lambda _: retry(), range(2))) == ['conflict', 'ok']
+
+
+@pytest.mark.parametrize('status', ['resolved', 'closed'])
+def test_postgres_completed_assignment_is_frozen(status):
+    store.initialize_store()
+    store.reset_store()
+    doc = store.create_ticket('AUD14 PG', 'Synthetic assignment test', 'general', 'low', 'user')
+    store.assign_ticket(doc['id'], 'agent', 'admin')
+    store.update_ticket_status(doc['id'], 'in_progress', 'agent')
+    store.update_ticket_status(doc['id'], 'resolved', 'agent')
+    if status == 'closed':
+        store.update_ticket_status(doc['id'], 'closed', 'user')
+    audit = store.get_ticket_audit(doc['id'])
+    with pytest.raises(ValueError):
+        store.assign_ticket(doc['id'], 'admin', 'admin')
+    assert store.get_ticket(doc['id'])['assignee'] == 'agent'
+    assert store.get_ticket_audit(doc['id']) == audit
+    assert store.get_agent_analytics('agent')['resolved_tickets'] == 1
+
+
+def test_postgres_assignment_serializes_with_resolution(monkeypatch):
+    from test_assignment_policy import assert_assignment_serializes_with_resolution
+    store.initialize_store()
+    store.reset_store()
+    assert_assignment_serializes_with_resolution(monkeypatch)

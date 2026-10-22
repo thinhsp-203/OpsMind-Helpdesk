@@ -1140,11 +1140,15 @@ def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[st
 
 def assign_ticket(ticket_id: int, assignee: str, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""), (ticket_id,)  # noqa: S608 -- fixed dialect suffix; bound ticket ID
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] in {"resolved", "closed"}:
+            raise ValueError("Không thể đổi phân công khi ticket đã giải quyết hoặc đóng.")
         timestamp = _now()
         connection.execute(
             "UPDATE tickets SET assignee = ?, updated_at = ? WHERE id = ?",

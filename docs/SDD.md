@@ -540,3 +540,19 @@ Hub lấy tối đa 50 delivery DB gần nhất, kèm các manual test/email RAM
 API cursor dùng để xem sâu hơn. RAM không thay thế outbox, manual test/email
 chưa có durable retry (AUD-16 và phạm vi email riêng). Không seed lịch sử giả.
 UI nêu đúng create/escalate; badge cấu hình không còn gọi là kết nối thành công.
+
+
+### AUD-14 — assignment completion invariant
+
+assign_ticket đọc ticket chưa archived và kiểm trạng thái trong cùng transaction:
+SQLite BEGIN IMMEDIATE; PostgreSQL SELECT ... FOR UPDATE. resolved/closed ném
+ValueError trước khi UPDATE/audit; API map 409. LookupError sau bước visibility
+map 404 để xử lý ticket mất/archived giữa các bước. Quyền Agent/Admin và kiểm
+assignee active giữ nguyên. UI khóa select/nút assignment sau hoàn tất và chặn
+callback, nhưng backend vẫn quyết định khi UI cũ còn hiển thị trạng thái active.
+
+Status update đã dùng cùng cơ chế lock từ AUD-13: assignment commit trước
+resolution thì owner mới được ghi nhận; resolution commit trước thì assignment
+bị từ chối. Không thay schema, không có bypass Admin, không thêm resolved_by.
+Reopen in_progress cho phép phân công và KPI chu kỳ sau tính theo owner mới.
+Không giải quyết các race comment/FSM/CSAT/version/account khác của AUD-23.

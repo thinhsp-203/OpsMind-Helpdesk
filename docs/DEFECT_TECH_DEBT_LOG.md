@@ -191,3 +191,15 @@ At-least-once có thể trùng sau send-before-ack/crash; không có exactly-onc
 human acknowledgement, immutable attempt ledger, purge hay backlog monitoring.
 UI nêu đúng create/escalate và trạng thái configured, bỏ SLA-overdue claim.
 AUD-16/email và race khác của AUD-23 vẫn mở; không tự backfill lịch sử.
+
+
+### Theo dõi audit AUD-14 — phân công sau hoàn tất (21/10/2026)
+
+**FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/deploy. Policy khóa
+assignment ở resolved/closed để giữ assignee dùng cho KPI; reopen in_progress
+cho phép giao lại, không thêm resolved_by hoặc sửa dữ liệu lịch sử. Invariant
+được kiểm dưới SQLite writer lock/PG ticket row lock, trước UPDATE và audit;
+API trả 409, lookup mất sau visibility trả 404. UI disabled cả select/nút và
+callback. Baseline API/store/concurrency 7 FAIL, Node resolved FAIL; sau sửa
+nhóm ban đầu 13 passed, thêm hai ca API vào full suite. Quyền/target eligibility
+giữ nguyên; không tuyên bố đã giải quyết các race khác thuộc AUD-23.

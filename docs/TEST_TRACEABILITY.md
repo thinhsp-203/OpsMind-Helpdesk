@@ -177,3 +177,21 @@ hiện provider accepted và staff acknowledgement unknown. Không gọi provide
 thật; không là HTTP socket E2E/cloud. Năm Node runners và Ruff/diff PASS.
 Full suite/kết quả coverage được lưu báo cáo phiên. AUD-16 email chưa thuộc
 durable outbox này; AUD-23 race nghiệp vụ khác vẫn mở.
+
+
+### AUD-14 — completed assignment and attribution
+
+tests/test_assignment_policy.py: resolved/closed x agent/admin API 409, so toàn
+bộ ticket/audit và KPI trước-sau; store gọi trực tiếp cũng chặn; bốn trạng thái
+chưa hoàn tất vẫn giao được; reopen/assign/resolve tính owner mới; archived/missing
+404; requester 403 và cùng assignee vẫn 409. Mock lookup mất sau visibility
+được map 404. Concurrency pause ngay sau read assignment bằng Event và proxy
+connection, writer resolution phải chờ transaction; sau release owner trước
+resolution giữ nguyên và assignment sau resolution bị chặn. Timeout .2s dùng
+kiểm lock khi đã đồng bộ phase, không là benchmark latency.
+
+Baseline 13 ca: 7 failed, 6 passed; sau sửa 13 passed, thêm hai ca API vào full
+suite. tests/test_assignment_policy.js baseline FAIL ở resolved, sau sửa PASS:
+select/button read-only và callback không gọi API sau hoàn tất, active vẫn gọi.
+CI thêm runner, cache v8/i18n tooltip. Ba PG case (hai trạng thái và read/write
+serialization dùng helper chung) local skip, chưa coi PG runtime đã kiểm.

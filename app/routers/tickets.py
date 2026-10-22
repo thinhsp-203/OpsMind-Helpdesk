@@ -187,7 +187,12 @@ def assign_ticket(request: Request, ticket_id: int, payload: AssignmentUpdate) -
         raise HTTPException(
             status_code=422, detail="Người được giao phải là tài khoản Agent hoặc Admin."
         )
-    ticket = store.assign_ticket(ticket_id, payload.assignee, user["username"])
+    try:
+        ticket = store.assign_ticket(ticket_id, payload.assignee, user["username"])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ticket.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"message": "Đã giao ticket.", "ticket": ticket}
 
 

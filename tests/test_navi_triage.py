@@ -1,7 +1,6 @@
 """Test Phase 4 Navi IT Helpdesk Auto-Triage classification and resolution scopes."""
 
-import pytest
-from app.rag import generate_answer, suggest_ticket_triage
+from app.rag import generate_answer
 
 
 def test_triage_six_navi_categories() -> None:

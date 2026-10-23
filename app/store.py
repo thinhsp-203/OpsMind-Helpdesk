@@ -998,15 +998,15 @@ def delete_user_and_anonymize(username: str) -> bool:
                         "UPDATE notification_outbox SET payload = ? WHERE id = ?",
                         (json.dumps(payload, ensure_ascii=False), row["id"]),
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Could not anonymize notification outbox payload: %s", exc)
 
         # Revoke tokens and jobs
         connection.execute("DELETE FROM password_reset_tokens WHERE username = ?", (username,))
         try:
             connection.execute("DELETE FROM email_outbox WHERE username = ?", (username,))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Could not delete email outbox records: %s", exc)
 
         # Clear rate limiting
         connection.execute("DELETE FROM rate_limit_attempts WHERE key LIKE ?", (f"%:{username}",))

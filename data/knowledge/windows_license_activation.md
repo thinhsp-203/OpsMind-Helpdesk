@@ -1,42 +1,19 @@
-# Windows and Office Volume License (KMS) Activation Fix
+# Hướng dẫn kích hoạt bản quyền Windows và Microsoft Office qua máy chủ KMS nội bộ
 
-**Từ khóa:** bản quyền Windows, kích hoạt Windows, license key, Windows hết hạn bản quyền, activate Windows, KMS, bản quyền hệ điều hành.
+**Từ khóa:** bản quyền Windows, kích hoạt Windows, license key, KMS, Activate Windows, Office 2016, Office 2019, Office 2021, Office 365, bản quyền hết hạn, slmgr, kích hoạt bản quyền.
 
-## Symptoms
-- Desktop background turns black; watermark displays 'Activate Windows - Go to Settings to activate Windows'.
-- Microsoft Office applications (Word, Excel) display yellow banner: 'Product Notice: Word hasn\'t been activated. Most features will be disabled'.
-- Error codes: `0xC004F074` (No Key Management Service could be contacted) or `0xC004C003`.
+## Triệu chứng / Dấu hiệu nhận biết
+- Góc phải phía dưới màn hình Windows xuất hiện dòng chữ mờ: "Activate Windows - Go to Settings to activate Windows".
+- Khi mở các ứng dụng văn phòng Word, Excel, Outlook xuất hiện thanh thông báo màu vàng hoặc đỏ ở phía trên: "Product Activation Failed" hoặc "Your license will expire soon".
+- Trong cửa sổ *Settings -> System -> Activation* báo trạng thái Windows chưa được kích hoạt bản quyền hợp lệ hoặc không kết nối được máy chủ cấp khóa bản quyền.
 
-## Checks
-1. Verify if the workstation is connected to the corporate internal network or corporate VPN. KMS servers only respond from inside corporate network.
-2. Open Command Prompt (Admin) and test reachability to corporate KMS server:
-   `powershell Test-NetConnection -ComputerName kms.company.internal -Port 1688`.
-3. Check current activation status: run `slmgr.vbs /dli` or `slmgr.vbs /xpr`.
-4. Check local PC system date and time; clock skew greater than 4 hours causes KMS authentication rejections.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kết nối vào mạng nội bộ công ty:** Bản quyền Windows và Office của công ty được quản lý và kích hoạt tự động thông qua máy chủ KMS (Key Management Service) nội bộ. Hãy cắm dây mạng LAN hoặc kết nối Wi-Fi nội bộ tại văn phòng công ty.
+2. **Giữ kết nối mạng và khởi động lại máy:** Khi máy tính kết nối mạng nội bộ công ty, hệ thống sẽ tự động gửi gói tin xác thực đến máy chủ KMS để gia hạn bản quyền (thời hạn mỗi chu kỳ gia hạn là 180 ngày).
+3. **Kiểm tra ngày giờ hệ thống:** Đảm bảo ngày, giờ và múi giờ trên máy tính hoàn toàn chuẩn xác. Nếu sai lệch giờ quá 5 phút so với máy chủ miền Active Directory, việc kích hoạt bản quyền sẽ bị từ chối.
+4. **Kiểm tra trạng thái kích hoạt trong Settings:** Vào *Settings -> System -> Activation*, chọn nút *Troubleshoot* nếu có để hệ thống kiểm tra lại khóa bản quyền.
 
-## Resolution
-- Connect computer to corporate network or establish corporate VPN connection.
-- Force Windows KMS re-activation via elevated Command Prompt:
-  ```cmd
-  slmgr.vbs /skms kms.company.internal:1688
-  slmgr.vbs /ato
-  ```
-- For Microsoft Office KMS activation:
-  Navigate to Office installation directory (e.g., `cd "C:\Program Files\Microsoft Office\Office16"`) and execute:
-  ```cmd
-  cscript ospp.vbs /sethst:kms.company.internal
-  cscript ospp.vbs /act
-  ```
-- If computer has been offline for > 180 days, KMS volume lease has expired; computer must maintain VPN connection for at least 30 minutes to refresh lease.
-
-## Escalation
-If error 0xC004F074 persists while on corporate LAN, escalate to System Administration to inspect corporate KMS host server status and DNS SRV record (`_vlmcs._tcp.company.internal`).
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Kết nối vào mạng nội bộ công ty hoặc bật VPN: Máy tính cần nhìn thấy máy chủ kích hoạt bản quyền nội bộ (KMS Server).
-2. Kiểm tra giờ hệ thống máy tính phải đúng với giờ hiện tại.
-3. Mở Command Prompt với quyền Run as Administrator, chạy lệnh `slmgr.vbs /ato` để yêu cầu Windows kích hoạt lại bản quyền.
-4. Đối với lỗi bản quyền Office, mở cmd chạy lệnh `cscript ospp.vbs /act` trong thư mục cài đặt Office.
-
-## Source and scope
-- Microsoft Learn, [Troubleshoot KMS activation error codes](https://learn.microsoft.com/en-us/troubleshoot/windows-server/licensing-and-activation/troubleshoot-kms-activation-codes), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Máy tính đã kết nối mạng nội bộ nhiều ngày nhưng vẫn không tự kích hoạt được bản quyền.
+- Máy tính của nhân sự làm việc từ xa dài ngày không thể đến văn phòng để kết nối mạng nội bộ.
+- Cần kỹ thuật viên IT cấp phát khóa bản quyền riêng (MAK / Digital License) hoặc xử lý lệnh kích hoạt nâng cao qua dòng lệnh máy chủ KMS.

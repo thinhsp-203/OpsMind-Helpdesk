@@ -1,31 +1,20 @@
-# Windows Update and Software Patching
+# Hướng dẫn xử lý sự cố Windows Update và cập nhật hệ điều hành Windows
 
-**Từ khóa:** cập nhật Windows, Windows Update, lỗi update, cài đặt bản vá, update bị treo, update fail, cập nhật hệ điều hành.
+**Từ khóa:** cập nhật Windows, Windows Update, lỗi update, cập nhật thất bại, disk space, troubleshooter, restart, hoàn tác, lỗi cập nhật, giải phóng ổ đĩa, 0x80070002, 0x80240034, Windows 10, Windows 11, Endpoint Management.
 
-## Symptoms
-- Updates fail repeatedly.
-- Device shows update pending for hours.
-- User cannot install new software because a required patch is stuck.
+## Triệu chứng / Dấu hiệu nhận biết
+- Quá trình Windows Update báo lỗi với các mã phổ biến như 0x80070002, 0x80070070, 0x80240034 hoặc tải mãi ở mức 0% / 100%.
+- Máy tính thông báo dung lượng ổ đĩa C không đủ (low disk space) để tải hoặc giải nén bản vá cập nhật.
+- Máy tính bị treo ở màn hình "Working on updates" hoặc tự động hoàn tác (undoing changes) sau khi khởi động lại.
 
-## Procedure
-1. Check whether the device has enough disk space.
-2. Confirm the device is connected to the internet, plugged into power, and has the correct date and time.
-3. Run the Windows Update troubleshooter from Settings or Get Help.
-4. On organization-managed devices, report the error code and contact endpoint management before changing update services or policies.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra dung lượng ổ đĩa C (Disk space):** Bản cập nhật Windows thường yêu cầu tối thiểu 10GB - 20GB dung lượng trống. Nhấp chuột phải vào ổ đĩa C -> chọn *Properties* hoặc vào *Settings -> System -> Storage* để dọn dẹp các tệp tạm thời (Temporary files).
+2. **Chạy trình sửa lỗi Windows Update Troubleshooter:** Vào *Settings -> Update & Security (hoặc System) -> Troubleshoot -> Other troubleshooters -> Windows Update* và chọn *Run*. Chờ hệ thống tự động quét và sửa các lỗi service.
+3. **Khởi động lại máy tính (Restart):** Nhiều bản cập nhật yêu cầu khởi động lại máy để áp dụng các gói trước đó. Chọn *Start -> Restart* (không chọn Shutdown).
+4. **Kiểm tra ngày giờ hệ thống:** Đảm bảo ngày giờ và múi giờ trên máy tính trùng khớp với thời gian thực tế để không bị lỗi xác thực chứng chỉ máy chủ cập nhật.
 
-## Resolution
-- Restart the device if Windows requests it, then retry the update.
-- Back up important files before any repair that could affect system state.
-- Do not manually delete update-cache files, remove update packages, change Group Policy, or disable protection as an end-user workaround; IT should select any advanced repair for a managed device.
-
-## Escalation
-Escalate to the endpoint management team if the issue affects multiple machines or the update service is failing at the organization level.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Kiểm tra dung lượng ổ đĩa, nguồn điện và kết nối mạng ổn định.
-2. Khởi động lại máy một lần nếu có yêu cầu restart đang chờ.
-3. Dùng Windows Update Troubleshooter; không tắt công cụ bảo vệ hoặc bỏ qua chính sách cập nhật của công ty.
-4. Nếu máy quản lý tập trung hoặc nhiều thiết bị cùng lỗi, gửi mã lỗi và thời điểm cho đội Endpoint Management.
-
-## Source and scope
-- Microsoft Support, [Troubleshoot problems updating Windows](https://support.microsoft.com/en-us/windows/deployment/updates-lifecycle/troubleshoot-problems-updating-windows), accessed 2026-10-05. Supports using the Windows Update troubleshooter, checking connectivity, administrator access, external hardware, free space, and date/time; it advises backing up files before troubleshooting. Organization-specific patch policy must be checked by IT.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Máy tính công ty được quản lý tập trung qua máy chủ WSUS / Endpoint Management, người dùng không bỏ qua policy cập nhật của công ty.
+- Bản cập nhật liên tục báo lỗi sau khi đã chạy Troubleshooter và giải phóng ổ đĩa.
+- Lỗi vòng lặp khởi động (boot loop) hoặc màn hình xanh sau khi cài đặt bản vá.
+- Cần quyền Quản trị viên (Administrator) để can thiệp xóa thư mục SoftwareDistribution hoặc đặt lại service cập nhật (Update service).

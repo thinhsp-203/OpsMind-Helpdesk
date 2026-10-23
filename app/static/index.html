@@ -51,6 +51,10 @@
                 <span class="dropdown-icon">🔒</span>
                 <span>Đổi mật khẩu</span>
               </button>
+              <button id="deleteAccountBtn" class="dropdown-item dropdown-item-danger" type="button" role="menuitem">
+                <span class="dropdown-icon">🗑️</span>
+                <span>Xóa tài khoản vĩnh viễn</span>
+              </button>
               <div class="dropdown-divider"></div>
               <button id="logoutBtn" class="dropdown-item dropdown-item-danger" type="button" role="menuitem">
                 <span class="dropdown-icon">🚪</span>
@@ -438,38 +442,7 @@
                     </div>
                   </article>
 
-                  <article class="channel-card">
-                    <div class="channel-header">
-                      <div class="channel-title-group">
-                        <span class="channel-icon channel-discord">🎮</span>
-                        <div>
-                          <strong>Discord Webhook</strong>
-                          <small>Kênh tin nhóm IT Support</small>
-                        </div>
-                      </div>
-                      <span id="discordStatusBadge" class="tag tag-status-draft">Chưa kết nối</span>
-                    </div>
-                    <div class="channel-body">
-                      <div class="channel-row">
-                        <span>Địa chỉ Webhook:</span>
-                        <span id="discordWebhookUrl" class="mono">—</span>
-                      </div>
-                      <div class="channel-row">
-                        <span>Giao diện:</span>
-                        <span>Rich Embed đổi màu theo mức độ ưu tiên</span>
-                      </div>
-                      <div class="channel-row">
-                        <span>Bảo mật:</span>
-                        <span>Đã kích hoạt bộ lọc SSRF & Whitelist</span>
-                      </div>
-                    </div>
-                    <div class="channel-footer">
-                      <button id="testDiscordBtn" class="button button-soft button-wide" type="button">Gửi thông báo thử nghiệm</button>
-                      <p id="discordTestMessage" class="form-message" role="status"></p>
-                    </div>
-                  </article>
-
-                  <article class="channel-card">
+<article class="channel-card">
                     <div class="channel-header">
                       <div class="channel-title-group">
                         <span class="channel-icon" style="background:#eef2ff; color:#315de7;">✉</span>
@@ -524,7 +497,6 @@
                   <ul>
                     <li><code>TELEGRAM_BOT_TOKEN</code> — <span>Token bot do @BotFather cấp.</span></li>
                     <li><code>TELEGRAM_CHAT_ID</code> — <span>ID nhóm hoặc kênh nhận cảnh báo IT.</span></li>
-                    <li><code>DISCORD_WEBHOOK_URL</code> — <span>Đường dẫn Webhook kênh Discord của đội kỹ thuật.</span></li>
                   </ul>
                 </div>
               </section>
@@ -618,6 +590,7 @@
               <span class="muted">Mật khẩu đổi lần cuối:</span>
               <strong id="profilePwdChangedAt">Chưa cập nhật</strong>
               <button id="profileChangePasswordBtn" class="link-button" type="button">Đổi mật khẩu</button>
+              <button id="profileDeleteAccountBtn" class="link-button text-danger" type="button">Xóa tài khoản vĩnh viễn</button>
             </div>
             <div class="modal-actions">
               <button id="cancelUserProfileBtn" class="button button-quiet" type="button">Hủy</button>

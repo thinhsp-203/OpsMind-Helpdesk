@@ -327,7 +327,37 @@ def test_list_tickets_and_knowledge_escape_like_wildcard(isolated_database: Path
     matches_none = store.list_tickets("admin", "admin", query="99%")
     assert len(matches_none) == 0
 
+def test_delete_user_and_anonymize_preserves_ticket_and_comment_history(isolated_database: Path) -> None:
+    store.initialize_store()
+    store.create_user("bob_anonymize", "BobPass123456!", "user", email="bob@example.com")
 
+    # Bob creates a ticket and writes a comment
+    ticket = store.create_ticket("Máy in hỏng cổng USB", "Không nhận cáp USB máy in Canon", "hardware", "medium", "bob_anonymize")
+    t_after_comment = store.add_comment(ticket["id"], "bob_anonymize", "Tôi đã thử đổi dây cáp khác nhưng vẫn không nhận.")
 
+    assert ticket["requester"] == "bob_anonymize"
+    assert t_after_comment["comments"][0]["author"] == "bob_anonymize"
 
+    # Bob deletes his account
+    result = store.delete_user_and_anonymize("bob_anonymize")
+    assert result is True
+
+    # User bob is deleted from users table
+    assert store.get_user_credentials("bob_anonymize") is None
+    assert not any(u["username"] == "bob_anonymize" for u in store.list_users())
+
+    # Tickets and comments are preserved with anonymous authorship
+    updated_ticket = store.get_ticket(ticket["id"])
+    assert updated_ticket is not None
+    assert updated_ticket["title"] == "Máy in hỏng cổng USB"
+    assert updated_ticket["requester"] == store.ANONYMIZED_USER
+
+    comments = updated_ticket["comments"]
+    assert len(comments) == 1
+    assert comments[0]["author"] == store.ANONYMIZED_USER
+    assert comments[0]["comment"] == "Tôi đã thử đổi dây cáp khác nhưng vẫn không nhận."
+
+    # Cannot delete sole admin
+    with pytest.raises(ValueError, match="Admin"):
+        store.delete_user_and_anonymize("admin")
 

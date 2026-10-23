@@ -206,7 +206,7 @@ xóa dữ liệu cũ. Backup DB trước upgrade và kiểm quyền CREATE TABLE
 DB thử nghiệm. SQLite cần đường DB bền vững, Neon dùng DB hiện có. Outbox chỉ
 có event từ phiên bản mới; không backfill ticket/SLA quá hạn lịch sử.
 
-1. Trong staging, đặt target thử nghiệm Telegram/Discord và tạo ticket/chuyển
+1. Trong staging, đặt target thử nghiệm Telegram và tạo ticket/chuyển
    cấp. Kiểm hai row chung event_id, snapshot đúng thời điểm, trạng thái tiến
    triển; accepted không là người đọc xác nhận. Không thử bằng dữ liệu thật.
 2. Khi lỗi provider, xem admin GET /admin/notifications/deliveries?status=failed.

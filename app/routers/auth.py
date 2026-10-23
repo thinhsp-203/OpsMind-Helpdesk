@@ -28,6 +28,7 @@ from app.schemas import (
     LoginRequest,
     ProfileUpdate,
     ResetPasswordRequest,
+    AccountDeleteResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -283,3 +284,26 @@ def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
         "username": username,
         "require_relogin": True,
     }
+
+@router.delete("/me", response_model=AccountDeleteResponse)
+@router.post("/delete-account", response_model=AccountDeleteResponse)
+def delete_account_endpoint(request: Request) -> dict[str, str]:
+    user = current_user(request)
+    username = user["username"]
+    try:
+        store.delete_user_and_anonymize(username)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception as exc:
+        logger.error("Failed to delete user account %s: %s", username, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể xóa tài khoản vào lúc này. Vui lòng thử lại sau.",
+        ) from exc
+    return {
+        "message": "Tài khoản của bạn đã được xóa vĩnh viễn và thông tin cá nhân đã được ẩn danh.",
+        "username": username,
+    }
+

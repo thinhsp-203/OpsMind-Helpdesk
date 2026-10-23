@@ -42,10 +42,10 @@ def test_escalation_has_durable_delivery_records():
     assert response.status_code == 200
     rows = response.json()
     assert sorted((row['event_type'], row['channel']) for row in rows) == [
-        ('created', 'discord'), ('created', 'telegram'), ('escalated', 'discord'), ('escalated', 'telegram')]
+        ('created', 'telegram'), ('escalated', 'telegram')]
     assert {row['status'] for row in rows} == {'not_configured'}
     assert client.patch(f"/tickets/{doc['id']}", headers=staff, json={'status': 'escalated'}).status_code == 409
-    assert len(client.get('/admin/notifications/deliveries', headers=staff).json()) == 4
+    assert len(client.get('/admin/notifications/deliveries', headers=staff).json()) == 2
 
 
 def configure(monkeypatch):
@@ -94,22 +94,6 @@ def test_provider_exception_exhausts_budget_without_persisting_secret(monkeypatc
     assert 'secret-token' not in str(outbox.list_deliveries())
     assert outbox.process_notification_outbox() == 0
     assert adapter.call_count == 3
-
-
-def test_only_failed_channel_retries(monkeypatch):
-    from app import notification_outbox as outbox
-    configure(monkeypatch)
-    monkeypatch.setenv('DISCORD_WEBHOOK_URL', 'https://discord.com/api/webhooks/AUD13-fake')
-    telegram = Mock(return_value=True)
-    discord = Mock(return_value=False)
-    monkeypatch.setattr('app.notifications.notify_telegram', telegram)
-    monkeypatch.setattr('app.notifications.notify_discord', discord)
-    ticket()
-    outbox.process_notification_outbox()
-    with store._connect() as connection:
-        connection.execute("UPDATE notification_outbox SET next_attempt_at = 0 WHERE status = 'pending'")
-    outbox.process_notification_outbox()
-    assert telegram.call_count == 1 and discord.call_count == 2
 
 
 def test_claims_are_exclusive_and_stale_acknowledgement_is_fenced(monkeypatch):
@@ -186,7 +170,7 @@ def test_outbox_insert_failure_rolls_back_ticket_and_escalation(monkeypatch):
     with pytest.raises(RuntimeError):
         store.update_ticket_status(doc['id'], 'escalated', 'agent')
     assert store.get_ticket(doc['id'])['status'] == 'in_progress'
-    assert len(outbox.list_deliveries()) == 2
+    assert len(outbox.list_deliveries()) == 1
 
 
 def test_concurrent_escalation_commits_one_event():
@@ -203,7 +187,7 @@ def test_concurrent_escalation_commits_one_event():
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(lambda _: escalate(), range(2))) == ['conflict', 'ok']
-    assert len([row for row in outbox.list_deliveries() if row['event_type'] == 'escalated']) == 2
+    assert len([row for row in outbox.list_deliveries() if row['event_type'] == 'escalated']) == 1
 
 
 def test_pending_and_claimed_work_survive_new_process(monkeypatch):
@@ -230,7 +214,7 @@ assert row['status'] == 'accepted' and row['attempts'] == 2
 
 def test_pagination_and_status_endpoint_expose_persisted_history():
     from app import notification_outbox as outbox
-    for _ in range(3):
+    for _ in range(6):
         ticket()
     first = outbox.list_deliveries(limit=3)
     second = outbox.list_deliveries(limit=3, before_id=first[-1]['id'])
@@ -250,7 +234,7 @@ def test_failed_background_wakeup_does_not_change_committed_ticket_response(monk
         'category': 'general', 'priority': 'low'})
     assert response.status_code == 201
     assert store.get_ticket(response.json()['ticket']['id']) is not None
-    assert len(outbox.list_deliveries()) == 2
+    assert len(outbox.list_deliveries()) == 1
 
 
 def test_lifespan_worker_drains_existing_pending_work(monkeypatch):

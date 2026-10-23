@@ -16,6 +16,7 @@ from app.schemas import (
     NotificationTestRequest,
     UserCreate,
     UserUpdate,
+    UserDeletion,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,23 @@ def update_admin_user(
     if updated is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
     return updated
+
+
+@router.delete("/users/{username}")
+def delete_admin_user(request: Request, username: str, payload: UserDeletion) -> dict[str, str]:
+    actor = current_user(request)
+    require_admin(actor)
+    if payload.confirm_username != username:
+        raise HTTPException(status_code=422, detail="Tên xác nhận phải khớp chính xác tài khoản cần xóa.")
+    try:
+        deleted = store.delete_user(username, actor['username'])
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    return {'message': 'Đã xóa tài khoản và dữ liệu đăng nhập. Lịch sử nghiệp vụ đã ẩn danh.'}
 
 
 @router.post("/users/{username}/reset-password")

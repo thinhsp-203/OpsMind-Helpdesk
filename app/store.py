@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import hmac
+import json
 import logging
 import re
 import secrets
@@ -188,6 +189,23 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
                 (doc_row["id"], title, category, tags, content, now),
             )
 
+ANONYMIZED_USER = "Người dùng đã xóa"
+
+
+def _ensure_anonymized_user(connection) -> str:
+    row = connection.execute(
+        "SELECT username FROM users WHERE username = ?",
+        (ANONYMIZED_USER,),
+    ).fetchone()
+    if not row:
+        connection.execute(
+            "INSERT INTO users (username, password_hash, role, full_name, is_active, is_deleted, session_epoch) "
+            "VALUES (?, '!', 'user', 'Người dùng đã xóa', 0, 1, ?)",
+            (ANONYMIZED_USER, secrets.token_hex(32)),
+        )
+    return ANONYMIZED_USER
+
+
 INSECURE_ADMIN_PASSWORDS: set[str] = {
     "adminsecurepassword123!",
     "admin12345678!",
@@ -355,6 +373,7 @@ def initialize_store() -> None:
                 ("users", "department", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "phone", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "is_active", "INTEGER NOT NULL DEFAULT 1"),
+                ("users", "is_deleted", "INTEGER NOT NULL DEFAULT 0"),
                 ("users", "password_changed_at", "TEXT"),
                 ("users", "session_epoch", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "force_password_change", "INTEGER NOT NULL DEFAULT 0"),
@@ -378,6 +397,7 @@ def initialize_store() -> None:
                 ("department", "TEXT NOT NULL DEFAULT ''"),
                 ("phone", "TEXT NOT NULL DEFAULT ''"),
                 ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+                ("is_deleted", "INTEGER NOT NULL DEFAULT 0"),
                 ("password_changed_at", "TEXT"),
                 ("session_epoch", "TEXT NOT NULL DEFAULT ''"),
                 ("force_password_change", "INTEGER NOT NULL DEFAULT 0"),
@@ -524,6 +544,7 @@ def initialize_store() -> None:
                     "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
         _ensure_session_epochs(connection)
+        _ensure_anonymized_user(connection)
         seed_builtin_knowledge(connection)
         from app.notification_outbox import initialize
         initialize(connection)
@@ -583,7 +604,7 @@ def get_user_credentials(username: str) -> dict[str, Any] | None:
         row = connection.execute(
             "SELECT username, password_hash, role, full_name, email, department, phone, is_active, "
             "password_changed_at, force_password_change, session_epoch "
-            "FROM users WHERE username = ?",
+            "FROM users WHERE username = ? AND is_deleted = 0",
             (username,),
         ).fetchone()
     return dict(row) if row else None
@@ -633,7 +654,7 @@ def list_users() -> list[dict[str, Any]]:
     with _connect() as connection:
         rows = connection.execute(
             "SELECT username, role, full_name, email, department, phone, is_active "
-            "FROM users ORDER BY role, username"
+            "FROM users WHERE is_deleted = 0 ORDER BY role, username"
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -917,6 +938,100 @@ def cleanup_expired_rate_limits(max_window_seconds: float = 3600.0) -> None:
             connection.execute("DELETE FROM rate_limit_attempts WHERE attempt_time < ?", (cutoff,))
 
 
+def _lock_admin_membership(connection) -> None:
+    # Serialize delete/demotion before counting administrators, including PG.
+    if isinstance(connection, _PostgresConnection):
+        connection.execute('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE')
+
+
+def delete_user_and_anonymize(username: str) -> bool:
+    """Permanently delete a user account and anonymize their tickets, comments, and history."""
+    if username == ANONYMIZED_USER or username.startswith("nguoi_dung_da_xoa_"):
+        raise ValueError("Không thể xóa tài khoản ẩn danh hệ thống.")
+
+    with _connect() as connection:
+        _begin_credential_write(connection)
+        _lock_admin_membership(connection)
+        user = connection.execute(
+            "SELECT role, is_active FROM users WHERE username = ? AND is_deleted = 0",
+            (username,),
+        ).fetchone()
+        if not user:
+            raise LookupError("Người dùng không tồn tại.")
+
+        if user["role"] == "admin" and user["is_active"]:
+            count_row = connection.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND is_active = 1 AND is_deleted = 0"
+            ).fetchone()
+            count = count_row["n"] if hasattr(count_row, "__getitem__") else count_row[0]
+            if count <= 1:
+                raise ValueError("Không thể xóa tài khoản Admin duy nhất của hệ thống.")
+
+        anonymous = _ensure_anonymized_user(connection)
+
+        for table, column in (
+            ("tickets", "requester"),
+            ("comments", "author"),
+            ("audit_logs", "actor"),
+            ("ticket_attachments", "uploaded_by"),
+            ("knowledge_documents", "author"),
+            ("knowledge_documents", "reviewer"),
+            ("knowledge_versions", "author"),
+        ):
+            connection.execute(
+                f"UPDATE {table} SET {column} = ? WHERE {column} = ?",  # noqa: S608 -- fixed identifier list
+                (anonymous, username),
+            )
+
+        # Open tickets need a new responsible staff member after deletion.
+        connection.execute("UPDATE tickets SET assignee = NULL WHERE assignee = ?", (username,))
+        connection.execute("DELETE FROM chat_sessions WHERE user_id = ?", (username,))
+
+        # Snapshots must not keep the deleted requester's identifier or be sent later.
+        try:
+            rows = connection.execute("SELECT id, payload FROM notification_outbox").fetchall()
+            for row in rows:
+                payload = json.loads(row["payload"])
+                if payload.get("requester") == username:
+                    payload["requester"] = anonymous
+                    connection.execute(
+                        "UPDATE notification_outbox SET payload = ? WHERE id = ?",
+                        (json.dumps(payload, ensure_ascii=False), row["id"]),
+                    )
+        except Exception:
+            pass
+
+        # Revoke tokens and jobs
+        connection.execute("DELETE FROM password_reset_tokens WHERE username = ?", (username,))
+        try:
+            connection.execute("DELETE FROM email_outbox WHERE username = ?", (username,))
+        except Exception:
+            pass
+
+        # Clear rate limiting
+        connection.execute("DELETE FROM rate_limit_attempts WHERE key LIKE ?", (f"%:{username}",))
+
+        # Delete user record from users table
+        connection.execute("DELETE FROM users WHERE username = ?", (username,))
+
+    return True
+
+
+def delete_user(username: str, actor: str) -> bool:
+    """Admin-initiated identity removal."""
+    with _connect() as connection:
+        _begin_credential_write(connection)
+        _lock_admin_membership(connection)
+        acting = connection.execute(
+            "SELECT role, is_active FROM users WHERE username = ? AND is_deleted = 0", (actor,)
+        ).fetchone()
+        if not acting or acting["role"] != "admin" or not acting["is_active"]:
+            raise PermissionError("Chỉ Admin đang hoạt động được xóa tài khoản.")
+        if username == actor:
+            raise ValueError("Không thể xóa tài khoản đang đăng nhập.")
+    return delete_user_and_anonymize(username)
+
+
 def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     allowed = {"role", "full_name", "email", "department", "phone", "is_active"}
     if not updates or not set(updates).issubset(allowed):
@@ -926,9 +1041,10 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
         normalized["is_active"] = int(normalized["is_active"])
     with _connect() as connection:
         _begin_credential_write(connection)
+        _lock_admin_membership(connection)
         _lock_credential_user(connection, username)
         existing = connection.execute(
-            "SELECT username, role, is_active, email FROM users WHERE username = ?", (username,)
+            "SELECT username, role, is_active, email FROM users WHERE username = ? AND is_deleted = 0", (username,)
         ).fetchone()
         if existing is None:
             return None
@@ -963,7 +1079,7 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
             _revoke_password_reset_tokens(connection, username)
         row = connection.execute(
             "SELECT username, role, full_name, email, department, phone, is_active "
-            "FROM users WHERE username = ?",
+            "FROM users WHERE username = ? AND is_deleted = 0",
             (username,),
         ).fetchone()
     return dict(row)

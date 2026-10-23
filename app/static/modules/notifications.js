@@ -113,15 +113,6 @@ async function loadNotificationStatus() {
     if (tgUser) tgUser.textContent = tg.enabled ? "Đã cấu hình" : "Chưa cấu hình";
     if (tgChat) tgChat.textContent = tg.target || "Chưa cấu hình";
 
-    const dc = data.discord || {};
-    const dcBadge = byId("discordStatusBadge");
-    const dcUrl = byId("discordWebhookUrl");
-    if (dcBadge) {
-      dcBadge.textContent = dc.enabled ? "Đã cấu hình" : "Chưa cấu hình";
-      dcBadge.className = `tag ${dc.enabled ? "tag-status-published" : "tag-status-draft"}`;
-    }
-    if (dcUrl) dcUrl.textContent = dc.target || "Chưa cấu hình";
-
     const em = data.email || {};
     const emBadge = byId("emailStatusBadge");
     const emProvider = byId("emailProviderName");
@@ -168,10 +159,7 @@ async function testNotification(channel) {
   let messageId = "telegramTestMessage";
   let buttonId = "testTelegramBtn";
   let targetEmail = "";
-  if (channel === "discord") {
-    messageId = "discordTestMessage";
-    buttonId = "testDiscordBtn";
-  } else if (channel === "email") {
+  if (channel === "email") {
     messageId = "emailTestMessage";
     buttonId = "testEmailBtn";
     targetEmail = byId("testEmailTarget")?.value.trim() || "";

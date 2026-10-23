@@ -1,5 +1,10 @@
 (() => {
   const translations = {
+    "Xóa tài khoản vĩnh viễn": "Delete account permanently",
+    "Người dùng đã xóa": "Deleted User",
+    "Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản của mình? Toàn bộ phiên đăng nhập sẽ bị thu hồi. Các ticket và trao đổi cũ sẽ được lưu dưới dạng ẩn danh.": "Are you sure you want to permanently delete your account? All sessions will be revoked. Past tickets and comments will be anonymized.",
+    "Tài khoản của bạn đã được xóa vĩnh viễn và thông tin cá nhân đã được ẩn danh.": "Your account has been permanently deleted and personal data anonymized.",
+    "Không thể xóa tài khoản vào lúc này.": "Failed to delete account at this time.",
     "Bỏ bộ lọc": "Clear filters",
     "Không có yêu cầu khớp bộ lọc": "No requests match these filters",
     "Thử thay đổi điều kiện hoặc bấm Bỏ bộ lọc để xem lại danh sách.": "Change the criteria or select Clear filters to view the list again.",
@@ -515,7 +520,7 @@
     "Kênh thông báo sự cố": "Incident Notification Channels",
     "CỘNG TÁC & CẢNH BÁO": "COLLABORATION & ALERTS",
     "Làm mới trạng thái": "Refresh status",
-    "Tự động phát thông báo khi có ticket khẩn cấp hoặc vi phạm thời hạn cam kết SLA qua Telegram Bot và Discord Webhook.": "Automatically send alerts for urgent tickets or SLA breaches via Telegram Bot and Discord Webhook.",
+    "Tự động phát thông báo khi có ticket khẩn cấp hoặc vi phạm thời hạn cam kết SLA qua Telegram Bot.": "Automatically send alerts for urgent tickets or SLA breaches via Telegram Bot.",
     "Tin nhắn thông báo trực tiếp": "Direct alert messages",
     "Chưa kết nối": "Not connected",
     "Đã kết nối": "Connected",
@@ -533,7 +538,6 @@
     "Thiết lập các biến cấu hình thông báo:": "Configure notification variables:",
     "Token bot do @BotFather cấp.": "Bot token issued by @BotFather.",
     "ID nhóm hoặc kênh nhận cảnh báo IT.": "Group ID or channel receiving IT alerts.",
-    "Đường dẫn Webhook kênh Discord của đội kỹ thuật.": "Discord channel Webhook URL for the tech team.",
     "Dịch vụ Email": "Email Service",
     "Quên mật khẩu & Tạo tài khoản mới": "Password Reset & New Accounts",
     "Phương thức (Provider):": "Provider:",

@@ -122,6 +122,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Mount Routers
 app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
 app.include_router(tickets_router)
 app.include_router(knowledge_router)
 app.include_router(rag_router)

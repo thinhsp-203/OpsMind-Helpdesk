@@ -1,38 +1,19 @@
-# Windows Blue Screen of Death (BSOD) Crash Triage
+# Chẩn đoán và xử lý lỗi màn hình xanh chết chóc (BSOD) trên Windows
 
-**Từ khóa:** màn hình xanh, BSOD, blue screen, máy tính bị sập, crash máy, dump file, tự khởi động lại, WinRE, lỗi hệ điều hành.
+**Từ khóa:** màn hình xanh, BSOD, blue screen, máy tính bị sập, khởi động lại, crash, dump file, Stop Code, DRIVER_IRQL, MEMORY_MANAGEMENT, minidump, phần cứng, Windows.
 
-## Symptoms
-- System crashes abruptly to a blue screen displaying 'Your PC ran into a problem and needs to restart'.
-- Stop codes: `CRITICAL_PROCESS_DIED`, `PAGE_FAULT_IN_NONPAGED_AREA`, `IRQL_NOT_LESS_OR_EQUAL`, `KERNEL_SECURITY_CHECK_FAILURE`.
-- Computer enters a recurring reboot loop (Automatic Repair loop).
+## Triệu chứng / Dấu hiệu nhận biết
+- Màn hình máy tính đột ngột chuyển sang màu xanh dương với thông báo "Your PC ran into a problem and needs to restart".
+- Đi kèm mã dừng lỗi (Stop Code) như: `CRITICAL_PROCESS_DIED`, `SYSTEM_SERVICE_EXCEPTION`, `PAGE_FAULT_IN_NONPAGED_AREA`, `DRIVER_IRQL_NOT_LESS_OR_EQUAL`.
+- Máy tính tự động đếm phần trăm thu thập thông tin rồi khởi động lại đột ngột, làm mất tài liệu đang làm việc.
 
-## Checks
-1. Record the exact Stop Code and the failing driver file shown on the blue screen (e.g., `nvlddmkm.sys`, `netwtw10.sys`, `iaStorA.sys`).
-2. Check if a new hardware peripheral, docking station, or RAM module was recently installed.
-3. Check if a major Windows Update or BIOS update was applied immediately prior to the crash.
-4. Verify whether the PC can boot successfully into Windows Safe Mode.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Ghi lại mã lỗi Stop Code:** Dùng điện thoại chụp lại màn hình xanh, đặc biệt là dòng chữ hoa Stop Code (ví dụ: `MEMORY_MANAGEMENT`) và tên file bị lỗi (nếu có, ví dụ `.sys`).
+2. **Rút bớt thiết bị ngoại vi mới cắm:** Nếu lỗi xảy ra ngay sau khi cắm USB mới, máy in, ổ cứng rời hoặc chuột/bàn phím lạ, hãy rút thiết bị ra và khởi động lại.
+3. **Khởi động lại máy tính:** Để máy khởi động lại tự nhiên vào Windows. Nếu máy vào được màn hình đăng nhập bình thường, lưu ngay lại các file dữ liệu quan trọng đang lưu trên ổ C/Desktop.
+4. **Kiểm tra bản cập nhật gần nhất:** Nếu lỗi xuất hiện ngay sau khi cài một phần mềm lạ, hãy gỡ bỏ phần mềm đó khỏi máy.
 
-## Resolution
-- If crash occurred after driver or Windows update:
-  1. Boot into Windows Recovery Environment (WinRE) by holding Shift while clicking Restart.
-  2. Troubleshoot > Advanced options > Uninstall Updates (Uninstall latest quality or feature update).
-- Run System File Checker and DISM image repair in Command Prompt (Administrator):
-  ```cmd
-  DISM /Online /Cleanup-Image /RestoreHealth
-  sfc /scannow
-  ```
-- Run Memory Diagnostic to rule out faulty RAM hardware: Press Win+R > type `mdsched.exe` > select 'Restart now and check for problems'.
-- Check Minidump files located at `C:\Windows\Minidump` using BlueScreenView or WinDbg for root cause identification.
-
-## Escalation
-If memory diagnostics report hardware errors or BSOD persists in Safe Mode, log a Priority 1 Hardware Incident for IT Helpdesk to replace memory modules or storage SSD.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Dùng điện thoại chụp lại màn hình xanh, đặc biệt là dòng mã lỗi 'Stop Code' và tên file `.sys` (nếu có).
-2. Nếu máy bị khởi động lại liên tục, giữ phím Shift khi bấm Restart để vào màn hình Recovery > chọn Uninstall Updates để gỡ bản cập nhật vừa cài.
-3. Mở Command Prompt (Admin) chạy lệnh `sfc /scannow` để Windows tự động tìm và vá các file hệ thống bị hỏng.
-4. Bấm Win+R gõ `mdsched.exe` để kiểm tra xem thanh RAM có bị lỗi phần cứng hay không.
-
-## Source and scope
-- Microsoft Support, [Troubleshoot blue screen errors in Windows](https://support.microsoft.com/en-us/windows/troubleshoot-blue-screen-errors-in-windows-5c62726c-6489-52da-a372-3f73142c14ad), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Máy tính bị lỗi màn hình xanh liên tục theo vòng lặp, không thể vào được màn hình đăng nhập Windows.
+- Lỗi xuất hiện thường xuyên nhiều lần trong ngày, làm gián đoạn công việc.
+- Cần kỹ thuật viên IT đọc file minidump (`C:\Windows\Minidump`) bằng công cụ chuyên dụng để phân tích chính xác driver hoặc linh kiện phần cứng (RAM, ổ cứng, bo mạch chủ) bị hỏng.

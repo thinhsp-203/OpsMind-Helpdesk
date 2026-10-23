@@ -54,10 +54,8 @@ services:
         sync: false
       - key: SMTP_PASSWORD
         sync: false
-      # Kênh thông báo sự cố Telegram Bot & Discord Webhook
+      # Kênh thông báo sự cố Telegram Bot
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
-        sync: false
-      - key: DISCORD_WEBHOOK_URL
         sync: false

@@ -5,12 +5,10 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.notifications import (
-    ALLOWED_DISCORD_DOMAINS,
     ALLOWED_TELEGRAM_DOMAINS,
     _is_safe_url,
     dispatch_ticket_notification,
     get_notification_channels_status,
-    notify_discord,
     notify_telegram,
     send_test_notification,
 )
@@ -21,21 +19,19 @@ client = TestClient(app)
 def test_safe_url_validation_blocks_ssrf_and_allows_legitimate_domains() -> None:
     # Hợp lệ
     assert _is_safe_url("https://api.telegram.org/bot123/sendMessage", ALLOWED_TELEGRAM_DOMAINS)
-    assert _is_safe_url("https://discord.com/api/webhooks/123/xyz", ALLOWED_DISCORD_DOMAINS)
-    assert _is_safe_url("https://discordapp.com/api/webhooks/123/xyz", ALLOWED_DISCORD_DOMAINS)
 
     # Chặn giao thức không an toàn (HTTP)
     assert not _is_safe_url("http://api.telegram.org/bot123", ALLOWED_TELEGRAM_DOMAINS)
 
     # Chặn localhost & IP nội bộ (SSRF vectors)
-    assert not _is_safe_url("http://localhost:8000/internal", ALLOWED_DISCORD_DOMAINS)
-    assert not _is_safe_url("https://127.0.0.1:5432", ALLOWED_DISCORD_DOMAINS)
-    assert not _is_safe_url("https://192.168.1.100/admin", ALLOWED_DISCORD_DOMAINS)
+    assert not _is_safe_url("http://localhost:8000/internal", ALLOWED_TELEGRAM_DOMAINS)
+    assert not _is_safe_url("https://127.0.0.1:5432", ALLOWED_TELEGRAM_DOMAINS)
+    assert not _is_safe_url("https://192.168.1.100/admin", ALLOWED_TELEGRAM_DOMAINS)
     assert not _is_safe_url("https://10.0.0.1/metadata", ALLOWED_TELEGRAM_DOMAINS)
-    assert not _is_safe_url("https://169.254.169.254/latest/meta-data", ALLOWED_DISCORD_DOMAINS)
+    assert not _is_safe_url("https://169.254.169.254/latest/meta-data", ALLOWED_TELEGRAM_DOMAINS)
 
     # Chặn domain bên ngoài không trong allow-list
-    assert not _is_safe_url("https://attacker-webhook.com/leak", ALLOWED_DISCORD_DOMAINS)
+    assert not _is_safe_url("https://attacker-webhook.com/leak", ALLOWED_TELEGRAM_DOMAINS)
     assert not _is_safe_url("https://malicious.org", ALLOWED_TELEGRAM_DOMAINS)
 
 
@@ -43,7 +39,6 @@ def test_notifications_return_false_when_unconfigured() -> None:
     dummy_ticket = {"id": 1, "title": "Test Ticket", "requester": "user"}
     with patch.dict("os.environ", {}, clear=True):
         assert not notify_telegram(dummy_ticket)
-        assert not notify_discord(dummy_ticket)
         assert not send_test_notification("telegram")
         assert not send_test_notification("discord")
 
@@ -58,9 +53,7 @@ def test_notification_channels_status_masks_credentials(monkeypatch: pytest.Monk
     assert status["telegram"]["target"] == "...4321"  # Masked
     assert "123456:ABC" not in status["telegram"]["target"]
 
-    assert status["discord"]["enabled"] is True
-    assert status["discord"]["target"] == "...12345678"  # Masked
-    assert "webhooks/123456" not in status["discord"]["target"]
+    assert "discord" not in status
 
 
 def test_admin_notification_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,11 +71,11 @@ def test_admin_notification_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     status_res = client.get("/admin/notifications/status", headers={"Authorization": f"Bearer {admin_token}"})
     assert status_res.status_code == 200
     assert "telegram" in status_res.json()
-    assert "discord" in status_res.json()
+    assert "discord" not in status_res.json()
 
     # Admin test channel khi chưa cấu hình trả 400
-    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
-    test_res = client.post("/admin/notifications/test", headers={"Authorization": f"Bearer {admin_token}"}, json={"channel": "discord"})
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    test_res = client.post("/admin/notifications/test", headers={"Authorization": f"Bearer {admin_token}"}, json={"channel": "telegram"})
     assert test_res.status_code == 400
     assert "Không thể gửi" in test_res.json()["detail"]
 
@@ -102,9 +95,7 @@ def test_dispatch_notifications_calls_active_adapters(monkeypatch: pytest.Monkey
         "sla_deadline": "2026-10-14T12:00:00Z",
     }
 
-    with patch("app.notifications.notify_telegram", return_value=True) as mock_tg, \
-         patch("app.notifications.notify_discord", return_value=True) as mock_dc:
+    with patch("app.notifications.notify_telegram", return_value=True) as mock_tg:
         results = dispatch_ticket_notification(dummy_ticket)
-        assert results == {"telegram": True, "discord": True}
+        assert results == {"telegram": True}
         assert mock_tg.called
-        assert mock_dc.called

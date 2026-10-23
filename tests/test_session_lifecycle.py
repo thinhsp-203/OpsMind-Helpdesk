@@ -206,3 +206,47 @@ def test_login_with_uninitialized_epoch_does_not_issue_unusable_token():
     response = client.post('/auth/login', json={'username': 'user', 'password': 'user'})
     assert response.status_code == 503
     assert 'token' not in response.json()
+
+def test_delete_account_endpoint_revokes_token_and_anonymizes_data():
+    # Login as user
+    user_token = login("user", "user")
+    assert me(user_token).status_code == 200
+
+    # User creates a ticket
+    ticket_res = client.post("/tickets", headers={"Authorization": f"Bearer {user_token}"}, json={
+        "title": "Sự cố mạng LAN phòng Kế toán",
+        "description": "Mất kết nối mạng dây từ sáng nay",
+        "category": "network",
+        "priority": "medium",
+    })
+    assert ticket_res.status_code == 201
+    ticket_data = ticket_res.json().get("ticket") or ticket_res.json()
+    ticket_id = ticket_data["id"]
+
+    # User adds a comment
+    comment_res = client.post(f"/tickets/{ticket_id}/comments", headers={"Authorization": f"Bearer {user_token}"}, json={
+        "comment": "Đã thử cắm lại switch nhưng đèn cổng vẫn nhấp nháy đỏ",
+    })
+    assert comment_res.status_code == 200
+
+    # User calls DELETE /auth/me to permanently delete account
+    del_res = client.delete("/auth/me", headers={"Authorization": f"Bearer {user_token}"})
+    assert del_res.status_code == 200
+    assert del_res.json()["username"] == "user"
+
+    # Immediate token revocation: any request with prior token is rejected with 401
+    assert me(user_token).status_code == 401
+
+    # Login with old credentials must fail
+    login_attempt = client.post("/auth/login", json={"username": "user", "password": "user"})
+    assert login_attempt.status_code in {401, 503}
+
+    # Staff/Admin can still inspect the ticket; author info is anonymized
+    admin_token = login("admin", "admin")
+    staff_view = client.get(f"/tickets/{ticket_id}", headers={"Authorization": f"Bearer {admin_token}"})
+    assert staff_view.status_code == 200
+    ticket_body = staff_view.json().get("ticket") or staff_view.json()
+    assert ticket_body["requester"] == "Người dùng đã xóa"
+    assert ticket_body["comments"][0]["author"] == "Người dùng đã xóa"
+    assert "switch" in ticket_body["comments"][0]["comment"]
+

@@ -50,7 +50,7 @@ def target_fingerprint(channel: str) -> str:
         token, chat = setting('TELEGRAM_BOT_TOKEN'), setting('TELEGRAM_CHAT_ID')
         target = token + '\0' + chat if token and chat else ''
     else:
-        target = setting('DISCORD_WEBHOOK_URL')
+        return ''  # Retired/unknown channels must never resolve a target.
     return hashlib.sha256(target.encode()).hexdigest() if target else ''
 
 
@@ -63,7 +63,7 @@ def enqueue(connection, ticket: dict, event_type: str) -> None:
         'created_at', 'sla_deadline', 'status',
     )}
     payload.update(notification_event=event_type, notification_event_id=event_id)
-    for channel in ('telegram', 'discord'):
+    for channel in ('telegram',):
         fingerprint = target_fingerprint(channel)
         connection.execute("""INSERT INTO notification_outbox
             (id, event_id, ticket_id, event_type, channel, payload, target_fingerprint,
@@ -85,7 +85,8 @@ def claim(now: float | None = None) -> dict | None:
         connection.execute("""UPDATE notification_outbox SET status = 'failed',
             last_error = 'lease_expired_delivery_unknown', updated_at = ?, lease_token = '', lease_until = 0
             WHERE status = 'processing' AND lease_until <= ? AND attempts >= max_attempts""", (now, now))
-        query = """SELECT * FROM notification_outbox WHERE attempts < max_attempts AND
+        # Keep legacy Discord history, but never claim it for delivery.
+        query = """SELECT * FROM notification_outbox WHERE channel = 'telegram' AND attempts < max_attempts AND
             ((status = 'pending' AND next_attempt_at <= ?) OR (status = 'processing' AND lease_until <= ?))
             ORDER BY next_attempt_at, id LIMIT 1"""
         if store._database_url:
@@ -124,7 +125,7 @@ def finish(item: dict, outcome: str, now: float | None = None) -> bool:
 
 def process_notification_outbox(limit: int = 10) -> int:
     """Short bounded batches; never hold a DB connection while calling a provider."""
-    from app.notifications import notify_discord, notify_telegram
+    from app.notifications import notify_telegram
 
     processed = 0
     for _ in range(limit):
@@ -139,8 +140,7 @@ def process_notification_outbox(limit: int = 10) -> int:
         else:
             try:
                 payload = json.loads(item['payload'])
-                adapter = notify_telegram if item['channel'] == 'telegram' else notify_discord
-                outcome = 'accepted' if adapter(payload) else 'provider_rejected'
+                outcome = 'accepted' if notify_telegram(payload) else 'provider_rejected'
             except Exception:
                 # Persist only an enum, never exception messages containing URLs/tokens.
                 outcome = 'provider_exception'

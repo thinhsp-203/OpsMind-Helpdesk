@@ -1,34 +1,21 @@
-# Multifunction Printer Scan to Folder (SMB) Error Troubleshooting
+# Hướng dẫn xử lý lỗi scan từ máy photocopy về thư mục SMB trên máy tính và NAS
 
-**Từ khóa:** máy scan, máy quét, scan to folder, quét tài liệu, thư mục scan, giao thức SMB, scan tài liệu văn phòng, lỗi scan.
+**Từ khóa:** máy scan, máy quét, scan to folder, quét tài liệu, giao thức SMB, máy photocopy, scan về máy tính, scan về NAS, SMBv2, SMBv3, chia sẻ thư mục, phân quyền mạng.
 
-## Symptoms
-- User scans document on office photocopier/MFP, but scanned PDF never arrives in their shared PC folder.
-- Printer LCD displays error: 'Server connection error', 'SMB Transmission failed (Code 0x0C)', or 'Authentication failed'.
+## Triệu chứng / Dấu hiệu nhận biết
+- Thao tác quét tài liệu từ màn hình cảm ứng máy in photocopy về thư mục máy tính cá nhân nhưng máy photocopy báo lỗi: "Transmission failed", "Cannot connect to server" hoặc "Authentication error".
+- Tài liệu quét không xuất hiện trong thư mục `Scan` chia sẻ trên máy tính hoặc trên ổ cứng mạng NAS.
+- Lỗi xuất hiện sau khi người dùng vừa đổi mật khẩu tài khoản máy tính hoặc sau khi Windows cập nhật bản vá bảo mật.
 
-## Checks
-1. Verify the shared scan folder exists on the user computer (e.g., `C:\Scans`) and is shared with appropriate permissions.
-2. Verify user Windows account password has not changed recently. MFP stores saved credentials in its address book.
-3. Check if SMBv1 is required by older legacy scanners, or if SMBv2/SMBv3 signing restrictions block connection.
-4. Check if Windows Defender Firewall blocks inbound TCP port 445 (File and Printer Sharing).
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra thông tin tài khoản đăng nhập máy photocopy:** Khi đổi mật khẩu đăng nhập Windows của tài khoản cá nhân, mật khẩu lưu trên máy photocopy để truy cập thư mục scan cũng phải được cập nhật lại tương ứng. Nhờ đồng nghiệp kiểm tra hoặc nhập lại mật khẩu mới trên danh bạ (Address Book) của máy photocopy.
+2. **Kiểm tra quyền chia sẻ của thư mục Scan trên máy tính:**
+   - Nhấp chuột phải vào thư mục `Scan` trên máy tính -> chọn *Properties*.
+   - Chuyển sang thẻ *Sharing* -> kiểm tra thư mục đã được *Shared* hay chưa. Bấm *Advanced Sharing -> Permissions*, đảm bảo tài khoản người dùng có đầy đủ quyền *Read* và *Change*.
+3. **Kiểm tra địa chỉ IP của máy tính cá nhân:** Nếu cấu hình scan sử dụng địa chỉ IP của máy tính, hãy kiểm tra xem IP của máy tính mình có bị thay đổi hay không (nhấn `Windows + R`, gõ `cmd`, gõ `ipconfig` để kiểm tra IPv4).
+4. **Kiểm tra tường lửa Windows Firewall:** Đảm bảo tường lửa không chặn giao thức chia sẻ file và máy in (File and Printer Sharing).
 
-## Resolution
-- Update credentials in Printer Address Book:
-  1. Access printer web interface (`http://<printer_ip>`) as admin.
-  2. Navigate to Address Book > Edit user entry > update username (`DOMAIN\username`) and new corporate password.
-- Verify NTFS and Sharing permissions on scan folder:
-  1. Right-click `C:\Scans` > Properties > Sharing tab > Advanced Sharing > Permissions > Ensure user has Full Control.
-  2. Security tab > Ensure user account has Modify/Write permissions.
-- In Windows Firewall, ensure 'File and Printer Sharing (SMB-In)' is allowed on Private/Domain network profile.
-
-## Escalation
-If corporate security policies disable NTLMv1/SMBv1 across domain machines, coordinate with Office Admin to configure Scan to Email (SMTP) instead of Scan to Folder.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Nếu bạn vừa đổi mật khẩu máy tính, cần vào trang web quản trị của máy in (hoặc báo IT) cập nhật lại mật khẩu mới cho mục Scan của bạn.
-2. Kiểm tra thư mục scan trên máy tính (ví dụ `C:\Scans`) có đang được bật Share và cấp quyền Write/Modify không.
-3. Kiểm tra Firewall Windows không chặn tính năng File and Printer Sharing trên mạng công ty.
-4. Trong trường hợp máy in đời cũ không hỗ trợ SMBv2/v3, đề xuất chuyển sang phương thức Scan to Email.
-
-## Source and scope
-- Microsoft Learn, [Troubleshoot SMB file and printer sharing issues](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/troubleshoot-smb-issues), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Toàn bộ nhân viên trong văn phòng đều không thể scan tài liệu về máy tính hoặc scan về ổ đĩa mạng NAS.
+- Máy photocopy đời cũ chỉ hỗ trợ giao thức SMBv1 (đã bị Windows 10/11 tắt mặc định vì lý do an ninh mạng), cần IT thẩm định và cấu hình giải pháp chuyển tiếp an toàn.
+- Cần quản trị viên IT cấp tài khoản chuyên dụng dùng riêng cho chức năng quét tài liệu mạng trên máy chủ NAS.

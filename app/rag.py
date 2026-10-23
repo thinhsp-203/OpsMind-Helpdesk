@@ -579,10 +579,66 @@ def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]
     return unique_sources
 
 
+NAVI_CATEGORY_MAP: dict[str, str] = {
+    # 1. Windows
+    "windows_update.md": "Windows",
+    "high_cpu_ram_disk.md": "Windows",
+    "windows_bsod_crash.md": "Windows",
+    "usb_peripheral_not_recognized.md": "Windows",
+    "bitlocker_recovery_key.md": "Windows",
+    "windows_license_activation.md": "Windows",
+    # 2. Office (2016/19/21/365)
+    "email_send_receive_error.md": "Office (2016/19/21/365)",
+    "outlook_mailbox_quota.md": "Office (2016/19/21/365)",
+    "outlook_ost_corruption.md": "Office (2016/19/21/365)",
+    "outlook_autodiscover_failed.md": "Office (2016/19/21/365)",
+    "outlook_email.md": "Office (2016/19/21/365)",
+    "erp_accounting.md": "Office (2016/19/21/365)",
+    # 3. Teams
+    "mfa_account.md": "Teams",
+    "ad_account_lockout.md": "Teams",
+    "certificate_signature.md": "Teams",
+    # 4. Máy in & Photo
+    "printer_queue.md": "Máy in & Photo",
+    "printer_offline_status.md": "Máy in & Photo",
+    "printer_driver_install.md": "Máy in & Photo",
+    "scanner_smb_folder.md": "Máy in & Photo",
+    # 5. Mạng (LAN/Wi-Fi Nội bộ/Khách)
+    "ethernet_cable_disconnect.md": "Mạng (LAN/Wi-Fi Nội bộ/Khách)",
+    "wifi_network.md": "Mạng (LAN/Wi-Fi Nội bộ/Khách)",
+    "dns_dhcp_conflict.md": "Mạng (LAN/Wi-Fi Nội bộ/Khách)",
+    "slow_network_latency.md": "Mạng (LAN/Wi-Fi Nội bộ/Khách)",
+    "proxy_pac_bypass.md": "Mạng (LAN/Wi-Fi Nội bộ/Khách)",
+    "remote_desktop_rdp.md": "Mạng (LAN/Wi-Fi Nội bộ/Khách)",
+    # 6. VPN & NAS
+    "vpn_forticlient.md": "VPN & NAS",
+    "openvpn_client_error.md": "VPN & NAS",
+    "vpn_split_tunnel.md": "VPN & NAS",
+    "folder_access.md": "VPN & NAS",
+    "shared_folder_permission.md": "VPN & NAS",
+}
+
+PRIORITY_VI_LABELS: dict[str, str] = {
+    "urgent": "Khẩn cấp",
+    "high": "Cao",
+    "medium": "Trung bình",
+    "low": "Thấp",
+}
+
+ESCALATE_SOURCES: set[str] = {
+    "folder_access.md",
+    "shared_folder_permission.md",
+    "bitlocker_recovery_key.md",
+    "ad_account_lockout.md",
+    "windows_license_activation.md",
+    "certificate_signature.md",
+}
+
+
 def suggest_ticket_triage(
     question: str,
     matches: list[dict[str, Any]],
-) -> dict[str, str | bool]:
+) -> dict[str, Any]:
     normalized = _fold_text(question)
     source = matches[0]["source"] if matches else ""
     category = "general"
@@ -611,12 +667,78 @@ def suggest_ticket_triage(
         if source
         else "Chưa có runbook đủ phù hợp; chọn danh mục thủ công."
     )
+
+    # 1. Phân loại Navi Category (6 nhóm hạ tầng thực tế)
+    navi_category = NAVI_CATEGORY_MAP.get(source)
+    if not navi_category:
+        if any(w in normalized for w in ["windows", "bsod", "man hinh xanh", "cap nhat", "update", "cpu", "ram", "disk", "usb", "bitlocker"]):
+            navi_category = "Windows"
+        elif any(w in normalized for w in ["office", "outlook", "word", "excel", "email", "mail", "ost", "mailbox", "misa", "erp"]):
+            navi_category = "Office (2016/19/21/365)"
+        elif any(w in normalized for w in ["teams", "mfa", "authenticator", "otp", "xac thuc", "tai khoan", "khoa tai khoan", "ky so", "token", "chung thu"]):
+            navi_category = "Teams"
+        elif any(w in normalized for w in ["may in", "printer", "photo", "photocopy", "scan", "spooler", "ket lenh"]):
+            navi_category = "Máy in & Photo"
+        elif any(w in normalized for w in ["wifi", "wi-fi", "mang day", "lan", "ethernet", "mat mang", "dns", "dhcp", "ip", "ping", "cham mang", "rdp", "remote desktop"]):
+            navi_category = "Mạng (LAN/Wi-Fi Nội bộ/Khách)"
+        elif any(w in normalized for w in ["vpn", "forticlient", "openvpn", "nas", "thu muc chia se", "o dia mang", "shared folder", "folder", "access denied"]):
+            navi_category = "VPN & NAS"
+        else:
+            navi_category = "Khác"
+
+    priority_label = PRIORITY_VI_LABELS.get(priority, "Trung bình")
+
+    # 2. Phân luồng xử lý (Resolution Scope): SELF_SERVICE vs ESCALATE_IT
+    is_escalate = False
+    escalation_reason = ""
+    if not matches:
+        is_escalate = True
+        escalation_reason = "Chưa có hướng dẫn tự khắc phục phù hợp trong hệ thống; cần kỹ thuật viên IT tiếp nhận và xử lý trực tiếp."
+    elif source in ESCALATE_SOURCES:
+        is_escalate = True
+        if source in {"folder_access.md", "shared_folder_permission.md"}:
+            escalation_reason = "Truy cập và cấp quyền thư mục chia sẻ trên NAS đòi hỏi phân quyền Quản trị viên IT (Admin / NTFS ACL) hoặc phê duyệt của Quản lý."
+        elif source == "bitlocker_recovery_key.md":
+            escalation_reason = "Mã khôi phục BitLocker Recovery Key 48 số được lưu trữ bảo mật trên hệ thống máy chủ Quản trị IT."
+        elif source == "ad_account_lockout.md":
+            escalation_reason = "Tài khoản bị khóa trên Active Directory / Domain Controller cần kỹ thuật viên IT mở khóa trực tiếp."
+        elif source == "windows_license_activation.md":
+            escalation_reason = "Kích hoạt bản quyền Windows / Office yêu cầu máy chủ cấp phép bản quyền của IT nội bộ."
+        elif source == "certificate_signature.md":
+            escalation_reason = "Gia hạn chứng thư số hoặc lỗi thiết bị USB Token cần kỹ thuật viên IT / An toàn thông tin xử lý."
+    elif priority == "urgent":
+        is_escalate = True
+        escalation_reason = "Sự cố mức độ khẩn cấp ảnh hưởng diện rộng, cần chuyển thẳng kỹ thuật viên IT ứng cứu ngay lập tức."
+    else:
+        escalate_keywords = [
+            "cap quyen", "cấp quyền", "xin quyen", "xin quyền", "phan quyen", "phân quyền",
+            "mo khoa", "mở khóa", "quen mat khau", "quên mật khẩu",
+            "hong may", "hỏng máy", "hong phan cung", "hỏng phần cứng",
+            "thay muc", "thay mực", "chay no", "cháy nổ",
+            "dut cap", "đứt cáp", "ket giay nang", "kẹt giấy nặng",
+            "hong photo", "hỏng photo", "vuot quyen", "vượt quyền",
+            "chuyen thang it", "chuyển thẳng it", "can it", "cần it",
+            "cap vpn", "cấp vpn", "xin vpn", "cai vpn", "cài vpn"
+        ]
+        if "vpn" in normalized and any(w in normalized for w in ["cap", "xin", "yeu cau", "cai dat", "dang ky"]):
+            is_escalate = True
+            escalation_reason = "Chính sách công ty quy định VPN chỉ cấp cho nhân sự Lễ tân và IT. Yêu cầu cấp mới VPN cần có phê duyệt của Quản lý và chuyển thẳng IT xử lý."
+        elif any(kw in normalized for kw in escalate_keywords):
+            is_escalate = True
+            escalation_reason = "Sự cố có dấu hiệu vượt thẩm quyền người dùng (cần quyền Admin, cấp quyền NAS/VPN hoặc thay thế phần cứng). Cần chuyển thẳng cho IT."
+
+    resolution_scope = "ESCALATE_IT" if is_escalate else "SELF_SERVICE"
+
     return {
         "category": category,
         "category_reason": category_reason,
         "priority": priority,
         "priority_reason": priority_reason,
         "requires_confirmation": True,
+        "navi_category": navi_category,
+        "priority_label": priority_label,
+        "resolution_scope": resolution_scope,
+        "escalation_reason": escalation_reason,
     }
 
 

@@ -1,8 +1,8 @@
-"""Khung kênh thông báo đa nền tảng (Telegram & Discord Webhook) cho OpsMind Helpdesk.
+"""Khung kênh thông báo đa nền tảng (Telegram) cho OpsMind Helpdesk.
 
 Hỗ trợ:
-- Gửi thông báo sự cố mới tới Telegram Bot và Discord Webhook.
-- Cơ chế phòng vệ SSRF: Chỉ cho phép kết nối tới tên miền chính thức của Telegram và Discord.
+- Gửi thông báo sự cố mới tới Telegram Bot.
+- Cơ chế phòng vệ SSRF: Chỉ cho phép kết nối tới tên miền chính thức của Telegram.
 - Bảo mật thông tin xác thực: Không in Bot Token hoặc Webhook Secret trong log khi xảy ra lỗi.
 """
 
@@ -35,7 +35,7 @@ def record_notification_event(
 ) -> None:
     channel_labels = {
         "telegram": "Telegram Bot",
-        "discord": "Discord Webhook",
+        "discord": "Discord (đã ngừng sử dụng)",
         "email": "Dịch vụ Email",
         "system": "Hệ thống",
     }
@@ -78,7 +78,6 @@ def get_notification_history() -> list[dict[str, Any]]:
 
 # Danh sách tên miền được phép gửi thông báo (phòng vệ SSRF)
 ALLOWED_TELEGRAM_DOMAINS = {"api.telegram.org"}
-ALLOWED_DISCORD_DOMAINS = {"discord.com", "discordapp.com"}
 
 PRIORITY_NAMES_VI = {
     "low": "Thấp",
@@ -86,15 +85,6 @@ PRIORITY_NAMES_VI = {
     "high": "Cao",
     "urgent": "Khẩn cấp",
 }
-
-# Màu sắc Discord Embed theo mức độ ưu tiên
-DISCORD_PRIORITY_COLORS = {
-    "urgent": 0xE74C3C,  # Đỏ
-    "high": 0xE67E22,    # Cam
-    "medium": 0xF1C40F,  # Vàng
-    "low": 0x2ECC71,     # Xanh lục
-}
-
 
 def _is_safe_url(url: str, allowed_domains: set[str]) -> bool:
     """Kiểm tra URL hợp lệ và chống tấn công SSRF."""
@@ -194,89 +184,6 @@ def notify_telegram(ticket: dict, bot_token: str | None = None, chat_id: str | N
     return ok
 
 
-def notify_discord_result(ticket: dict, webhook_url: str | None = None) -> tuple[bool, str]:
-    """Gửi thông báo tạo ticket mới tới kênh Discord qua Webhook kèm thông báo chi tiết."""
-    url = (webhook_url or os.environ.get("DISCORD_WEBHOOK_URL", "")).strip().strip("'\"")
-    if not url:
-        return False, "Chưa cấu hình biến môi trường DISCORD_WEBHOOK_URL trên Render."
-
-    if not _is_safe_url(url, ALLOWED_DISCORD_DOMAINS):
-        logger.warning("Discord: Webhook URL không an toàn hoặc vi phạm chính sách miền.")
-        return False, "URL Webhook không hợp lệ hoặc không thuộc tên miền cho phép (discord.com)."
-
-    def field(name: str, limit: int = 200) -> str:
-        return " ".join(str(ticket.get(name, "—")).split())[:limit]
-
-    prio_raw = str(ticket.get("priority", "medium")).lower()
-    prio_vi = PRIORITY_NAMES_VI.get(prio_raw, prio_raw.title())
-    color = DISCORD_PRIORITY_COLORS.get(prio_raw, 0x3498DB)
-    is_test = str(ticket.get("id")) == "TEST"
-
-    event_label = "Ticket được chuyển cấp" if ticket.get("notification_event") == "escalated" else "Yêu cầu hỗ trợ mới"
-    content_title = (
-        "🔔 **[OpsMind Helpdesk] Thông báo thử nghiệm kết nối**"
-        if is_test
-        else f"🔔 **[OpsMind Helpdesk] {event_label} #{field('id', 30)} ({prio_vi})**\nSự kiện: {field('notification_event_id', 40)}"
-    )
-
-    payload = {
-        "content": content_title,
-        "embeds": [
-            {
-                "title": f"#{field('id', 30)} — {field('title', 100)}",
-                "description": field("description", 300),
-                "color": color,
-                "fields": [
-                    {"name": "👤 Người gửi", "value": field("requester", 80), "inline": True},
-                    {"name": "⚡ Mức ưu tiên", "value": prio_vi, "inline": True},
-                    {"name": "📂 Danh mục", "value": field("category", 80), "inline": True},
-                    {"name": "⏳ Hạn SLA", "value": field("sla_deadline", 50), "inline": True},
-                    {"name": "🕒 Thời điểm tạo", "value": field("created_at", 50), "inline": True},
-                ],
-                "footer": {"text": "OpsMind Helpdesk • Thông báo sự cố tự động"},
-            }
-        ],
-    }
-
-    try:
-        req = Request(  # noqa: S310 -- Đã kiểm tra _is_safe_url
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "OpsMind-Helpdesk-Notifier/1.0",
-            },
-            method="POST",
-        )
-        with urlopen(req, timeout=10) as response:  # noqa: S310 -- Đã kiểm tra _is_safe_url
-            if response.status in (200, 204):
-                logger.info("Discord: Gửi thông báo thành công cho Ticket #%s.", ticket.get("id"))
-                return True, "Gửi thông báo tới Discord Webhook thành công."
-        logger.warning("Discord: Máy chủ trả về mã HTTP %s.", response.status)
-        return False, f"Máy chủ Discord trả về mã HTTP {response.status}."
-    except urllib.error.HTTPError as exc:
-        err_body = ""
-        with contextlib.suppress(Exception):
-            err_body = exc.read().decode("utf-8", errors="replace")
-        logger.warning("Discord: Máy chủ Webhook trả về lỗi HTTP %s: %s", exc.code, err_body[:200])
-        if exc.code == 404:
-            return False, "Lỗi HTTP 404: Webhook không tồn tại hoặc đã bị xóa trên Discord. Vui lòng tạo Webhook mới."
-        if exc.code == 401:
-            return False, "Lỗi HTTP 401: Webhook Token không hợp lệ."
-        if exc.code == 400:
-            return False, f"Lỗi HTTP 400 từ Discord: {err_body[:120] or 'Dữ liệu không hợp lệ'}."
-        return False, f"Máy chủ Discord trả về mã lỗi HTTP {exc.code}."
-    except Exception as exc:
-        logger.warning("Discord: Không thể kết nối tới webhook (%s).", type(exc).__name__)
-        return False, f"Lỗi kết nối mạng: {type(exc).__name__}."
-
-
-def notify_discord(ticket: dict, webhook_url: str | None = None) -> bool:
-    """Gửi thông báo tạo ticket mới tới kênh Discord qua Webhook."""
-    ok, _ = notify_discord_result(ticket, webhook_url)
-    return ok
-
-
 def dispatch_ticket_notification(ticket: dict) -> dict[str, bool]:
     """Phát thông báo sự cố mới tới toàn bộ các kênh đã cấu hình."""
     results = {}
@@ -292,17 +199,6 @@ def dispatch_ticket_notification(ticket: dict) -> dict[str, bool]:
             "telegram",
             f"Ticket #{ticket_id} ({prio_vi})",
             "Telegram IT Alert",
-            "success" if ok else "error",
-            "Đã phát" if ok else "Lỗi gửi",
-            title,
-        )
-    if os.environ.get("DISCORD_WEBHOOK_URL"):
-        ok = notify_discord(ticket)
-        results["discord"] = ok
-        record_notification_event(
-            "discord",
-            f"Ticket #{ticket_id} ({prio_vi})",
-            "Discord IT Alert",
             "success" if ok else "error",
             "Đã phát" if ok else "Lỗi gửi",
             title,
@@ -365,38 +261,6 @@ def send_test_notification_result(channel: str, target_email: str = "") -> tuple
             msg,
         )
         return False, f"Không thể gửi thông báo: {msg}"
-    if channel == "discord":
-        url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip().strip("'\"")
-        if not url:
-            record_notification_event(
-                "discord",
-                "Thử nghiệm Discord",
-                "Discord Channel",
-                "error",
-                "Chưa cấu hình",
-                "Thiếu biến môi trường DISCORD_WEBHOOK_URL.",
-            )
-            return False, "Không thể gửi thông báo: Chưa cấu hình biến môi trường DISCORD_WEBHOOK_URL trên Render."
-        ok, msg = notify_discord_result(test_ticket, url)
-        if ok:
-            record_notification_event(
-                "discord",
-                "Thử nghiệm Discord",
-                f"...{url[-8:]}" if len(url) >= 8 else "Discord Webhook",
-                "success",
-                "Thành công",
-                msg,
-            )
-            return True, msg
-        record_notification_event(
-            "discord",
-            "Thử nghiệm Discord",
-            "Discord Webhook",
-            "error",
-            "Lỗi kết nối",
-            msg,
-        )
-        return False, f"Không thể gửi thông báo: {msg}"
     if channel == "email":
         from app import email_sender, config
         target = target_email.strip() or config.EMAIL_FROM or "admin@example.com"
@@ -425,19 +289,13 @@ def get_notification_channels_status() -> dict[str, dict[str, Any]]:
 
     tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip().strip("'\"")
     tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip().strip("'\"")
-    discord_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip().strip("'\"")
 
     masked_chat = f"...{tg_chat[-4:]}" if len(tg_chat) >= 4 else ("Bật" if tg_chat else "Chưa cấu hình")
-    masked_discord = f"...{discord_url[-8:]}" if len(discord_url) >= 8 else ("Bật" if discord_url else "Chưa cấu hình")
 
     return {
         "telegram": {
             "enabled": bool(tg_token and tg_chat),
             "target": masked_chat,
-        },
-        "discord": {
-            "enabled": bool(discord_url),
-            "target": masked_discord,
         },
         "email": email_sender.get_email_status(),
         "history": get_notification_history(),

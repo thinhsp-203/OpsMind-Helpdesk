@@ -12,7 +12,7 @@ flowchart LR
   API --> Tickets[Ticket / SLA / Audit]
   API --> RAG[RAG Retrieval: BM25 + Synonyms]
   API --> KBMod[Knowledge Base: 2-stage Review & Versions]
-  API --> Notify[Notification Hub: Telegram / Discord]
+  API --> Notify[Notification Hub: Telegram]
   API --> Email[Email Sender / Password Reset]
   Tickets --> DB[(PostgreSQL / SQLite)]
   Auth --> DB
@@ -21,10 +21,10 @@ flowchart LR
   Files[Local Attachment Storage] --> API
   RAG --> Markdown
   RAG -->|Trích đoạn + File nguồn| API
-  Notify -->|HTTPS Allowlist / Anti-SSRF| ExtChannels[Telegram Bot & Discord Webhook]
+  Notify -->|HTTPS Allowlist / Anti-SSRF| ExtChannels[Telegram Bot]
 ```
 
-Trong hệ thống, ứng dụng web và API chạy cùng FastAPI. `DATABASE_URL` chọn PostgreSQL (cho Docker Compose và Cloud Deployment Neon) hoặc SQLite (cho local test). Cơ sở dữ liệu lưu trữ người dùng, ticket, bình luận, audit log, attachment metadata, lịch sử hỏi đáp RAG, token đặt lại mật khẩu và lịch sử phiên bản Runbook. Phân hệ Notification Hub tích hợp Telegram Bot và Discord Webhook với lớp phòng thủ chống SSRF nghiêm ngặt. Phân hệ Email Sender hỗ trợ gửi link khôi phục mật khẩu tự phục vụ một lần. UI hỗ trợ song ngữ Việt - Anh lưu trong browser LocalStorage.
+Trong hệ thống, ứng dụng web và API chạy cùng FastAPI. `DATABASE_URL` chọn PostgreSQL (cho Docker Compose và Cloud Deployment Neon) hoặc SQLite (cho local test). Cơ sở dữ liệu lưu trữ người dùng, ticket, bình luận, audit log, attachment metadata, lịch sử hỏi đáp RAG, token đặt lại mật khẩu và lịch sử phiên bản Runbook. Phân hệ Notification Hub tích hợp Telegram Bot với lớp phòng thủ chống SSRF nghiêm ngặt. Phân hệ Email Sender hỗ trợ gửi link khôi phục mật khẩu tự phục vụ một lần. UI hỗ trợ song ngữ Việt - Anh lưu trong browser LocalStorage.
 
 ## 2. Sơ đồ ngữ cảnh
 
@@ -201,7 +201,7 @@ AUD-07 đưa verify/consume token, cập nhật mật khẩu/epoch/force flag v�
 
 Cấp link, đổi mật khẩu trực tiếp và reset đều khóa user trước khi đụng hàng token trên PostgreSQL. Mốc phát hành/hết hạn link được tính sau khi lấy khóa, tránh link mới có thời điểm tạo cũ hơn lần đổi mật khẩu vừa commit. SQLite khóa writer cho toàn DB trong transaction này; test local kiểm hai connection đồng thời ở DELETE và WAL, không phải benchmark tải. Nhánh PostgreSQL có test concurrency/rollback trong CI nhưng chưa có runtime local. Lookup email của request forgot-password và gửi email vẫn nằm ngoài transaction; không coi mọi race liên quan địa chỉ nhận email là đã được giải quyết.
 
-### 6.3. Quy trình thông báo sự cố đa kênh (Telegram & Discord)
+### 6.3. Quy trình thông báo sự cố đa kênh (Telegram)
 
 ```mermaid
 sequenceDiagram
@@ -209,14 +209,14 @@ sequenceDiagram
   participant API as FastAPI
   participant Hub as Notification Hub
   participant Guard as Anti-SSRF Guard
-  participant Ext as Telegram / Discord API
+  participant Ext as Telegram API
 
   U->>API: Tạo sự cố mới (POST /tickets) hoặc Chuyển cấp (escalated)
   API->>Hub: dispatch_ticket_notification(ticket)
   Hub->>Guard: Kiểm tra an toàn URL webhook/bot
   alt Phát hiện HTTP, Localhost, IP nội bộ (RFC1918) hoặc AWS metadata
     Guard-->>Hub: Từ chối kết nối (Chặn đứng SSRF)
-  else Domain hợp lệ (api.telegram.org / discord.com)
+  else Domain hợp lệ (api.telegram.org)
     Guard-->>Hub: Cho phép
     Hub->>Ext: POST JSON thông điệp Markdown (Ticket ID, Priority, Title, SLA)
     Ext-->>Hub: HTTP 200 Delivered
@@ -383,8 +383,8 @@ erDiagram
 | POST | `/admin/users` | Admin | Tạo tài khoản mới; kiểm tra mật khẩu $\ge$ 12 ký tự |
 | PATCH | `/admin/users/{username}` | Admin | Chỉnh sửa hồ sơ, vai trò, khóa/mở khóa; chặn tự khóa hoặc khóa Admin duy nhất |
 | POST | `/admin/users/{username}/reset-password` | Admin | Đặt lại mật khẩu nhân viên kèm cờ `force_password_change` |
-| GET | `/admin/notifications/status` | Admin | Xem trạng thái cấu hình Telegram Bot & Discord Webhook (che mờ token) |
-| POST | `/admin/notifications/test` | Admin | Bắn thông báo thử nghiệm tới Telegram hoặc Discord có kiểm tra chống SSRF |
+| GET | `/admin/notifications/status` | Admin | Xem trạng thái cấu hình Telegram Bot (che mờ token) |
+| POST | `/admin/notifications/test` | Admin | Bắn thông báo thử nghiệm tới Telegram có kiểm tra chống SSRF |
 | GET | `/tickets` | Đã đăng nhập | Xem danh sách ticket (User chỉ xem vé của mình; IT xem toàn bộ hàng đợi) |
 | POST | `/tickets` | Đã đăng nhập | Tạo ticket mới; tự động tính `sla_deadline` và ghi Audit Log |
 | GET | `/tickets/{id}` | Chủ vé / IT | Xem chi tiết sự cố, tiến trình SLA và chuỗi trao đổi |
@@ -498,7 +498,7 @@ AUD-13 retry/escalation và AUD-16 email provider vẫn chưa xử lý.
 ### AUD-13 — transactional notification outbox
 
 Phạm vi sự kiện: mọi ticket mới (mọi priority) và mỗi chuyển trạng thái hợp lệ
-sang escalated. Hai kênh Telegram/Discord; không thêm email sự kiện ticket,
+sang escalated. Kênh Telegram; không thêm email sự kiện ticket,
 cảnh báo SLA quá hạn hoặc xác nhận nhân viên đọc. Chuyển cấp không tự đổi priority.
 Một event UUID chung có hai delivery row, một row/kênh. Document snapshot và
 event/target fingerprint ghi cùng transaction ticket/audit. Không giữ secret

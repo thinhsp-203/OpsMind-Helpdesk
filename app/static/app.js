@@ -338,6 +338,24 @@ function signOut() {
   byId("workspaceView").dataset.role = "";
 }
 
+async function deleteAccount() {
+  const confirmMsg = window.helpdeskI18n.t(
+    "Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản của mình? Toàn bộ phiên đăng nhập sẽ bị thu hồi. Các ticket và trao đổi cũ sẽ được lưu dưới dạng ẩn danh."
+  );
+  if (!window.confirm(confirmMsg)) return;
+
+  try {
+    const res = await api("/auth/me", { method: "DELETE" });
+    alert(res.message || window.helpdeskI18n.t("Tài khoản của bạn đã được xóa vĩnh viễn và thông tin cá nhân đã được ẩn danh."));
+  } catch (err) {
+    alert(err.message || window.helpdeskI18n.t("Không thể xóa tài khoản vào lúc này."));
+    return;
+  }
+  closeUserProfileModal();
+  closeUserDropdown();
+  signOut();
+}
+
 function openChangePasswordModal(isForced = false) {
   closeUserDropdown();
   const modal = byId("changePasswordModal");
@@ -1472,18 +1490,40 @@ async function askKnowledge(event, options = {}) {
 }
 
 function addTicketHandoff(container, question, grounded, triage, options = {}) {
-  const triageCard = node("div", "triage-card");
+  const isEscalate = triage.resolution_scope === "ESCALATE_IT";
+  const naviCategory = triage.navi_category || categoryLabels[triage.category] || triage.category;
+  const priorityLabel = triage.priority_label || priorityLabels[triage.priority] || triage.priority;
+  const title = question.replace(/\s+/g, " ").trim().slice(0, 160);
+  const cleanTitle = title.length >= 5 ? title : `Hỗ trợ: ${title}`;
+
+  // Thẻ phân loại tự động (Auto-Triage Card - Navi IT Helpdesk)
+  const triageCard = node("div", `triage-card triage-navi-card ${isEscalate ? "triage-card-escalate" : "triage-card-selfservice"}`);
+  const triageHeader = node("div", "triage-navi-header");
+
+  const badgeCategory = node("span", "triage-badge triage-badge-category", `📂 Danh mục: ${naviCategory}`);
+  const badgePriority = node("span", `triage-badge triage-badge-priority triage-badge-priority-${triage.priority}`, `⚡ Mức ưu tiên: ${priorityLabel}`);
+  const badgeScope = node(
+    "span",
+    `triage-badge triage-badge-scope ${isEscalate ? "triage-badge-scope-escalate" : "triage-badge-scope-selfservice"}`,
+    isEscalate ? "🛡️ Phân luồng: Cần IT can thiệp (ESCALATE_IT)" : "🔧 Phân luồng: Tự khắc phục (SELF_SERVICE)"
+  );
+  triageHeader.append(badgeCategory, badgePriority, badgeScope);
+
+  const triageReason = node(
+    "small",
+    "triage-navi-reason",
+    `${triage.category_reason || ""} ${triage.priority_reason || ""}`.trim()
+  );
+
   triageCard.append(
-    node("strong", "", "Gợi ý phân loại · cần bạn xác nhận"),
-    node(
-      "span",
-      "triage-values",
-      `${categoryLabels[triage.category] || triage.category} · ${priorityLabels[triage.priority] || triage.priority}`,
-    ),
-    node("small", "", `${triage.category_reason} ${triage.priority_reason}`),
+    node("strong", "triage-navi-title", "Phân loại sự cố tự động (Auto-Triage)"),
+    triageHeader,
+    triageReason
   );
   container.append(triageCard);
-  if (state.user.role !== "user") {
+
+  // Đối với IT Staff / Admin: Giữ nguyên công cụ chèn gợi ý phản hồi
+  if (state.user && state.user.role !== "user") {
     container.append(
       node("p", "handoff-note", "Đối chiếu nguồn trước khi dùng hướng dẫn để phản hồi ticket."),
     );
@@ -1509,32 +1549,111 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
     }
     return;
   }
-  const handoff = node(
-    "p",
-    "handoff-note",
-    grounded
-      ? "Chưa giải quyết được? Chuyển nội dung này cho IT, không cần gõ lại."
-      : "Chưa có hướng dẫn phù hợp. Gửi yêu cầu để IT tiếp nhận.",
-  );
-  const draftButton = node(
-    "button",
-    "button button-soft",
-    grounded ? "Chuyển thành yêu cầu IT" : "Gửi yêu cầu cho IT",
-  );
-  draftButton.type = "button";
-  draftButton.addEventListener("click", () => {
-    setWorkspaceView("submit");
-    const title = question.replace(/\s+/g, " ").trim().slice(0, 160);
-    byId("ticketTitle").value = title.length >= 5 ? title : `Hỗ trợ: ${title}`;
-    byId("ticketDescription").value = buildHandoffDescription(question, options.matches);
-    byId("ticketCategory").value = triage.category;
-    byId("ticketPriority").value = triage.priority;
-    byId("ticketMessage").textContent = "Đã điền sẵn nội dung. Kiểm tra lại rồi gửi cho IT.";
-    byId("ticketMessage").classList.add("success-message");
-    byId("createSection").scrollIntoView({ behavior: "smooth", block: "start" });
-    byId("ticketTitle").focus({ preventScroll: true });
-  });
-  container.append(handoff, draftButton);
+
+  // Bước 2: Phản hồi & Tương tác giao diện theo mô hình Navi IT Helpdesk
+  if (!isEscalate) {
+    // --- Trường hợp 1: Người dùng tự khắc phục được (SELF_SERVICE) ---
+    const actionContainer = node("div", "triage-action-box triage-selfservice-box");
+    const hint = node("p", "triage-action-hint", "💡 Thực hiện theo các bước hướng dẫn tự khắc phục ở trên. Hãy chọn kết quả sau khi thử:");
+    const btnGroup = node("div", "triage-action-buttons");
+
+    // Nút 1: [Đã khắc phục xong] (Đóng phiên hỗ trợ)
+    const btnResolved = node("button", "button button-success btn-resolved-close", "✓ Đã khắc phục xong");
+    btnResolved.type = "button";
+    btnResolved.addEventListener("click", () => {
+      actionContainer.replaceChildren(
+        node(
+          "div",
+          "triage-resolved-alert",
+          "🎉 Cảm ơn bạn! Phiên hỗ trợ sự cố đã hoàn tất thành công. Bạn có thể nhấn 'Phiên mới' để bắt đầu câu hỏi khác bất cứ lúc nào."
+        )
+      );
+      state.chatSessionId = null;
+      byId("ragQuestion").value = "";
+    });
+
+    // Nút 2: [Vẫn chưa được - Gửi phiếu cho IT] (Tự động điền sẵn thông tin tạo ticket)
+    const btnEscalateFallback = node("button", "button button-soft btn-still-issue", "⚠️ Vẫn chưa được - Gửi phiếu cho IT");
+    btnEscalateFallback.type = "button";
+    btnEscalateFallback.addEventListener("click", () => {
+      setWorkspaceView("submit");
+      byId("ticketTitle").value = cleanTitle;
+      byId("ticketDescription").value = buildHandoffDescription(question, options.matches);
+      byId("ticketCategory").value = triage.category;
+      byId("ticketPriority").value = triage.priority;
+      byId("ticketMessage").textContent = "Đã tự động điền sẵn nội dung và phân loại sự cố. Vui lòng kiểm tra lại rồi gửi cho IT.";
+      byId("ticketMessage").classList.add("success-message");
+      byId("createSection").scrollIntoView({ behavior: "smooth", block: "start" });
+      byId("ticketTitle").focus({ preventScroll: true });
+    });
+
+    btnGroup.append(btnResolved, btnEscalateFallback);
+    actionContainer.append(hint, btnGroup);
+    container.append(actionContainer);
+  } else {
+    // --- Trường hợp 2: Sự cố vượt thẩm quyền / cần IT can thiệp (ESCALATE_IT) ---
+    const escalateContainer = node("div", "triage-action-box triage-escalate-box");
+
+    // Cảnh báo vượt quyền / cần IT
+    const alertBanner = node("div", "triage-escalate-banner");
+    alertBanner.append(
+      node("strong", "", "⚠️ Tác vụ cần kỹ thuật viên IT can thiệp trực tiếp"),
+      node("p", "", triage.escalation_reason || "Sự cố này vượt thẩm quyền người dùng (cần quyền Quản trị viên Admin, cấp quyền NAS/VPN hoặc thay thế linh kiện phần cứng). Hệ thống đã tự động phân loại và điền sẵn thông tin."),
+    );
+
+    // Tóm tắt thông tin phân loại tự động điền sẵn
+    const summary = node("div", "triage-prefilled-summary");
+    const line1 = node("div");
+    line1.append(node("strong", "", "Tiêu đề: "), document.createTextNode(cleanTitle));
+    const line2 = node("div");
+    line2.append(
+      node("strong", "", "Danh mục: "),
+      document.createTextNode(naviCategory),
+      document.createTextNode(" · "),
+      node("strong", "", "Mức ưu tiên: "),
+      document.createTextNode(priorityLabel)
+    );
+    summary.append(line1, line2);
+
+    const btnGroup = node("div", "triage-action-buttons");
+    // Nút nổi bật: [Gửi thẳng yêu cầu cho IT ngay] (1-click handoff tạo ticket)
+    const btnDirectHandoff = node("button", "button button-primary-escalate btn-direct-handoff", "🚀 Gửi thẳng yêu cầu cho IT ngay");
+    btnDirectHandoff.type = "button";
+    btnDirectHandoff.addEventListener("click", async () => {
+      if (btnDirectHandoff.disabled) return;
+      btnDirectHandoff.disabled = true;
+      btnDirectHandoff.textContent = "Đang gửi yêu cầu cho IT...";
+      const desc = buildHandoffDescription(question, options.matches);
+      const payload = {
+        title: cleanTitle,
+        description: desc,
+        category: triage.category || "general",
+        priority: triage.priority || "medium",
+      };
+      try {
+        const created = await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
+        await refreshWorkspace();
+        setWorkspaceView("tickets");
+        const receipt = byId("ticketReceipt");
+        receipt.textContent = `Đã gửi thẳng yêu cầu cho IT: HD-${String(created.ticket.id).padStart(4, "0")}. Kỹ thuật viên IT sẽ xử lý theo độ ưu tiên ${priorityLabel}.`;
+        receipt.classList.remove("hidden");
+        const firstTicket = byId("ticketList").querySelector(".ticket-card");
+        firstTicket?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch (err) {
+        // Dự phòng: chuyển sang form điền sẵn nếu gặp lỗi xác thực
+        setWorkspaceView("submit");
+        byId("ticketTitle").value = cleanTitle;
+        byId("ticketDescription").value = desc;
+        byId("ticketCategory").value = triage.category;
+        byId("ticketPriority").value = triage.priority;
+        alertUser(err.message);
+      }
+    });
+
+    btnGroup.append(btnDirectHandoff);
+    escalateContainer.append(alertBanner, summary, btnGroup);
+    container.append(escalateContainer);
+  }
 }
 
 function showRagResult(message) {
@@ -1769,6 +1888,8 @@ loadPublicConfig();
 byId("loginForm").addEventListener("submit", login);
 byId("logoutBtn").addEventListener("click", logout);
 byId("changePasswordBtn").addEventListener("click", () => openChangePasswordModal(false));
+byId("deleteAccountBtn")?.addEventListener("click", deleteAccount);
+byId("profileDeleteAccountBtn")?.addEventListener("click", deleteAccount);
 byId("cancelChangePasswordBtn").addEventListener("click", () => {
   if (byId("changePasswordModal")?.dataset.forced === "true") logout();
   else closeChangePasswordModal();
@@ -1883,7 +2004,6 @@ if (knowledgeVersionsModal) {
 
 byId("refreshNotificationsBtn")?.addEventListener("click", loadNotificationStatus);
 byId("testTelegramBtn")?.addEventListener("click", () => testNotification("telegram"));
-byId("testDiscordBtn")?.addEventListener("click", () => testNotification("discord"));
 byId("testEmailBtn")?.addEventListener("click", () => testNotification("email"));
 
 document.querySelectorAll(".service-tile").forEach((tile) => {

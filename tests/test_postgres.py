@@ -15,6 +15,26 @@ def setup_postgres_test(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(store, "DEMO_MODE", True)
 
 
+def test_postgres_builtin_seed_updates_existing_document_by_named_columns() -> None:
+    store.initialize_store()
+    store.reset_store()
+    with store._connect() as connection:
+        original = connection.execute(
+            "SELECT id, content FROM knowledge_documents WHERE is_builtin = 1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        assert original is not None
+        connection.execute(
+            "UPDATE knowledge_documents SET content = ? WHERE id = ?",
+            ("Synthetic stale builtin content", original["id"]),
+        )
+    with store._connect() as connection:
+        store.seed_builtin_knowledge(connection)
+        restored = connection.execute(
+            "SELECT id, content FROM knowledge_documents WHERE id = ?", (original["id"],)
+        ).fetchone()
+    assert dict(restored) == dict(original)
+
+
 def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works() -> None:
     store.initialize_store()
     store.initialize_store()
@@ -215,6 +235,139 @@ def test_postgres_knowledge_version_history_and_restore(
     assert "Version 1 content" in updated_doc["content"]
 
 
+@pytest.mark.parametrize("change", ["edit", "archive", "reject", "restore", "delete", "publish"])
+def test_postgres_kb_changes_reach_independent_warm_reader(change: str, knowledge_reader_process):
+    from app.rag import build_retrieval_index, generate_answer, load_knowledge_base
+
+    store.initialize_store()
+    store.reset_store()
+    with store._connect() as connection:
+        connection.execute("UPDATE knowledge_documents SET status = 'archived'")
+    load_knowledge_base.cache_clear()
+    build_retrieval_index.cache_clear()
+    initial = "# VPN FortiClient\nAUD08-INITIAL FortiClient VPN troubleshooting policy"
+    revised = "# VPN FortiClient\nAUD08-REVISED FortiClient VPN troubleshooting policy"
+    doc = store.create_knowledge_document(
+        "VPN Worker Policy", "network", initial,
+        status="draft" if change == "publish" else "published", author="admin",
+    )
+    if change == "restore":
+        store.update_knowledge_document(doc["id"], {"content": revised}, "admin")
+    question = "Tôi không kết nối được VPN FortiClient"
+    assert generate_answer(question)["grounded"] is (change != "publish")
+    with knowledge_reader_process() as ask:
+        warm = ask(question)
+        assert warm["grounded"] is (change != "publish")
+        if change == "edit":
+            store.update_knowledge_document(doc["id"], {"content": revised}, "admin")
+        elif change == "archive":
+            store.update_knowledge_document(doc["id"], {"status": "archived"}, "admin")
+        elif change in {"reject", "publish"}:
+            store.review_knowledge_document(doc["id"], "approve" if change == "publish" else "reject", "admin")
+        elif change == "restore":
+            store.restore_knowledge_version(doc["id"], 1, "admin")
+        else:
+            store.delete_knowledge_document(doc["id"])
+        # No local cache clear in either process after the committed mutation.
+        parent = generate_answer(question)
+        remote = ask(question)
+        assert remote["pid"] == warm["pid"]
+        assert remote["matches"] == parent["matches"]
+        assert remote["grounded"] is (change in {"edit", "restore", "publish"})
+        if remote["grounded"]:
+            marker = "AUD08-REVISED" if change == "edit" else "AUD08-INITIAL"
+            assert marker in remote["matches"][0]["content"]
+        else:
+            assert remote["matches"] == remote["sources"] == []
+
+
+@pytest.mark.parametrize("operation", ["reset", "consume", "issue"])
+def test_postgres_concurrent_reset_operations_have_one_winner(operation: str) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    store.initialize_store()
+    store.reset_store()
+    token = store.create_password_reset_token("user")
+    passwords = ["AUD07-FirstPassword-2026!", "AUD07-SecondPassword-2026!"]
+    gate = Barrier(3)
+
+    def run(index):
+        gate.wait(timeout=10)
+        if operation == "consume":
+            return store.verify_and_consume_reset_token(token)
+        if operation == "issue" and index == 1:
+            return store.create_password_reset_token("user")
+        return store.reset_password_with_token(token, passwords[index])
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(run, index) for index in range(2)]
+        gate.wait(timeout=10)
+        results = [future.result(timeout=20) for future in futures]
+    if operation == "issue":
+        assert results[0] in {None, "user"}
+        assert store.reset_password_with_token(results[1], passwords[1]) == "user"
+    else:
+        assert results.count("user") == 1
+        assert results.count(None) == 1
+        if operation == "reset":
+            credentials = store.get_user_credentials("user")
+            winner = results.index("user")
+            assert store.verify_password(passwords[winner], credentials["password_hash"])
+            assert not store.verify_password(passwords[1 - winner], credentials["password_hash"])
+    assert store.verify_and_consume_reset_token(token) is None
+
+
+def test_postgres_atomic_reset_rolls_back_token_on_password_write_failure() -> None:
+    store.initialize_store()
+    store.reset_store()
+    token = store.create_password_reset_token("user")
+    before = store.get_user_credentials("user")
+    with store._connect() as connection:
+        connection.execute(
+            "CREATE OR REPLACE FUNCTION aud07_fail_password_write() RETURNS trigger "
+            "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'AUD07 synthetic failure'; END; $$"
+        )
+    try:
+        with store._connect() as connection:
+            connection.execute(
+                "CREATE TRIGGER aud07_fail_password BEFORE UPDATE OF password_hash ON users "
+                "FOR EACH ROW EXECUTE FUNCTION aud07_fail_password_write()"
+            )
+        with pytest.raises(store.DatabaseError, match="AUD07 synthetic failure"):
+            store.reset_password_with_token(token, "AUD07-ResetPassword-2026!")
+        assert store.get_user_credentials("user") == before
+        with store._connect() as connection:
+            row = connection.execute(
+                "SELECT used FROM password_reset_tokens WHERE username = 'user'"
+            ).fetchone()
+            assert row["used"] == 0
+    finally:
+        with store._connect() as connection:
+            connection.execute("DROP TRIGGER IF EXISTS aud07_fail_password ON users")
+            connection.execute("DROP FUNCTION aud07_fail_password_write()")
+    assert store.reset_password_with_token(token, "AUD07-ResetPassword-2026!") == "user"
+
+
+def test_postgres_reset_links_are_revoked_on_security_updates() -> None:
+    store.initialize_store()
+    store.reset_store()
+    store.create_user("pg.reset", "AUD06-InitialPassword-2026!", "user")
+    token = store.create_password_reset_token("pg.reset")
+    store.update_user_password("pg.reset", "AUD06-NewPassword-2026!")
+    assert store.verify_and_consume_reset_token(token) is None
+    token = store.create_password_reset_token("pg.reset")
+    store.update_user("pg.reset", {"email": "new@example.com"})
+    assert store.verify_and_consume_reset_token(token) is None
+    token = store.create_password_reset_token("pg.reset")
+    store.update_user("pg.reset", {"is_active": False})
+    store.update_user("pg.reset", {"is_active": True})
+    assert store.verify_and_consume_reset_token(token) is None
+    token = store.create_password_reset_token("pg.reset")
+    assert store.reset_password_with_token(token, "AUD06-RecoveredPassword-2026!") == "pg.reset"
+    assert store.verify_and_consume_reset_token(token) is None
+
+
 def test_postgres_user_profile_and_force_password_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -247,3 +400,245 @@ def test_postgres_user_profile_and_force_password_change(
     assert updated_creds["force_password_change"] == 0
     assert store.verify_password("UpdatedPassword123!", updated_creds["password_hash"])
 
+
+def test_postgres_markdown_import_uses_db_versions_and_unique_slug():
+    from app.rag import save_knowledge_document
+
+    store.initialize_store()
+    store.reset_store()
+    imported = save_knowledge_document('aud11-pg.md', 'AUD11 PG import', '# Synthetic', author='admin')
+    assert imported['source'] == 'aud11-pg.md'
+    assert imported['author'] == 'admin' and not imported['is_builtin']
+    assert len(store.list_knowledge_versions(imported['id'])) == 1
+    with pytest.raises(FileExistsError):
+        save_knowledge_document('aud11-pg.md', 'Duplicate', '# Other', author='admin')
+    assert store.get_knowledge_document(imported['id'])['content'] == '# Synthetic'
+    assert len(store.list_knowledge_versions(imported['id'])) == 1
+
+
+def test_postgres_markdown_version_failure_rolls_back_document():
+    from app.rag import save_knowledge_document
+
+    store.initialize_store()
+    store.reset_store()
+    with store._connect() as connection:
+        connection.execute("""CREATE OR REPLACE FUNCTION aud11_reject_version() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.title = 'AUD11 PG rollback' THEN
+                    RAISE EXCEPTION 'AUD11 synthetic version failure';
+                END IF;
+                RETURN NEW;
+            END; $$ LANGUAGE plpgsql""")
+        connection.execute("""CREATE TRIGGER aud11_fail_version BEFORE INSERT ON knowledge_versions
+            FOR EACH ROW EXECUTE FUNCTION aud11_reject_version()""")
+    try:
+        with pytest.raises(store.DatabaseError):
+            save_knowledge_document('aud11-pg-rollback.md', 'AUD11 PG rollback', '# Synthetic', author='admin')
+        assert store.get_knowledge_document('aud11-pg-rollback.md') is None
+    finally:
+        with store._connect() as connection:
+            connection.execute('DROP TRIGGER IF EXISTS aud11_fail_version ON knowledge_versions')
+            connection.execute('DROP FUNCTION IF EXISTS aud11_reject_version()')
+
+
+def test_postgres_outbox_claim_is_exclusive_and_schema_idempotent(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app import notification_outbox as outbox
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', 'AUD13-fake-token')
+    monkeypatch.setenv('TELEGRAM_CHAT_ID', 'AUD13-fake-chat')
+    monkeypatch.delenv('DISCORD_WEBHOOK_URL', raising=False)
+    store.initialize_store()
+    store.reset_store()
+    store.create_ticket('AUD13 PG', 'Synthetic claim test', 'general', 'low', 'user')
+    store.initialize_store()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(lambda _: outbox.claim(), range(2)))
+    assert sum(item is not None for item in claims) == 1
+    item = next(item for item in claims if item)
+    assert outbox.finish(item, 'accepted')
+    assert len(outbox.list_deliveries()) == 2
+
+
+def test_postgres_escalation_outbox_is_atomic_and_single_under_concurrency(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app import notification_outbox as outbox
+    for key in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'DISCORD_WEBHOOK_URL'):
+        monkeypatch.delenv(key, raising=False)
+    store.initialize_store()
+    store.reset_store()
+    doc = store.create_ticket('AUD13 PG', 'Synthetic escalation test', 'general', 'low', 'user')
+    store.update_ticket_status(doc['id'], 'in_progress', 'agent')
+    original = outbox.enqueue
+
+    def fail(*args, **kwargs):
+        raise RuntimeError('Synthetic outbox failure')
+
+    monkeypatch.setattr(outbox, 'enqueue', fail)
+    with pytest.raises(RuntimeError):
+        store.update_ticket_status(doc['id'], 'escalated', 'agent')
+    assert store.get_ticket(doc['id'])['status'] == 'in_progress'
+    monkeypatch.setattr(outbox, 'enqueue', original)
+
+    def escalate():
+        try:
+            store.update_ticket_status(doc['id'], 'escalated', 'agent')
+            return 'ok'
+        except ValueError:
+            return 'conflict'
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: escalate(), range(2))) == ['conflict', 'ok']
+    assert len([row for row in outbox.list_deliveries() if row['event_type'] == 'escalated']) == 2
+
+
+def test_postgres_manual_notification_retry_is_serialized(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app import notification_outbox as outbox
+    for key in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'DISCORD_WEBHOOK_URL'):
+        monkeypatch.delenv(key, raising=False)
+    store.initialize_store()
+    store.reset_store()
+    store.create_ticket('AUD13 PG', 'Synthetic manual retry test', 'general', 'low', 'user')
+    row = next(row for row in outbox.list_deliveries() if row['channel'] == 'telegram')
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', 'AUD13-fake-token')
+    monkeypatch.setenv('TELEGRAM_CHAT_ID', 'AUD13-fake-chat')
+
+    def retry():
+        try:
+            outbox.retry_delivery(row['id'], 'admin')
+            return 'ok'
+        except ValueError:
+            return 'conflict'
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: retry(), range(2))) == ['conflict', 'ok']
+
+
+@pytest.mark.parametrize('status', ['resolved', 'closed'])
+def test_postgres_completed_assignment_is_frozen(status):
+    store.initialize_store()
+    store.reset_store()
+    doc = store.create_ticket('AUD14 PG', 'Synthetic assignment test', 'general', 'low', 'user')
+    store.assign_ticket(doc['id'], 'agent', 'admin')
+    store.update_ticket_status(doc['id'], 'in_progress', 'agent')
+    store.update_ticket_status(doc['id'], 'resolved', 'agent')
+    if status == 'closed':
+        store.update_ticket_status(doc['id'], 'closed', 'user')
+    audit = store.get_ticket_audit(doc['id'])
+    with pytest.raises(ValueError):
+        store.assign_ticket(doc['id'], 'admin', 'admin')
+    assert store.get_ticket(doc['id'])['assignee'] == 'agent'
+    assert store.get_ticket_audit(doc['id']) == audit
+    assert store.get_agent_analytics('agent')['resolved_tickets'] == 1
+
+
+def test_postgres_assignment_serializes_with_resolution(monkeypatch):
+    from test_assignment_policy import assert_assignment_serializes_with_resolution
+    store.initialize_store()
+    store.reset_store()
+    assert_assignment_serializes_with_resolution(monkeypatch)
+
+
+@pytest.mark.parametrize('changes', [({'is_active': False}, {'is_active': True}), ({'role': 'agent'}, {'role': 'user'})])
+def test_postgres_old_sessions_do_not_resurrect(changes):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    store.initialize_store()
+    store.reset_store()
+    client = TestClient(app)
+    token = client.post('/auth/login', json={'username': 'user', 'password': 'user'}).json()['token']
+    for change in changes:
+        store.update_user('user', change)
+        assert client.get('/auth/me', headers={'Authorization': 'Bearer ' + token}).status_code == 401
+    fresh = client.post('/auth/login', json={'username': 'user', 'password': 'user'}).json()['token']
+    assert client.get('/auth/me', headers={'Authorization': 'Bearer ' + fresh}).status_code == 200
+
+
+def test_postgres_session_epoch_cas_and_initializer_preserve_new_sessions():
+    from concurrent.futures import ThreadPoolExecutor
+    store.initialize_store()
+    store.reset_store()
+    epoch = store.get_user_credentials('user')['session_epoch']
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: store.revoke_user_sessions('user', epoch), range(2))) == [False, True]
+    current = store.get_user_credentials('user')['session_epoch']
+    assert len(current) == 64 and current != epoch
+    store.initialize_store()
+    assert store.get_user_credentials('user')['session_epoch'] == current
+
+
+def test_postgres_session_epoch_rolls_back_with_account_change(monkeypatch):
+    store.initialize_store()
+    store.reset_store()
+    epoch = store.get_user_credentials('user')['session_epoch']
+
+    def fail(*args):
+        raise RuntimeError('AUD15 synthetic account rollback')
+
+    monkeypatch.setattr(store, '_revoke_password_reset_tokens', fail)
+    with pytest.raises(RuntimeError):
+        store.update_user('user', {'is_active': False})
+    user = store.get_user_credentials('user')
+    assert user['is_active'] == 1 and user['session_epoch'] == epoch
+
+
+@pytest.mark.parametrize('scenario', ['csat', 'comment', 'status', 'kb_partial', 'kb_review', 'kb_restore', 'unique'])
+def test_postgres_aud23_concurrent_business_writes(monkeypatch, scenario):
+    from test_aud23_concurrency import (
+        assert_csat_one_winner, assert_comment_does_not_undo_resolution,
+        assert_status_one_winner, assert_kb_partial_updates_preserved,
+        test_kb_all_version_writers_lock_current_document,
+        test_database_rejects_duplicate_kb_version,
+    )
+    store.initialize_store()
+    store.reset_store()
+    actions = {
+        'csat': lambda: assert_csat_one_winner(monkeypatch),
+        'comment': lambda: assert_comment_does_not_undo_resolution(monkeypatch),
+        'status': lambda: assert_status_one_winner(monkeypatch),
+        'kb_partial': lambda: assert_kb_partial_updates_preserved(monkeypatch),
+        'kb_review': lambda: test_kb_all_version_writers_lock_current_document(monkeypatch, 'review'),
+        'kb_restore': lambda: test_kb_all_version_writers_lock_current_document(monkeypatch, 'restore'),
+        'unique': test_database_rejects_duplicate_kb_version,
+    }
+    actions[scenario]()
+
+
+@pytest.mark.parametrize('scenario',['claim','accepted','superseded'])
+def test_postgres_durable_credential_email(monkeypatch,scenario):
+    from app import config, email_outbox
+    from test_email_delivery import (
+        test_exclusive_claim_and_stale_lease_cannot_acknowledge,
+        test_provider_acceptance_is_terminal_and_not_a_read_receipt,
+        test_new_link_supersedes_prior_job_and_token,
+    )
+    monkeypatch.setattr(config,'DEMO_MODE',True)
+    monkeypatch.setattr(config,'EMAIL_PROVIDER','console')
+    monkeypatch.setattr(config,'PUBLIC_BASE_URL','')
+    store.initialize_store()
+    store.reset_store()
+    actions={
+        'claim':lambda:test_exclusive_claim_and_stale_lease_cannot_acknowledge(),
+        'accepted':lambda:test_provider_acceptance_is_terminal_and_not_a_read_receipt(monkeypatch),
+        'superseded':lambda:test_new_link_supersedes_prior_job_and_token(),
+    }
+    actions[scenario]()
+    assert email_outbox.list_deliveries()
+
+
+def test_postgres_email_enqueue_failure_rolls_back_account(monkeypatch):
+    from app import config, email_outbox
+    monkeypatch.setattr(config,'DEMO_MODE',True)
+    monkeypatch.setattr(config,'EMAIL_PROVIDER','console')
+    store.initialize_store()
+    store.reset_store()
+
+    def fail(*args):
+        raise RuntimeError('Synthetic enqueue failure')
+
+    monkeypatch.setattr(email_outbox,'enqueue',fail)
+    import secrets
+    with pytest.raises(RuntimeError,match='Synthetic'):
+        store.create_user('emailrollback',secrets.token_urlsafe(24),'user',email='user@example.invalid',
+                          invitation_base_url='http://testserver')
+    assert store.get_user_credentials('emailrollback') is None

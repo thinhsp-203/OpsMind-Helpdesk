@@ -1,3 +1,5 @@
+// Keep implementation names private; expose only the existing window API.
+(() => {
 async function loadKnowledge() {
   try {
     const catEl = byId("knowledgeCategoryFilter");
@@ -413,3 +415,4 @@ if (typeof window !== "undefined") {
   window.openKnowledgeVersions = openKnowledgeVersions;
   window.openKnowledgeEditorForTicket = openKnowledgeEditorForTicket;
 }
+})();

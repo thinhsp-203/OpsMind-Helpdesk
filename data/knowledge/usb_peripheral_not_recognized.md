@@ -1,36 +1,19 @@
-# USB Peripheral and Smart Card Token Recognition Fix
+# Xử lý lỗi không nhận diện cổng USB, chuột, bàn phím và thiết bị ngoại vi
 
-**Từ khóa:** USB không nhận, không nhận chuột, không nhận bàn phím, cổng USB lỗi, cắm USB không nhận, thiết bị ngoại vi, USB driver.
+**Từ khóa:** USB không nhận, không nhận chuột, không nhận bàn phím, cổng USB, USB token, thiết bị ngoại vi, Device Manager, USB not recognized, chập chờn, USB signing token, driver ngoại vi.
 
-## Symptoms
-- Windows notification: 'USB device not recognized. The last USB device you connected to this computer malfunctioned'.
-- Digital signature USB Token, mouse, or keyboard fails to respond or shows yellow exclamation mark in Device Manager.
-- Device Manager displays: 'Unknown USB Device (Device Descriptor Request Failed)'.
+## Triệu chứng / Dấu hiệu nhận biết
+- Cắm chuột, bàn phím, USB lưu trữ hoặc USB token chữ ký số nhưng đèn thiết bị không sáng hoặc máy tính không nhận diện.
+- Windows phát âm thanh ngắt kết nối liên tục hoặc hiện thông báo "USB device not recognized" ở góc phải màn hình.
+- Trong Device Manager xuất hiện biểu tượng tam giác vàng chấm than cảnh báo tại mục *Universal Serial Bus controllers*.
 
-## Checks
-1. Try plugging the USB peripheral into a different USB port, preferably directly into the PC chassis rather than through an unpowered USB hub.
-2. Test the USB peripheral on a secondary computer to verify whether the hardware token/device itself is damaged.
-3. Open Device Manager (Win+X > Device Manager) and expand 'Universal Serial Bus controllers' and 'Smart card readers'.
-4. Check for physical damage, lint, or bent pins inside the USB plug or port.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Cắm sang cổng USB khác:** Thử rút thiết bị ra và cắm sang một cổng USB khác trực tiếp trên thân máy tính (ưu tiên cắm cổng phía sau của máy bàn case, tránh cắm qua hub chia cổng).
+2. **Vệ sinh đầu cắm:** Kiểm tra xem đầu cắm USB và khe cắm trên máy tính có bị bám bụi bẩn, dị vật hoặc lỏng chân tiếp xúc hay không.
+3. **Thử trên thiết bị khác:** Cắm thử chuột/USB đó sang máy tính đồng nghiệp bên cạnh để xác định lỗi do thiết bị ngoại vi hay do cổng USB của máy mình.
+4. **Khởi động lại máy:** Khởi động lại hệ điều hành Windows để hệ thống nạp lại driver điều khiển cổng USB.
 
-## Resolution
-- Disconnect power supply / charger from laptop/PC for 30 seconds to drain motherboard residual capacitor charge, then reconnect.
-- Reinstall USB controller drivers:
-  1. In Device Manager, right-click the item with yellow exclamation mark > Uninstall device.
-  2. Click Action menu > 'Scan for hardware changes'.
-- Disable USB Selective Suspend Power Management:
-  1. Control Panel > Power Options > Change plan settings > Change advanced power settings.
-  2. Expand 'USB settings' > 'USB selective suspend setting' > set to 'Disabled'.
-- For digital signature USB tokens (VNPT, Viettel, FPT, SafeNet): reinstall the official Token Manager middleware utility from software portal.
-
-## Escalation
-If physical USB ports on the laptop motherboard fail to recognize any devices, initiate a hardware warranty inspection with IT Asset Management.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Thử cắm USB/Token sang cổng cắm khác trực tiếp trên thân máy, tránh cắm qua cổng chia USB (hub) rời.
-2. Mở Device Manager, tìm mục có dấu chấm than màu vàng, chuột phải chọn Uninstall device rồi chọn Scan for hardware changes.
-3. Vào Power Options tắt chế độ 'USB selective suspend' để tránh Windows tự ngắt nguồn cổng USB khi tiết kiệm pin.
-4. Đối với USB Token chữ ký số, tải và cài đặt lại phần mềm quản lý Token chính hãng (như SafeNet, VNPT-CA, Viettel-CA).
-
-## Source and scope
-- Microsoft Support, [Error: USB device not recognized in Windows](https://support.microsoft.com/en-us/windows/usb-device-not-recognized-in-windows-87612f9b-6f0e-436f-8769-122e391b1580), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Toàn bộ các cổng USB trên máy tính đều bị mất nguồn và không nhận bất kỳ thiết bị nào (nghi ngờ hỏng chip cầu nam hoặc lỗi bo mạch chủ).
+- USB token chữ ký số chuyên dụng không nhận driver middleware dù đã cắm đúng cổng (cần IT cài đặt phần mềm ký số bản quyền).
+- Cổng USB bị gãy chân tiếp xúc vật lý hoặc có mùi khét, chạm chập điện.

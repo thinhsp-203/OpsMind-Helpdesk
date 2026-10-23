@@ -9,10 +9,18 @@ Yêu cầu Python 3.11 trở lên và Git. Trên Windows PowerShell:
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
+py -m pip install --require-hashes -r requirements.txt
 ```
 
 Chạy ứng dụng bằng `py -m uvicorn app.main:app --reload`. Chế độ local mặc định tạo tài khoản demo trong DB mới; chỉ dùng dữ liệu giả. Xem [hướng dẫn triển khai](docs/DEPLOYMENT.md) trước khi dùng cấu hình khác.
+
+`requirements.in` chứa dependency trực tiếp; `requirements.txt` khóa cả dependency gián tiếp, marker nền tảng và SHA-256 cho Python 3.11 trở lên. Không sửa tay file sinh. Khi thay phiên bản, dùng uv 0.13.4 và sinh lại từ repository root:
+
+```powershell
+uv pip compile requirements.in --universal --python-version 3.11 --generate-hashes -o requirements.txt
+```
+
+Cài vào môi trường sạch, chạy `py -m pip check` và các kiểm thử bên dưới. Scan lockfile bằng pip-audit 2.10.1 trong một venv công cụ riêng: `python -m pip_audit -r requirements.txt --disable-pip --progress-spinner off`. File đã khóa đầy đủ nên không cần resolver của pip trong scanner. CI scan trên Windows và Linux để bao phủ dependency theo marker; advisory hoặc lỗi scan làm job thất bại. Không thêm ignore advisory nếu chưa có triage và lý do được duyệt. Scanner không chứng minh ứng dụng an toàn trước mọi lỗ hổng hoặc quét OS/base image Docker.
 
 ## Quy trình thay đổi
 
@@ -29,6 +37,7 @@ py -m ruff check app tests scripts
 node --check app/static/app.js
 node --check app/static/i18n.js
 node tests/test_i18n.js
+node tests/test_frontend_boot.js
 py -m compileall -q app tests scripts
 py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
 py -m scripts.evaluate_rag

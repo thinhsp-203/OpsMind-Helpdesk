@@ -1,31 +1,25 @@
-# VPN FortiClient Remote Access Troubleshooting
+# Khắc phục sự cố kết nối VPN FortiClient (Chính sách Lễ tân & IT)
 
-**Từ khóa:** VPN, kết nối VPN, làm việc tại nhà, remote access, FortiClient, VPN gateway, gateway down, mất kết nối VPN.
+**Từ khóa:** VPN, FortiClient, kết nối VPN, cổng VPN, cổng kết nối, gateway outage, client version, certificate, chứng thư, supported client, chuyển đội mạng, liên hệ IT Security, làm việc từ xa, remote access, authentication timeout, kiểm tra mạng.
 
-## Symptoms
-- User cannot connect to VPN after upgrade.
-- Error: connection failed, certificate not trusted, or authentication timeout.
+> **QUY ĐỊNH ĐẶC THÙ VỀ VPN NỘI BỘ:**
+> Hệ thống VPN công ty chỉ cấp và cho phép sử dụng đối với nhân sự thuộc bộ phận **Lễ tân** và **IT**. Nhân sự thuộc các phòng ban khác khi có nhu cầu làm việc từ xa cần có phê duyệt từ Quản lý trực tiếp/Giám đốc và liên hệ IT để được xem xét ngoại lệ đặc biệt.
 
-## Checks
-1. Ensure the user is connected to the corporate network or has internet access.
-2. Record the exact FortiClient version and error message; compare the version with the company-supported package.
-3. Confirm the user selected the approved company profile. Do not delete, recreate, or edit managed profiles.
-4. If an error mentions a certificate, token, or authentication, stop and ask IT Security to verify it. Do not send passwords, OTPs, or private keys.
+## Triệu chứng / Dấu hiệu nhận biết
+- Phần mềm FortiClient VPN báo lỗi không kết nối được đến cổng VPN công ty hoặc dừng lại ở mức 40% - 98%.
+- Không kết nối được VPN FortiClient sau khi chứng thư hết hạn hoặc cập nhật phiên bản mới.
+- Báo lỗi 'Authentication timeout', sai thông tin đăng nhập hoặc kết nối cổng VPN báo timeout.
+- User receives notification: 'VPN connection fails after a certificate update' or gateway unavailable.
 
-## Resolution
-- Users should retry only after confirming general internet access and the approved profile.
-- IT can repair or reinstall FortiClient from the organization-approved package after checking the error and profile.
-- IT Security must verify and renew certificates or credentials through the approved process.
-- If the issue persists, open a ticket with the exact error, client version, and time of failure; redact usernames, addresses, and other sensitive log data.
+## Các bước người dùng tự khắc phục nhanh (Self-service)
+1. **Kiểm tra kết nối mạng (Internet check):** Đảm bảo máy tính đã kết nối internet ổn định (duyệt được web bình thường) trước khi khởi chạy kết nối VPN FortiClient.
+2. **Kiểm tra thông số cấu hình cổng VPN:**
+   - Mở FortiClient -> Chọn cấu hình VPN công ty.
+   - Kiểm tra địa chỉ cổng VPN (Remote Gateway) và cổng kết nối (Port) có khớp với tài liệu hướng dẫn của IT hay không.
+3. **Kiểm tra tài khoản và chứng thư:** Xác nhận nhập đúng tên người dùng (corporate account) và mật khẩu, kiểm tra ngày giờ máy tính để tránh lỗi xác thực chứng thư (certificate).
+4. **Kiểm tra phiên bản phần mềm (Supported client):** Đảm bảo máy tính đang cài phiên bản FortiClient được bộ phận IT chuẩn hóa, không tự ý cài đặt các bản client không được hỗ trợ.
 
-## Escalation
-Escalate to IT Security or network support if the problem affects multiple users or the VPN gateway is unavailable.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Kiểm tra Internet và kết nối vào đúng hồ sơ VPN do công ty cấp.
-2. Kiểm tra ngày giờ máy và phiên bản FortiClient theo tiêu chuẩn IT.
-3. Nếu chứng thư hết hạn hoặc lỗi xác thực, không gửi mật khẩu/OTP; liên hệ IT Security để gia hạn hoặc cấp lại.
-4. Nếu nhiều người cùng lỗi hoặc VPN Gateway không truy cập được, tạo ticket ưu tiên cao và chuyển nhóm mạng.
-
-## Source and scope
-- Fortinet Document Library, [FortiClient 8.0.0 Administration Guide](https://docs.fortinet.com/document/forticlient/8.0.0/administration-guide/725845/introduction), accessed 2026-10-05. This vendor source identifies the product and administrative guide; it does not define this organization's VPN profile, certificate lifecycle, or support policy. This runbook therefore limits user actions to basic checks and routes managed-client changes to IT.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- **Người dùng không thuộc Lễ tân hoặc IT:** Hướng dẫn người dùng gửi phiếu yêu cầu kèm phê duyệt của Quản lý để IT xem xét cấp tài khoản VPN ngoại lệ.
+- **Lỗi chứng thư hoặc cổng VPN (Gateway outage):** Cổng kết nối máy chủ VPN gặp sự cố hoặc chứng thư số máy chủ hết hạn -> Chuyển đội mạng (network team) hoặc liên hệ IT Security xử lý khẩn cấp.
+- **Tài khoản VPN bị khóa hoặc lỗi xác thực xác minh 2 bước:** Chuyển ticket cho IT Service Desk để kiểm tra chính sách tài khoản và phân quyền truy cập.

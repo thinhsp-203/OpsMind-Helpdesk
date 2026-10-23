@@ -28,6 +28,7 @@ from app.schemas import (
     LoginRequest,
     ProfileUpdate,
     ResetPasswordRequest,
+    AccountDeleteResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login")
-async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
+def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
     client_ip = request.client.host if request.client else "unknown"
     combo_key = f"attempt:{client_ip}:{payload.username.lower()}"
     ip_key = f"ip:{client_ip}"
@@ -58,8 +59,8 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
 
     _clear_failed_login(combo_key)
 
-    if not user["password_hash"].startswith("pbkdf2_sha256$"):
-        store.update_user_password(payload.username, payload.password)
+    if not isinstance(user.get("session_epoch"), str) or len(user["session_epoch"]) != 64:
+        raise HTTPException(status_code=503, detail="Tài khoản chưa sẵn sàng tạo phiên. Vui lòng thử lại sau.")
 
     issued_at = datetime.now(timezone.utc)
     token = jwt.encode(
@@ -69,6 +70,7 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
             "iat": int(issued_at.timestamp()),
             "exp": issued_at + timedelta(minutes=TOKEN_EXPIRE_MINUTES),
             "pwd_at": user.get("password_changed_at"),
+            "session_epoch": user["session_epoch"],
             "force_pwd": bool(user.get("force_password_change", 0)),
         },
         SECRET_KEY,
@@ -82,9 +84,19 @@ async def login(request: Request, payload: LoginRequest) -> dict[str, Any]:
     }
 
 
+@router.post("/logout")
+def logout(request: Request) -> dict[str, Any]:
+    actor = current_user(request)
+    try:
+        revoked = store.revoke_user_sessions(actor["username"], actor["session_epoch"])
+    except store.DatabaseError as exc:
+        raise HTTPException(status_code=503, detail="Chưa xác nhận thu hồi phiên trên máy chủ.") from exc
+    return {"status": "success", "revoked": revoked, "scope": "all_sessions_in_authenticated_epoch"}
+
+
 @router.post("/change-password")
-async def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, Any]:
-    actor = await current_user(request)
+def change_password(request: Request, payload: ChangePasswordRequest) -> dict[str, Any]:
+    actor = current_user(request)
     user_key = f"user:{actor['username'].lower()}"
     _check_change_password_rate_limit(user_key)
 
@@ -122,8 +134,8 @@ async def change_password(request: Request, payload: ChangePasswordRequest) -> d
 
 
 @router.get("/me")
-async def who_am_i(request: Request) -> dict[str, Any]:
-    user = await current_user(request)
+def who_am_i(request: Request) -> dict[str, Any]:
+    user = current_user(request)
     profile = store.get_user_credentials(user["username"])
     if not profile:
         return user
@@ -142,8 +154,8 @@ async def who_am_i(request: Request) -> dict[str, Any]:
 
 
 @router.patch("/profile")
-async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[str, Any]:
-    actor = await current_user(request)
+def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[str, Any]:
+    actor = current_user(request)
     user = store.get_user_credentials(actor["username"])
     if user is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
@@ -196,7 +208,7 @@ async def update_my_profile(request: Request, payload: ProfileUpdate) -> dict[st
 
 
 @router.post("/forgot-password")
-async def forgot_password(
+def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
@@ -209,7 +221,7 @@ async def forgot_password(
 
     uniform_message = (
         "Nếu thông tin khớp với tài khoản trong hệ thống, hướng dẫn đặt lại mật khẩu "
-        "đã được gửi đến email đăng ký của bạn."
+        "sẽ được gửi đến email đăng ký của bạn. Vui lòng chờ và kiểm tra hộp thư."
     )
 
     user = store.find_user_for_password_reset(payload.identifier)
@@ -242,31 +254,19 @@ async def forgot_password(
     if len(_forgot_password_target_cooldown) > 1000:
         _forgot_password_target_cooldown.clear()
 
-    token = store.create_password_reset_token(
-        user["username"],
-        expires_minutes=config.RESET_TOKEN_EXPIRE_MINUTES,
-    )
-
-    if not config.DEMO_MODE and not config.PUBLIC_BASE_URL:
-        logger.error(
-            "Password reset request rejected: PUBLIC_BASE_URL must be configured in non-demo environment."
-        )
+    from app.email_outbox import request_password_email, wake_email_worker
+    try:
+        request_password_email(user['username'], 'reset', config.PUBLIC_BASE_URL or str(request.base_url).rstrip('/'))
+    except (email_sender.EmailConfigurationError, *store.DatabaseError) as exc:
+        logger.warning("Password email enqueue failed: %s", type(exc).__name__)
         return {"status": "success", "message": uniform_message}
-
-    base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
-    background_tasks.add_task(
-        email_sender.send_password_reset_email,
-        to_email=user_email,
-        username=user["username"],
-        reset_token=token,
-        base_url=base_url,
-    )
+    background_tasks.add_task(wake_email_worker)
 
     return {"status": "success", "message": uniform_message}
 
 
 @router.post("/reset-password")
-async def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
+def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
     if len(payload.new_password) < 12:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -284,3 +284,26 @@ async def reset_password(payload: ResetPasswordRequest) -> dict[str, Any]:
         "username": username,
         "require_relogin": True,
     }
+
+@router.delete("/me", response_model=AccountDeleteResponse)
+@router.post("/delete-account", response_model=AccountDeleteResponse)
+def delete_account_endpoint(request: Request) -> dict[str, str]:
+    user = current_user(request)
+    username = user["username"]
+    try:
+        store.delete_user_and_anonymize(username)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception as exc:
+        logger.error("Failed to delete user account %s: %s", username, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể xóa tài khoản vào lúc này. Vui lòng thử lại sau.",
+        ) from exc
+    return {
+        "message": "Tài khoản của bạn đã được xóa vĩnh viễn và thông tin cá nhân đã được ẩn danh.",
+        "username": username,
+    }
+

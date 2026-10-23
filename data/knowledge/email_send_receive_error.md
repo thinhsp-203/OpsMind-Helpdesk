@@ -1,34 +1,21 @@
-# Outlook Send and Receive Errors 0x800CCC0E and 0x80042108
+# Khắc phục lỗi gửi và nhận email trên Microsoft Outlook (2016, 2019, 2021, 365)
 
-**Từ khóa:** gửi email, nhận email, lỗi gửi mail, lỗi nhận mail, không gửi được thư, không nhận được thư, SMTP, IMAP, POP3, mailbox.
+**Từ khóa:** gửi email, nhận email, gửi nhận thư, lỗi gửi mail, lỗi nhận mail, Outlook 2016, Outlook 2019, Outlook 2021, Office 365, 0x800CCC0E, 0x80042109, kết nối máy chủ, cấu hình, Work Offline, máy chủ mail.
 
-## Symptoms
-- Outlook Send/Receive Progress dialog reports errors: `Task 'user@company.com - Sending' reported error (0x800CCC0E): 'Cannot connect to the network server'`.
-- Error `0x80042108`: 'The operation timed out waiting for a response from the sending (SMTP) server'.
-- Bottom status bar alternates between 'Disconnected', 'Trying to connect...', and 'Need Password'.
+## Triệu chứng / Dấu hiệu nhận biết
+- Nhấn nút *Send/Receive All Folders* trong Outlook nhưng thanh tiến trình báo lỗi, xuất hiện mã lỗi 0x800CCC0E, 0x80042108 hoặc 0x80042109.
+- Email gửi đi bị kẹt trong thư mục *Outbox*, người nhận không nhận được thư mới hoặc hộp thư không tải thư đến.
+- Góc dưới bên phải của cửa sổ Outlook hiển thị trạng thái "Disconnected" (Đã ngắt kết nối) hoặc "Trying to connect..." (Đang cố kết nối...).
 
-## Checks
-1. Check internet connectivity by loading corporate intranet portals in browser.
-2. Verify Outlook bottom status bar does not say 'Working Offline'. Go to Send / Receive tab > ensure 'Work Offline' is not highlighted.
-3. Test webmail access via browser (`https://mail.company.com` or `https://outlook.office.com`).
-4. Check if outbound SMTP port (port 587 or 465) or incoming IMAP/POP3 port (port 993/995) is blocked by antivirus or local firewall.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra kết nối Internet:** Mở trình duyệt web và truy cập một trang web bất kỳ hoặc trang Webmail của công ty để đảm bảo đường truyền Internet vẫn đang hoạt động ổn định.
+2. **Kiểm tra trạng thái Work Offline:** Trong giao diện Outlook, chuyển sang thẻ *Send / Receive*. Nếu nút *Work Offline* đang có màu xám/xanh kích hoạt, hãy nhấp vào để chuyển về chế độ kết nối trực tuyến bình thường.
+3. **Kiểm tra dung lượng tệp đính kèm:** Đảm bảo thư gửi đi trong Outbox không chứa tệp đính kèm vượt quá giới hạn cho phép của hệ thống mail công ty (thường tối đa 20MB - 25MB). Nếu vượt quá, xóa thư trong Outbox và gửi qua đường dẫn lưu trữ đám mây.
+4. **Khởi động lại Outlook và máy tính:** Tắt hoàn toàn ứng dụng Outlook, chờ 10 giây rồi mở lại để nạp lại phiên kết nối mạng.
 
-## Resolution
-- Disconnect and reconnect Outlook:
-  Go to Send / Receive tab > click 'Work Offline' to disconnect, wait 5 seconds, then click 'Work Offline' again to re-establish connection.
-- Verify account credentials and Modern Authentication:
-  Click File > Info > Account Settings > Update credentials if recent company password change occurred.
-- Temporarily disable third-party antivirus email scanning plugins that intercept SSL/TLS email traffic.
-- Start Outlook without add-ins: `outlook.exe /safe` to isolate conflicting third-party security plugins.
+> **Lưu ý an toàn quan trọng (Security Policy):** Người dùng tuyệt đối không tắt phần mềm bảo mật (do not disable endpoint antivirus) trên máy tính để thử gửi mail. Mọi rủi ro an toàn mạng phải được tuân thủ nghiêm ngặt theo chính sách CNTT.
 
-## Escalation
-If webmail works normally but Outlook desktop client persistently fails with port 0x800CCC0E, escalate to IT Security to inspect corporate proxy/firewall packet inspection rules.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Kiểm tra góc dưới bên phải Outlook: nếu đang hiện 'Working Offline' hoặc 'Disconnected', vào thẻ 'Send / Receive' bấm bỏ chọn nút 'Work Offline'.
-2. Đăng nhập thử vào Webmail (trang web đọc mail) để chắc chắn tài khoản và mật khẩu của bạn không bị khóa.
-3. Khởi động lại Outlook bằng cách bấm Win+R gõ `outlook.exe /safe` để kiểm tra xem có bị xung đột plugin diệt virus không.
-4. Nếu vừa đổi mật khẩu Windows, vào File > Account Settings để nhập mật khẩu mới cho hòm thư.
-
-## Source and scope
-- Microsoft Support, [Error 0x800CCC0E or 0x80042108 when sending and receiving in Outlook](https://support.microsoft.com/en-us/office/i-get-a-connection-error-in-outlook-0x800ccc0e-or-0x80042108-c8751567-d867-4ef6-92b4-539050d53c23), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Lỗi kết nối máy chủ mail xảy ra đồng loạt với nhiều nhân sự trong cùng phòng ban (nghi ngờ sự cố máy chủ Exchange / Mail Server).
+- Cần kỹ thuật viên IT kiểm tra lại thông số cấu hình cổng kết nối SSL/TLS (IMAP/SMTP/Exchange) và cấu hình tài khoản người dùng trên hệ thống.
+- Hộp thư bị khóa gửi do nghi ngờ gửi spam hoặc bị chặn bởi bộ lọc tường lửa công ty.

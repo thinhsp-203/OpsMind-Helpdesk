@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 
 import logging
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -156,13 +157,15 @@ def _clear_change_password_attempts(key: str) -> None:
     _change_password_attempts.pop(key, None)
 
 
-async def current_user(request: Request) -> dict[str, str]:
+def current_user(request: Request) -> dict[str, str]:
+    """Read credentials synchronously; async callers must offload this DB-backed helper."""
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise HTTPException(status_code=401, detail="Vui lòng đăng nhập để tiếp tục.")
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM],
+                             options={"require": ["sub", "exp", "iat", "session_epoch"]})
     except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=401, detail="Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
@@ -180,6 +183,11 @@ async def current_user(request: Request) -> dict[str, str]:
                 detail="Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.",
             )
 
+    epoch = payload.get("session_epoch")
+    if (not isinstance(epoch, str) or len(epoch) != 64 or not epoch.isascii()
+            or not secrets.compare_digest(epoch, user.get("session_epoch") or "")):
+        raise HTTPException(status_code=401, detail="Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.")
+
     if user.get("force_password_change"):
         allowed_paths = {"/auth/change-password", "/auth/me", "/auth/logout"}
         if request.url.path not in allowed_paths:
@@ -191,6 +199,7 @@ async def current_user(request: Request) -> dict[str, str]:
     return {
         "username": username,
         "role": user["role"],
+        "session_epoch": user["session_epoch"],
         "force_password_change": bool(user.get("force_password_change")),
     }
 

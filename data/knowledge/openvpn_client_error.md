@@ -1,32 +1,22 @@
-# OpenVPN Client TLS Handshake and Certificate Errors
+# Xử lý lỗi kết nối và chứng chỉ OpenVPN Client (Chính sách Lễ tân & IT)
 
-**Từ khóa:** OpenVPN, lỗi openvpn, kết nối openvpn, TLS error, chứng chỉ TLS, file ovpn, đồng bộ thời gian, đồng hồ máy tính, client certificate.
+**Từ khóa:** OpenVPN, lỗi openvpn, kết nối openvpn, ngắt kết nối, server nội bộ, TLS error, chứng chỉ TLS, file ovpn, đồng bộ thời gian, client certificate, kết nối bị ngắt, lỗi chứng chỉ.
 
-## Symptoms
-- OpenVPN client icon stays yellow or disconnects with red icon.
-- Log error: 'TLS Error: TLS key negotiation failed to occur within 60 seconds (check your network connectivity)'.
-- Log error: 'VERIFY ERROR: depth=0, error=certificate has expired'.
+> **QUY ĐỊNH ĐẶC THÙ VỀ VPN NỘI BỘ:**
+> Hệ thống VPN công ty chỉ cấp và cho phép sử dụng đối với nhân sự thuộc bộ phận **Lễ tân** và **IT**. Nhân sự thuộc các phòng ban khác khi có nhu cầu làm việc từ xa cần có phê duyệt từ Quản lý trực tiếp/Giám đốc và liên hệ IT để được xem xét ngoại lệ đặc biệt.
 
-## Checks
-1. View OpenVPN connection log window for exact error lines starting with `TLS Error` or `AUTH_FAILED`.
-2. Verify local computer system date, time, and timezone match current real time. Incorrect time breaks TLS certificates.
-3. Verify the `.ovpn` configuration file and accompanying client certificates/keys (`.crt`, `.key`) are present in `C:\Program Files\OpenVPN\config`.
-4. Check if UDP port 1194 or TCP port 443 is blocked by the local ISP/home Wi-Fi router.
+## Triệu chứng / Dấu hiệu nhận biết
+- Kết nối OpenVPN bị ngắt giữa chừng và không vào được server nội bộ công ty.
+- Biểu tượng OpenVPN Client hiển thị màu vàng liên tục hoặc ngắt kết nối hiển thị biểu tượng màu đỏ.
+- Nhật ký kết nối (Log) xuất hiện lỗi: `TLS Error: TLS key negotiation failed to occur within 60 seconds` hoặc `VERIFY ERROR: certificate has expired`.
+- Ứng dụng OpenVPN báo lỗi chứng chỉ máy khách (client certificate) không hợp lệ hoặc hết hạn.
 
-## Resolution
-- Correct Windows system clock via Settings > Time & language > Date & time > 'Sync now'.
-- Import the latest `.ovpn` profile provided by corporate IT Helpdesk.
-- If corporate certificate is expired, request a renewed user certificate bundle from IT Security.
-- Temporarily switch connection protocol from UDP to TCP port 443 in the client profile if connecting from restrictive hotel/public Wi-Fi.
+## Các bước người dùng tự khắc phục nhanh (Self-service)
+1. **Kiểm tra kết nối internet:** Kiểm tra đường truyền Wi-Fi hoặc mạng dây tại nhà đảm bảo kết nối internet đang hoạt động ổn định.
+2. **Đồng bộ thời gian hệ thống:** Vào Windows Settings -> Time & Language -> Nhấn **Sync now** để đồng bộ thời gian chuẩn xác, tránh lỗi kiểm tra tính hợp lệ của chứng chỉ TLS.
+3. **Khởi động lại OpenVPN Client:** Nhấp chuột phải vào biểu tượng OpenVPN dưới khay hệ thống -> Chọn Disconnect -> Chờ 10 giây -> Nhấp Connect lại.
 
-## Escalation
-Escalate to IT Security team if OpenVPN CA root certificate requires renewal across all corporate profiles.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Nhấp chuột phải vào biểu tượng OpenVPN chọn View Log để đọc chi tiết mã lỗi kết nối.
-2. Vào Cài đặt ngày giờ của Windows bấm 'Sync now' để đồng bộ lại thời gian (chênh lệch giờ sẽ làm hỏng xác thực chứng chỉ TLS).
-3. Nếu log báo 'certificate has expired', gửi yêu cầu cho IT cấp lại file cấu hình `.ovpn` và chứng chỉ mới.
-4. Thử phát Wi-Fi từ điện thoại 4G để kiểm tra xem mạng gia đình/quán cafe có chặn cổng OpenVPN không.
-
-## Source and scope
-- OpenVPN Community Documentation, [Troubleshooting OpenVPN Client Connections](https://openvpn.net/community-resources/how-to/#troubleshooting), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- **Người dùng không thuộc diện cấp VPN:** Thông báo chính sách VPN chỉ áp dụng cho bộ phận Lễ tân và IT; chuyển ticket yêu cầu phê duyệt từ cấp quản lý.
+- **Chứng chỉ TLS / File cấu hình .ovpn hết hạn:** Cần IT Quản trị cấp lại bộ tệp cấu hình mới kèm client certificate hợp lệ.
+- **Sự cố máy chủ OpenVPN Server nội bộ:** Nếu nhiều nhân sự trong bộ phận IT / Lễ tân cùng mất kết nối đến server nội bộ, chuyển thẳng cho IT Hạ tầng kiểm tra Gateway VPN.

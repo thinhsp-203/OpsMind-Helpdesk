@@ -1,35 +1,27 @@
-# Network Printer Offline Status and SNMP Port Fix
+# Khắc phục lỗi máy in để bàn và máy photocopy báo trạng thái Offline
 
-**Từ khóa:** máy in offline, máy in ngoại tuyến, máy in không nhận, mất kết nối máy in, bật máy in, kiểm tra cáp máy in, offline printer.
+**Từ khóa:** máy in offline, máy in ngoại tuyến, máy in không nhận, mất kết nối máy in, SNMP, trạng thái offline, máy in photocopy, máy in để bàn, IP máy in, Print Spooler, cáp mạng máy in.
 
-## Symptoms
-- Network printer displays status 'Offline' in Windows Settings and Devices and Printers, even though physical printer is powered on and display screen shows Ready.
-- Print jobs enter queue with status 'Error - Printing' or 'Paused'.
-- Ping to printer IP address succeeds, but Windows refuses to send print spool.
+## Triệu chứng / Dấu hiệu nhận biết
+- Trong danh sách máy in của Windows, tên máy in hiển thị chữ mờ đi kèm thông báo trạng thái "Offline" (Ngoại tuyến).
+- Khi bấm in, Windows thông báo: "Printer is offline. Check connection" và không gửi được lệnh in đến thiết bị.
+- Sự cố xảy ra với cả máy in để bàn cắm cổng USB/mạng hoặc máy in photocopy đa chức năng kết nối qua mạng LAN.
 
-## Checks
-1. Verify printer IP address: print network configuration sheet directly from printer LCD screen.
-2. Open Command Prompt and test reachability: `ping <printer_ip>`.
-3. Open web browser and navigate to `http://<printer_ip>` to verify the printer Embedded Web Server (EWS) is accessible.
-4. In Windows, open Print Queue window > click Printer menu > check if 'Use Printer Offline' has a checkmark next to it.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra dây cáp và nguồn điện:**
+   - Đối với máy in để bàn cắm USB: Kiểm tra dây cáp USB cắm chắc chắn vào cả máy in và máy tính.
+   - Đối với máy in kết nối mạng (Network Printer): Kiểm tra dây cáp mạng cắm vào phía sau máy in, đèn cổng mạng (xanh/cam) phải sáng nhấp nháy. Đảm bảo màn hình máy in đã bật và không ở chế độ ngủ sâu (Sleep).
+2. **Kiểm tra tùy chọn "Use Printer Offline" trong Windows:**
+   - Mở *Open print queue* của máy in bị lỗi.
+   - Nhấp vào menu *Printer* ở góc trên cửa sổ.
+   - Nếu mục *Use Printer Offline* đang có dấu tích chọn, hãy nhấp vào đó để bỏ tích.
+3. **Thử tắt tính năng SNMP Status Enabled:**
+   - Vào *Control Panel -> Devices and Printers*, nhấp chuột phải vào máy in chọn *Printer properties*.
+   - Chuyển sang thẻ *Ports*, chọn cổng IP của máy in rồi bấm *Configure Port*.
+   - Nếu có mục *SNMP Status Enabled*, thử bỏ dấu tích ở ô này rồi bấm OK để khắc phục trường hợp giao thức SNMP bị chặn bởi tường lửa.
+4. **Khởi động lại máy in và máy tính:** Tắt bật lại máy in và khởi động lại máy tính để làm mới nhận diện thiết bị.
 
-## Resolution
-- Uncheck 'Use Printer Offline': In Print Queue > click 'Printer' menu > ensure 'Use Printer Offline' is unchecked.
-- Disable SNMP Status on the Standard TCP/IP port (Common cause of false offline status):
-  1. Go to Control Panel > Devices and Printers > Right-click Printer > Printer properties.
-  2. Select 'Ports' tab > highlight the printer port > click 'Configure Port...'.
-  3. Uncheck the checkbox 'SNMP Status Enabled' > click OK.
-  4. Restart Print Spooler service (`net stop spooler` then `net start spooler`).
-- If printer IP changed due to DHCP lease drift, update the port IP to the new static IP address.
-
-## Escalation
-If printer Embedded Web Server is unreachable, escalate to Hardware Maintenance team to check printer network switch port and network card.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Mở cửa sổ hàng đợi máy in, vào menu 'Printer' kiểm tra xem mục 'Use Printer Offline' có đang bị tích chọn nhầm không (nếu có thì bỏ tích).
-2. Vào Printer Properties > tab Ports > bấm 'Configure Port' > Bỏ tích chọn ô 'SNMP Status Enabled' rồi bấm OK.
-3. Khởi động lại dịch vụ Print Spooler: Mở cmd gõ `net stop spooler` rồi `net start spooler`.
-4. In thử trang cấu hình mạng từ màn hình máy in để đối chiếu xem địa chỉ IP máy in có bị nhảy sang số khác không.
-
-## Source and scope
-- Microsoft Learn, [Printer status is offline after installing an update or configuring SNMP](https://learn.microsoft.com/en-us/troubleshoot/windows-client/printing/printer-status-offline), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Địa chỉ IP của máy in hoặc máy photocopy bị thay đổi do máy chủ DHCP cấp lại địa chỉ mới khác với cổng in đã cấu hình trên máy tính.
+- Card mạng trên máy photocopy bị lỗi phần cứng không nhận tín hiệu mạng nội bộ.
+- Cần IT cấu hình lại địa chỉ IP tĩnh (Static IP) chuẩn cho máy in và chia sẻ lại trên mạng nội bộ.

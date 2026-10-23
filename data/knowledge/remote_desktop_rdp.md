@@ -1,32 +1,21 @@
-# Remote Desktop (RDP) Connection and NLA Troubleshooting
+# Hướng dẫn xử lý sự cố kết nối Remote Desktop (RDP / mstsc) mạng nội bộ
 
-**Từ khóa:** Remote Desktop, RDP, mstsc, kết nối máy chủ, máy tính từ xa, điều khiển từ xa, màn hình từ xa, lỗi kết nối RDP.
+**Từ khóa:** Remote Desktop, RDP, mstsc, kết nối máy chủ, máy tính từ xa, lỗi NLA, cổng 3389, điều khiển từ xa, mạng nội bộ, xác thực từ xa.
 
-## Symptoms
-- Remote Desktop Connection displays: 'Remote Desktop can\'t connect to the remote computer for one of these reasons' (Error code 0x204 or 0x104).
-- Error popup: 'An authentication error has occurred. The function requested is not supported' (CredSSP / NLA error).
-- Screen remains black upon connecting or immediately minimizes and disconnects.
+## Triệu chứng / Dấu hiệu nhận biết
+- Mở ứng dụng Remote Desktop Connection (`mstsc`) gõ tên máy hoặc IP nhưng báo lỗi: "Remote Desktop can't connect to the remote computer for one of these reasons".
+- Xuất hiện lỗi xác thực tài khoản cấp độ mạng NLA: "An authentication error has occurred. The function requested is not supported" hoặc "The remote computer requires Network Level Authentication".
+- Kết nối được vài giây rồi tự động bị ngắt kết nối hoặc màn hình điều khiển từ xa bị đen kịt.
 
-## Checks
-1. Ensure the user is connected to corporate LAN or connected to corporate VPN before initiating RDP.
-2. In Command Prompt, test port 3389 reachability: `powershell Test-NetConnection -ComputerName <target_ip> -Port 3389`.
-3. Verify target workstation is powered on, awake (not in Sleep/Hibernate mode), and logged in or at lock screen.
-4. Verify user account is in the 'Remote Desktop Users' group on the target machine.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra kết nối mạng cùng lớp mạng:** Đảm bảo máy tính của bạn và máy tính/máy chủ đích đang cùng kết nối trong mạng nội bộ công ty (hoặc đã kết nối VPN được cấp phép đối với Lễ tân/IT).
+2. **Kiểm tra chính xác địa chỉ IP và tài khoản:**
+   - Nhập đúng địa chỉ IP nội bộ của máy đích (ví dụ: `192.168.1.50`).
+   - Khi đăng nhập, nhập đúng tên miền công ty trước tên tài khoản (ví dụ: `COMPANY\username` hoặc `username@company.com`) cùng mật khẩu hiện tại.
+3. **Kiểm tra máy tính đích có đang bật nguồn không:** Đảm bảo máy tính ở văn phòng đang bật nguồn, cắm dây mạng và không bị rơi vào trạng thái ngủ sâu (Sleep / Hibernate).
+4. **Thử ping kiểm tra thông mạng:** Mở `cmd`, gõ `ping <địa chỉ IP máy đích>` để xác nhận đường truyền hai máy thông suốt.
 
-## Resolution
-- Verify hostname/IP address entered in `mstsc.exe` is correct.
-- If CredSSP encryption oracle error occurs, install latest Windows Cumulative Updates on both client and host machines.
-- On host computer: System Properties > Remote tab > ensure 'Allow remote connections to this computer' is selected.
-- Lower display configuration: In RDP client > Show Options > Display tab > set Colors to 'High Color (16 bit)' if connection bandwidth is limited.
-
-## Escalation
-If target machine shows port 3389 closed, dispatch on-site IT Helpdesk technician to check target computer power status and Windows Defender Firewall inbound RDP rules.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Bắt buộc phải kết nối VPN công ty trước khi mở ứng dụng Remote Desktop Connection (`mstsc`).
-2. Kiểm tra lại địa chỉ IP máy tính bàn tại văn phòng và đảm bảo máy ở công ty đang bật nguồn (không bị tắt hay sleep).
-3. Cập nhật Windows Update mới nhất trên cả máy ở nhà và máy công ty để khắc phục lỗi bảo mật CredSSP.
-4. Nếu báo lỗi quyền truy cập, liên hệ IT để được cấp quyền vào nhóm 'Remote Desktop Users'.
-
-## Source and scope
-- Microsoft Learn, [Troubleshoot Remote Desktop disconnected errors](https://learn.microsoft.com/en-us/troubleshoot/windows-server/remote/troubleshoot-remote-desktop-disconnected-errors), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Máy tính đích chưa được bật tính năng cho phép điều khiển từ xa (Enable Remote Desktop) trong System Properties.
+- Tường lửa Windows Firewall của máy đích hoặc tường lửa mạng đang chặn cổng dịch vụ TCP 3389.
+- Cần quản trị viên IT cấp quyền tài khoản vào nhóm *Remote Desktop Users* trên máy chủ đích.

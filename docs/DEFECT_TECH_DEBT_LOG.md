@@ -44,16 +44,273 @@
 
 ## 2. Nợ kỹ thuật/rủi ro còn mở
 
+### Theo dõi audit AUD-20 — chuẩn hóa chỉ số helpful feedback rate và minh bạch mẫu đánh giá (21/10/2026)
+
+- **FIXED LOCAL / Chờ CI**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Chỉ số `self_service_rate` tính theo công thức `helpful / (helpful + unhelpful) * 100`, nhưng được hiển thị trên Dashboard là "Tự phục vụ qua AI — Giải quyết qua Runbook nội bộ". Thực chất đây chỉ là tỷ lệ đánh giá hữu ích (Helpful Feedback Rate) trong số những người dùng chủ động bấm 👍/👎; hoàn toàn không có bằng chứng người dùng đã tự giải quyết sự cố mà không cần kỹ thuật viên hoặc tránh tạo ticket (ticket avoidance). Việc dùng chỉ số này đại diện cho tỷ lệ tự phục vụ là sai lệch construct và thiên lệch tự chọn mẫu (self-selection bias).
+- Giải pháp:
+  1. Chuẩn hóa tên gọi chỉ số: Đổi tên thuộc tính nghiệp vụ thành `helpful_feedback_rate` (Tỷ lệ đánh giá câu trả lời hữu ích). Duy trì `self_service_rate` như một alias tương thích ngược (deprecated backward-compatible alias).
+  2. Bổ sung các chỉ số minh bạch mẫu (Sample Size Transparency):
+     - `total_feedback` & `feedback_sample_size`: Tổng số lượt người dùng đánh giá ($N = 	ext{up} + 	ext{down}$).
+     - `unrated_queries`: Số câu hỏi người dùng không để lại đánh giá ($	ext{total\_queries} - 	ext{total\_feedback}$).
+     - `feedback_response_rate`: Tỷ lệ phản hồi đánh giá trên tổng số câu hỏi RAG.
+     - `self_resolution_verified_rate = None`: Ghi chú rõ việc đo lường tự phục vụ thực chất đòi hỏi cơ chế xác nhận giải quyết rõ ràng hoặc theo dõi tránh tạo ticket (ticket deflection) trong cửa sổ quan sát.
+  3. Cập nhật giao diện người dùng & Đa ngôn ngữ:
+     - Sửa thẻ thống kê trên Dashboard (`app/static/index.html`): Tiêu đề chuyển thành `Đánh giá hữu ích RAG`, mô tả chi tiết `Tỷ lệ hữu ích trên tổng phản hồi`.
+     - Cập nhật `app/static/app.js`: Hiển thị rõ số lượng mẫu `${helpful}/${total} đánh giá hữu ích (${total_queries} câu hỏi)` thay vì một con số phần trăm đơn lẻ gây ngộ nhận.
+     - Cập nhật từ điển song ngữ `app/static/i18n.js` hỗ trợ đầy đủ tiếng Việt và tiếng Anh (`test_i18n.js` pass 100%).
+  4. Bộ kiểm thử hồi quy: Tạo `tests/test_aud20_analytics_metrics.py` (4 ca test pass 100%) xác thực công thức tính toán, kiểm tra trường hợp 0 feedback trả về `None`, kiểm tra sự độc lập giữa lượt upvote và việc tạo ticket, và kiểm tra schema API `/analytics`.
+- Kiểm thử: `tests/test_aud20_analytics_metrics.py` 4/4 PASS; `test_i18n.js` PASS 100%; toàn bộ suite pass 100%.
+- Rủi ro còn lại: Để triển khai chỉ số tỷ lệ giải quyết tự phục vụ thực sự (Verified Self-Resolution Rate) trong tương lai, cần bổ sung nút xác nhận "Sự cố đã được giải quyết hoàn toàn" ở giao diện hỏi đáp RAG và theo dõi phân tích telemetry tương quan với việc tạo ticket trong vòng 24 giờ.
+
+### Theo dõi audit AUD-18 — an toàn runbook, phân định quyền user/IT và sửa cú pháp lệnh (21/10/2026)
+
+- **FIXED LOCAL / Chờ review chuyên gia domain & CI**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Một số runbook khuyến nghị thao tác quản trị quá mạnh cho người dùng cuối (High CPU hướng dẫn tắt SysMain/xóa cache update; email_send_receive_error hướng dẫn tắt antivirus; outlook_mailbox_quota hướng dẫn purge máy chủ; outlook_ost_corruption thiếu điều kiện đồng bộ webmail); đồng thời có lỗi cú pháp mất ký tự đầu lệnh (`slookup` thay vì `nslookup` trong `dns_dhcp_conflict.md`, `etsh` thay vì `netsh` trong `proxy_pac_bypass.md`).
+- Giải pháp:
+  1. Chuẩn hóa cú pháp lệnh: Sửa triệt để các lệnh bị mất ký tự (`nslookup company.internal`, `nslookup google.com`, `netsh winhttp reset proxy`).
+  2. Thiết lập ranh giới an toàn (Guardrails) & Phân định vai trò User vs IT:
+     - `high_cpu_ram_disk.md`: Phân định rõ tầng User Self-Service (Task Manager, đóng tab nặng, Startup apps, `cleanmgr`, restart) vs IT Tier 2 (chỉ kỹ thuật viên có quyền Admin mới chẩn đoán SysMain hoặc dọn cache Windows Update).
+     - `email_send_receive_error.md`: Loại bỏ hoàn toàn hướng dẫn tắt antivirus; hướng dẫn dùng Safe Mode (`outlook.exe /safe`), kiểm tra Webmail và chuyển cấp IT Security kiểm tra chứng thư/firewall.
+     - `outlook_mailbox_quota.md`: Loại bỏ lệnh purge vĩnh viễn trên máy chủ; bổ sung cảnh báo tuân thủ chính sách lưu trữ doanh nghiệp và hướng dẫn dùng Online Archive / nâng quota.
+     - `outlook_ost_corruption.md`: Thêm điều kiện tiên quyết kiểm tra đồng bộ trên Webmail trước khi đổi tên `.ost`, cảnh báo mất thư kẹt offline, và duy trì bản sao `.old` để rollback.
+     - `dns_dhcp_conflict.md` & `proxy_pac_bypass.md`: Phân tách hành động tự làm của người dùng và các lệnh can thiệp hệ thống nâng cao của IT Administrator.
+  3. Đồng bộ CSDL tự động: Cập nhật hàm `seed_builtin_knowledge` trong `app/store.py` để tự động phát hiện và đồng bộ nội dung các runbook tích hợp (`is_builtin = 1`) khi tệp Markdown trên đĩa thay đổi. Đồng bộ trực tiếp `data/helpdesk.sqlite3`.
+  4. Bộ kiểm thử hồi quy an toàn: Bổ sung `tests/test_aud18_runbook_safety.py` kiểm tra toàn bộ 30 runbook về cấu trúc Markdown, URL citation, cú pháp lệnh và các chốt chặn an toàn (guardrails).
+- Kiểm thử: `tests/test_aud18_runbook_safety.py` 4/4 PASS; `scripts/evaluate_rag.py` 100% Hit@3 và 100% Evidence Hit@3; toàn bộ test suite pass 100%.
+- Rủi ro còn lại: Nội dung tri thức đã được chuẩn hóa theo best practices của Microsoft/Fortinet; khi mở rộng thêm runbook mới trong tương lai, cần tuân thủ quy trình peer review và lint cú pháp tự động theo `test_aud18_runbook_safety.py`.
+
+### Theo dõi audit AUD-19 — phân định tập holdout regression, khóa hash và rubric bằng chứng (21/10/2026)
+
+- **FIXED LOCAL / Chờ blinded test set độc lập**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Holdout 60 câu (`data/evaluation/rag_holdout.csv`) nằm trong repo và được evaluator/pytest chạy trực tiếp; `AI_USAGE_LOG` ghi nhận việc tinh chỉnh từ điển/từ khóa để đạt Hit@3 100%. Cột `required_evidence` hoàn toàn bị bỏ qua, không được evaluator chấm; thiếu provenance, annotator agreement và frozen split hash độc lập.
+- Giải pháp:
+  1. Phân định rõ ranh giới kỹ thuật: Ban hành `data/evaluation/DATASET_CARD.md`, xác định tập 60 câu là **Frozen Fixed Regression Benchmark Gate Set** (bảo đảm không suy thoái các luồng xử lý sự cố CNTT đã biết trong 30 runbook), không phải blinded evaluation set đo lường tổng quát hóa độc lập.
+  2. Khóa tính toàn vẹn dữ liệu: Tính toán và khóa cứng mã băm SHA-256 độc lập cho cả hai tập dữ liệu (`rag_questions.csv` SHA-256: `9a0fc80667527170c7dad3476a26374a5183a7b8374795b6ec35d1482ae5ad4d`, `rag_holdout.csv` SHA-256: `aaaf9673ed6d886ff5faa46f2a0bbcff92629cb024acd0cefb9e763706fad872`), kiểm tra tự động trong `tests/test_rag_dataset.py::test_evaluation_datasets_provenance_and_frozen_hash`.
+  3. Bổ sung Answer & Evidence Rubric: Mở rộng `scripts/evaluate_rag.py` và `tests/test_rag_dataset.py` để chấm điểm tiêu chí `required_evidence` (tỷ lệ trích xuất bằng chứng đạt 100%, độ bao phủ bằng chứng trung bình 95.6%, tỷ lệ từ chối giải thích rõ ngoài phạm vi đạt 100%) tách bạch hoàn toàn với CI Retrieval Gate (Hit@1, Hit@3, MRR@3, Refusal rate).
+  4. Quy định quy thức thu thập Blinded Test Set mới: Định nghĩa quy trình thu thập dữ liệu độc lập từ ticket thực tế, gán nhãn chéo chuyên gia IT (Cohen's Kappa >= 0.80) và khóa hash trước khi tinh chỉnh mô hình.
+- Kiểm thử: `tests/test_rag_dataset.py` mở rộng lên 7 ca test bao quát toàn vẹn hash, schema, CI retrieval gate, evidence coverage (>95%) và refusal rubric (100%), toàn bộ pass 100%. `scripts/evaluate_rag.py` xuất tách bạch retrieval gate vs answer rubric.
+- Rủi ro còn lại: Tập 60 câu holdout đóng vai trò regression test ngăn chặn thoái lui tri thức; năng lực tổng quát hóa (generalization) và độ trung thực câu trả lời (faithfulness) cần được kiểm chứng định kỳ trên blinded test set mới chưa từng dùng để tinh chỉnh hệ thống.
+
+### Theo dõi audit AUD-17 — chính sách mật khẩu thống nhất và cờ demo (21/10/2026)
+
+- **FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Bootstrap chấp nhận `len(INITIAL_ADMIN_PASSWORD) >= 8` lệch chuẩn với API (`>= 12`); `ALLOW_DEMO_CREDENTIALS` cho phép giữ demo accounts ở chế độ non-demo mà chưa có tài liệu và cảnh báo chặt chẽ.
+- Giải pháp: Khai báo hằng số dùng chung `MIN_PASSWORD_LENGTH = 12` trong `app/store.py`; nâng toàn bộ điều kiện kiểm tra bootstrap từ 8 lên 12 ký tự; cập nhật thông báo lỗi từ chối mật khẩu dưới 12 ký tự; bổ sung tài liệu `DEPLOYMENT.md` và `SDD.md` làm rõ cờ `ALLOW_DEMO_CREDENTIALS` chỉ dành cho môi trường thử nghiệm/staging; nâng cấp cảnh báo bảo mật khi cờ được bật ở chế độ non-demo.
+- Kiểm thử: `test_non_demo_startup_rejects_admin_password_under_twelve_chars` xác nhận từ chối mật khẩu 9 ký tự (`Adm1m@123`); `test_non_demo_startup_accepts_custom_admin_password_min_twelve_chars` xác nhận chấp nhận mật khẩu >= 12 ký tự. Toàn bộ test suite liên quan đến store và auth pass.
+- Rủi ro còn lại: Khi triển khai môi trường production mới, biến môi trường `INITIAL_ADMIN_PASSWORD` phải có độ dài ít nhất 12 ký tự; nếu dưới 12 ký tự ứng dụng sẽ từ chối khởi động ngay lập tức để bảo đảm an toàn.
+
+### Theo dõi audit AUD-16 — validate enum email provider và loại bỏ silent mock fallback (21/10/2026)
+
+- **FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Finding gốc: Typo `EMAIL_PROVIDER=smpt` báo `enabled=True, is_mock=False`, `dispatch_email` âm thầm append RAM và return `True`.
+- Giải pháp: Khai báo `_VALID_EMAIL_PROVIDERS = frozenset({"smtp", "resend", "brevo", "webhook", "console"})`. `resolve_email_provider()` ném `ValueError` khi tên provider không hợp lệ. `dispatch_email()` bắt lỗi cấu hình, ghi nhận `_last_send_error`, log lỗi và trả về `False`. Loại bỏ silent mock outbox fallback trong nhánh `else`.
+- Kiểm thử: `tests/test_aud16_provider_typo.py` với 9 test case trực tiếp gọi code sản phẩm (bắt typo, dispatch trả về False, outbox trống, startup validate, và non-regression cho toàn bộ 5 provider hợp lệ + fallback console). Cập nhật `tests/test_password_reset.py` kiểm tra cấu hình sai ném `ValueError` và trả về `False`. Nhóm kiểm thử 47/47 passed trong 24.27s.
+- Rủi ro còn lại: Môi trường thật nếu cấu hình sai biến môi trường sẽ fail-fast khi startup hoặc từ chối gửi email, cần cấu hình đúng chính tả biến môi trường theo tài liệu.
+
+### Theo dõi audit AUD-08 — cache KB giữa các process (21/10/2026)
+
+- **FIXED LOCAL / chờ PostgreSQL và deployment nhiều worker**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Tái hiện **7 regression FAIL trước sửa**: process đọc độc lập đã warm không thấy edit/archive/reject/restore/delete/publish từ API process cha; cache nóng vẫn trả 200 khi truy vấn KB bị lỗi. Đây là hai process thật trên SQLite, không chỉ mock cache_clear.
+- Bỏ cache lâu dài của danh sách DB; mỗi retrieval đọc tập published hiện hành. Chỉ cache index chunk/tokenize theo tuple immutable đầy đủ title/source/category/tags/content, tối đa một snapshot. Giữ hook cache_clear hiện có để tương thích reindex/reload dictionary; không thêm schema/revision table/TTL/dịch vụ.
+- Sau sửa nhóm RAG/KB **29 passed, 1 skipped**, riêng 7 regression PASS sau khi đưa process fixture vào conftest dùng chung cho PG. Thêm 6 integration cases PostgreSQL cho CI; local chưa có DB.
+- Toàn bộ pytest **123 passed, 18 skipped, 1 warning**, 107.93s; combined line/branch coverage **81.76%**. Ruff, git diff --check và RAG dev/holdout PASS; holdout Hit@1 23/30, Hit@3 30/30, MRR@3 0.878.
+- Skip: **16 PostgreSQL, 1 Docker, 1 symlink Windows**. Chưa chạy CI patch mới, PostgreSQL runtime, Linux/Docker hoặc deployment nhiều Uvicorn worker. Warning TestClient/httpx có từ AUD-03.
+- Freshness theo snapshot DB: lượt đọc bắt đầu sau commit thấy trạng thái mới; request đã đọc trước commit có thể hoàn tất với snapshot cũ. Không thu hồi hội thoại lịch sử hoặc đồng bộ dictionary toàn cục giữa worker. Mỗi retrieval cần đọc DB, không trả index cache khi đọc KB lỗi; chưa benchmark tải.
+
+### Theo dõi audit AUD-07 — reset mật khẩu nguyên tử và consume token đồng thời (21/10/2026)
+
+- **FIXED LOCAL / chờ PostgreSQL runtime**, chưa commit/push/merge/deploy; cùng nhánh `fix/aud-01-frontend-boot`, giữ các sửa đổi trước.
+- Finding ban đầu là potential race; phiên này cả **8 regression FAIL trước sửa**, quan sát được hai reset/consume cùng thành công với một token, token đã used dù ghi password lỗi và link cấp đồng thời bị vô hiệu hóa ngoài ý muốn.
+- Gộp kiểm token, claim, ghi hash/epoch/force flag và thu hồi link còn lại vào một connection/transaction. SQLite `BEGIN IMMEDIATE` trước đọc; PostgreSQL khóa user `FOR UPDATE`, đọc lại token sau khóa. Claim dùng UPDATE có điều kiện used=0 và kiểm rowcount=1.
+- Cấp link và đổi mật khẩu trực tiếp dùng cùng thứ tự user trước token; thời điểm cấp/hết hạn link tính sau khóa. Lỗi ghi password hoặc thu hồi link còn lại rollback cả trạng thái token và tài khoản; API invalid-token/success không đổi contract.
+- Nhóm password-reset/store **52 passed**. Toàn bộ pytest **116 passed, 12 skipped, 1 warning**, 87.95s; combined line/branch coverage **81.63%**; Ruff và `git diff --check` PASS. SQLite kiểm hai connection ở DELETE/WAL cho reset/reset, consume/consume và reset/issue; trigger giả lập hai pha lỗi và kiểm retry.
+- Thêm 4 ca PostgreSQL (3 concurrency + 1 trigger rollback) vào suite CI hiện có. Local skip gồm **10 PostgreSQL, 1 Docker, 1 symlink Windows**; chưa chạy PostgreSQL runtime hoặc CI patch mới, không suy kết quả SQLite thành PG PASS. Warning TestClient/httpx có từ AUD-03.
+- Không phải load test, multi-process E2E hoặc chứng minh mọi interleaving. Lookup email/gửi mail ngoài transaction, JWT logout/disable-enable (AUD-15), cache KB (AUD-08) và gate Docker (AUD-04) vẫn còn mở. Không thêm schema/dependency.
+
+### Theo dõi audit AUD-06 — thu hồi reset link khi thay đổi bảo mật tài khoản (21/10/2026)
+
+- **FIXED LOCAL / chưa commit/push/merge/deploy**, cùng nhánh `fix/aud-01-frontend-boot`, bảo toàn các sửa đổi trước.
+- Tái hiện trước sửa: 9 regression FAIL (self/Admin/store password change, hai đường đổi email, disable-enable, và rollback khi thu hồi lỗi), 3 ca giữ hành vi hợp lệ PASS. Regression token lịch sử bổ sung FAIL trước khi thêm guard mốc thời gian.
+- Thu hồi token chưa dùng trong cùng transaction với cập nhật mật khẩu; dùng chung cho self change, Admin reset và reset qua token. Đổi email thực sự hoặc chuyển trạng thái active/inactive cũng thu hồi trong transaction cập nhật profile. Tên hiển thị, email chỉ khác hoa/thường/khoảng trắng và trạng thái active không đổi không thu hồi nhầm.
+- Verify token đối chiếu `created_at` với `password_changed_at` để từ chối link chưa used có từ trước lần đổi mật khẩu đã lưu, kể cả dữ liệu tồn trước bản vá. Không thêm schema; token tài khoản khác không bị thu hồi, token mới sau thay đổi vẫn hoạt động một lần.
+- Nhóm password-reset/store cuối **44 passed**; toàn bộ pytest **108 passed, 8 skipped, 1 warning**, 83.09s; coverage kết hợp line/branch **81.58%**. Ruff và `git diff --check` PASS. SQLite trigger giả lập lỗi thu hồi xác minh password/email/disable đều rollback thay đổi tài khoản.
+- Thêm test PostgreSQL cho password/email/disable-enable và fresh token trong suite CI hiện có; local **6 PostgreSQL skipped**, cùng 1 Docker và 1 symlink Windows. Chưa chạy CI patch mới, PostgreSQL/Docker/Linux runtime hoặc browser E2E mới. Warning TestClient/httpx đã có từ AUD-03.
+- **AUD-07 còn mở:** consume token và cập nhật mật khẩu vẫn hai transaction, chưa chứng minh chống race/interleaving. **AUD-15 còn mở:** thu hồi reset link không sửa vòng đời JWT sau logout hoặc disable/enable. Không coi các token gửi tới email cũ sau các request phát hành đồng thời là đã được kiểm chứng.
+
+### Theo dõi audit AUD-05 — RAG phục vụ lại filesystem khi published rỗng (21/10/2026)
+
+- **FIXED LOCAL / chưa commit/push/merge/deploy**, nhánh `fix/aud-01-frontend-boot`; bảo toàn AUD-01/AUD-02/AUD-04/AUD-03.
+- Hai regression FAIL trước sửa: archive qua API tới tài liệu published cuối cùng nhưng RAG vẫn grounded từ file gốc; giả lập lỗi truy vấn kho KB vẫn trả 200 từ filesystem.
+- Loader mặc định chỉ dùng tài liệu published trong DB, kể cả danh sách rỗng; bỏ fallback tự động sang file gốc/runtime. Lỗi đọc kho phát sinh `KnowledgeBaseUnavailableError`; API RAG trả 503 chung trước khi lưu chat. Exception không được cache nên đọc lại được khi DB phục hồi.
+- Regression sau sửa PASS: KB user rỗng, archived detail 404, RAG không matches/sources; publish lại dùng nội dung mới trong DB; lỗi KB không lộ thông tin giả lập, không ghi hội thoại và phục hồi không clear cache thủ công. Nhánh override thư mục phục vụ fixture vẫn hoạt động qua test ingest hiện có.
+- Nhóm RAG/KB **22 passed, 1 skipped**; toàn bộ pytest **95 passed, 7 skipped, 1 warning**, 74.02s; coverage kết hợp line/branch **81.56%**. Ruff, `git diff --check` và RAG evaluator dev/holdout PASS, holdout Hit@1 23/30 và Hit@3 30/30.
+- Skip: 5 PostgreSQL, 1 Docker, 1 symlink Windows. CI patch mới, Linux runtime, Docker/PostgreSQL và browser E2E mới chưa chạy. Warning TestClient/httpx đã có từ AUD-03.
+- AUD-08 về cache nóng/nhiều worker vẫn mở: bản sửa không buộc truy vấn DB mỗi request nếu index đã cache. 503 chỉ xử lý lỗi đọc kho trong lần nạp/rebuild, không phải handler toàn cục cho mọi lỗi DB. Không xóa runbook gốc hoặc thay cơ chế seed.
+
+### Theo dõi audit AUD-03 — dependency advisories (21/10/2026)
+
+- **FIXED LOCAL / chờ CI Linux, PostgreSQL và Docker**, chưa commit/push/merge/deploy; nhánh `fix/aud-01-frontend-boot`, giữ AUD-01/AUD-02/AUD-04.
+- Nâng FastAPI 0.115.0 → 0.156.8, Starlette resolve 0.38.6 → pin 1.9.0, python-multipart 0.0.9 → 0.0.32, PyJWT 2.9.0 → 2.15.1, pytest 8.3.3 → 9.1.1. PyPI/advisory hiện tại cho thấy chỉ dùng các bản vá multipart/Starlette năm 2024 vẫn để lại advisory mới.
+- `requirements.in` quản lý dependency trực tiếp; `requirements.txt` được uv 0.13.4 sinh universal cho Python >=3.11, 39 package/version, gồm marker nền tảng và SHA-256. Docker/CI dùng `--require-hashes`; thêm CI pip-audit 2.10.1 trên Windows/Linux, upload JSON kể cả khi scan thất bại, không ignore advisory.
+- Pip-audit baseline Windows ghi 51 advisory records (có alias) trong 4 package; không diễn giải thành 51 lỗ hổng khai thác được. Bản mới: Windows 37 package và tập gộp mọi version trong lock 39 package đều **0 advisory**, không package skip. SBOM CycloneDX cho Windows được lưu trong outputs. Scan không bao gồm OS/base image hoặc lỗ hổng chưa công bố.
+- Cài sạch bằng uv có hash và bằng pip `--require-hashes` PASS; dependency check PASS. Linux resolver dry-run PASS, không phải cài/chạy Linux thật.
+- Regression parser text part 1 MiB + 1 byte: dependency cũ trả 422 ở validation handler (FAIL kỳ vọng parser), bản mới chặn 400 ở parser (PASS); save không được gọi. Chỉ chạy dữ liệu tổng hợp local, không gửi payload gây tải tới deployment.
+- Pytest cuối **93 passed, 7 skipped, 1 warning**, 73.32s; line coverage **84.05%** (không đo branch coverage lần này). Skip: 5 PostgreSQL, 1 Docker, 1 symlink Windows. Ruff, 4 runner Node, RAG retrieval dev/holdout và browser smoke ba vai trò PASS. Browser dùng frontend thật + TestClient/SQLite cách ly qua route interception; không phải cloud/HTTP E2E đầy đủ.
+- Warning còn lại: Starlette thông báo TestClient dùng httpx cũ sẽ bị deprecated; phiên này giữ httpx tương thích đã kiểm thử, không tắt warning. GitHub Actions patch mới, Linux runtime, Docker build và PostgreSQL chưa chạy. AUD-04 vẫn chờ xác minh Docker; các lỗi nghiệp vụ/reset/cache khác vẫn mở.
+
+### Theo dõi audit AUD-04 — Docker build context (21/10/2026)
+
+- **IMPLEMENTED LOCAL / chờ xác minh Docker**, chưa commit/push/merge/deploy, cùng nhánh `fix/aud-01-frontend-boot`; bảo toàn AUD-01/AUD-02.
+- `COPY . .` trước sửa có thể đưa `.env` không track vào image vì `.dockerignore` không loại. Thêm `**/.env` và `**/.env.*`, gồm cả ví dụ và cấu hình ở thư mục con; mở rộng loại SQLite local, runtime và log. Giữ tài nguyên KB mặc định/dictionary cần thiết.
+- Thêm `tests/test_docker_context.py`: Docker BuildKit thực, context tạm chứa sentinel giả, `FROM scratch` + `COPY . /`, xuất filesystem để kiểm tra secret/runtime bị loại và tài nguyên cần thiết còn nguyên. Pytest mặc định trong CI tự thu thập test này; test không đọc secret thật và không cần pull base image.
+- Ruff và `git diff --check` PASS. Local Docker test **1 skipped** vì không có Docker CLI; chưa chứng minh bằng build/image thực, chưa chạy CI patch mới. Issue chưa đạt gate đóng hoàn toàn; cần chạy test trên máy có Docker/CI rồi build Dockerfile ứng dụng hiện có.
+- Không thay cấu hình runtime/Compose, không triển khai. Bổ sung cách kiểm chứng và truyền cấu hình trong `docs/DEPLOYMENT.md`.
+
+### Theo dõi audit AUD-02 — Knowledge Base path containment (21/10/2026)
+
+- **FIXED LOCAL / chưa commit, push, merge hoặc deploy**, trên nhánh `fix/aud-01-frontend-boot`; giữ nguyên sửa đổi AUD-01.
+- Tái hiện trước sửa: User gọi GET knowledge với đường dẫn tuyệt đối Windows mã hóa URL, đọc được marker giả ngoài KB (HTTP 200); regression FAIL.
+- Sửa fallback đọc file: chỉ nhận tên Markdown theo allow-list hiện dùng khi quản lý nguồn KB; resolve đường dẫn và chỉ đọc khi parent trùng thư mục KB đã resolve. Nhánh đọc ID/slug từ DB và phân quyền giữ nguyên.
+- Regression kiểm tra absolute Windows/POSIX, drive-relative, UNC, traversal, encoded separators, double encoding và alternate data stream; tên runbook hợp lệ vẫn trả 200. Có test symlink escape cho môi trường hỗ trợ symlink.
+- Local Windows: nhóm knowledge **12 passed, 1 skipped**; toàn bộ pytest **92 passed, 6 skipped, 1 warning**, 52.04s; Ruff và `git diff --check` PASS. Skip gồm 5 PostgreSQL và 1 symlink do thiếu quyền tạo symlink Windows.
+- Linux, symlink runtime, PostgreSQL và GitHub Actions trên patch mới chưa kiểm chứng; không coi các kiểm chứng đó là đã đạt. AUD-05 về fallback nội dung/RAG vẫn mở.
+
+### Theo dõi audit AUD-01 — frontend script boot (21/10/2026)
+
+- **FIXED LOCAL / chưa commit, merge hoặc deploy**, trên nhánh `fix/aud-01-frontend-boot`, baseline `811fe81e6599b25d0e0bd828c7805720c95a627a`.
+- Nguyên nhân: classic scripts khai báo function global trùng với const wrapper trong `app.js` (`renderRunbook`, editor/admin/notifications). Hai function wrapper KB còn có thể ghi đè export qua `window` khi đổi thứ tự nạp.
+- Sửa tối thiểu: đóng scope triển khai của bốn module bằng IIFE, giữ public API qua `window`; dùng lexical wrapper cho hai hàm KB trong `app.js`; nạp module trước app và đổi asset version.
+- Regression `node tests/test_frontend_boot.js`: FAIL với baseline (`renderRunbook already declared`), PASS với bản sửa; kiểm nguyên script graph từ HTML, login và session restore ba vai trò, renderer, editor và notifications. Đã thêm vào CI; chưa chạy GitHub Actions trên bản sửa chưa push.
+- Chrome 155 + frontend thật + FastAPI TestClient/SQLite cách ly qua route interception: ba vai trò PASS login, reload/session restore, RAG Markdown; Agent/Admin PASS editor create; Admin PASS users/notifications. Không phải phép thử HTTP socket/proxy/cloud hoặc kiểm thử E2E toàn bộ sản phẩm.
+- Kiểm tra local: bốn runner Node, JS syntax, Ruff, RAG evaluation PASS; pytest **91 passed, 5 PostgreSQL skipped**, 74.79s. PostgreSQL/Docker local NOT RUN. TD-03 về E2E toàn hệ thống vẫn mở.
+
 | ID | Ưu tiên | Rủi ro / giới hạn | Điều kiện đóng | Trạng thái |
 |---|---|---|---|---|
 | TD-01 | P1 | Chưa có staging/deploy, HTTPS termination, rate limit, backup/restore hoặc giám sát uptime | Triển khai môi trường thử nghiệm an toàn, có runbook khôi phục và minh chứng | **Đã hoàn thành 95%** (Đã deploy Render Cloud HTTPS, cấu hình Neon PostgreSQL, chuyển rate limit sang CSDL lưu vết) |
 | TD-02 | P1 | Chưa có người dùng thật, phỏng vấn, SUS, xác nhận pain point hay ground truth IT | Có đồng ý tham gia, dữ liệu ẩn danh, protocol và kết quả thật được GVHD duyệt | Đang mở (Chuẩn bị theo kế hoạch thực nghiệm) |
 | TD-03 | P1 | Chưa có browser E2E và khả năng tiếp cận UI chỉ được kiểm bằng code/test API | Chọn runner trình duyệt, thêm smoke tests các vai trò và luồng chính | Đang mở |
-| TD-04 | P1 | Chưa có reset mật khẩu, role/account-change audit, token refresh/revocation; khóa hoặc đổi quyền được API áp dụng ở request tiếp theo nhưng chưa có UX phiên hết hạn | Thiết kế vòng đời tài khoản/token, audit thay đổi và kiểm thử UX/session invalidation | **ĐÃ ĐÓNG (Closed)** qua `feat(auth)` với token một lần, email SMTP/mock, rate limit và thu hồi phiên tức thì qua `pwd_at` |
-| TD-05 | P2 | RAG là BM25 lexical baseline; bộ synonym/tập 30 câu nhỏ, dễ thiên lệch từ khóa | Chuyên gia duyệt KB/ground truth; đánh giá paraphrase, typo, out-of-scope và câu trả lời có rubric | **ĐÃ ĐÓNG (Closed)** qua tập Holdout độc lập 60 câu (30 in-scope, 15 pure OOS, 15 near-domain OOS), Hit@1 đạt 66.7%, Hit@3 đạt 100%, MRR@3 0.817, OOS 100% |
+| TD-04 | P1 | Chưa có reset mật khẩu, role/account-change audit, token refresh/revocation; khóa hoặc đổi quyền được API áp dụng ở request tiếp theo nhưng chưa có UX phiên hết hạn | Thiết kế vòng đời tài khoản/token, audit thay đổi và kiểm thử UX/session invalidation | **Đang mở / In Progress (AUD-15/21)** (Đã có thu hồi token tức thì qua session_epoch và test_session_lifecycle.py tại AUD-15; mở lại theo AUD-21 do còn thiếu audit log tập trung cho account changes và UX thông báo phiên hết hạn mượt mà) |
+| TD-05 | P2 | RAG là BM25 lexical baseline; bộ synonym/tập 30 câu nhỏ, dễ thiên lệch từ khóa | Chuyên gia duyệt KB/ground truth; đánh giá paraphrase, typo, out-of-scope và câu trả lời có rubric | **Đang mở / In Progress (AUD-19/21)** (Đã khóa tập 60 câu holdout làm Frozen Regression Benchmark Gate Set trong CI tại AUD-19; mở lại theo AUD-21 do chưa phải blinded evaluation set độc lập có chuyên gia ngoài phê duyệt) |
 | TD-06 | P2 | SLA theo giờ lịch; đổi ưu tiên tính lại hạn từ lúc sửa, chưa có lịch làm việc/holiday | Chốt business rule với stakeholder và bổ sung lịch làm việc nếu cần | Đang mở |
 | TD-07 | P2 | PostgreSQL Compose và SQLite local đã hỗ trợ lưu bền vững, nhưng chưa có migration dữ liệu, backup/restore, KB versioning/rollback hay quy trình review nội dung | Định nghĩa quản trị nội dung, migration/backup/version và quyền phê duyệt trước pilot | **Đã hoàn thành 50%** (Đã có KB versioning và luồng review phê duyệt) |
 | TD-08 | P2 | CI chỉ cấu hình lint/test/retrieval/Docker build; chưa có workflow deploy hoặc run thành công được xác nhận | Repository/runner thật có pipeline run, artifact và staging approval | **Đã hoàn thành 80%** (Docker build & Render auto-deploy trên GitHub main) |
-| TD-09 | P3 | Chưa có test tải 50 RPS; con số trong NFR vẫn là mục tiêu chưa đo | Benchmark với cấu hình/phương pháp được duyệt và báo cáo error rate/latency | **ĐÃ ĐÓNG (Closed)** qua script `scripts/benchmark_load.py` đo tải thực nghiệm (482 RPS cho health, 597 RPS cho config, 313 RPS cho knowledge, 35 RPS cho RAG BM25) |
+| TD-09 | P3 | Chưa có test tải 50 RPS; con số trong NFR vẫn là mục tiêu chưa đo | Benchmark với cấu hình/phương pháp được duyệt và báo cáo error rate/latency | **Đang mở / Reopened (AUD-21)** (Script `scripts/benchmark_load.py` dùng TestClient in-memory không phản ánh độ trễ/concurrency qua mạng thật; RAG BM25 chỉ đạt 35 RPS < 50 RPS; cần benchmark multi-client qua HTTP server thật) |
 | TD-10 | P2 | CI có static source lint nhóm `S`, chưa có dependency/image vulnerability audit | Bổ sung scanner, xử lý findings và giữ report theo run CI | Đang mở |
 | TD-11 | P1 | Attachment chỉ allow-list và giới hạn dung lượng; chưa quét virus, quota tổng, retention hay sao lưu tệp | Chọn malware scanner, chính sách dữ liệu/retention và kiểm thử khôi phục trước pilot dữ liệu thật | Đang mở |
+
+
+### Theo dõi audit AUD-09 — Render attachment persistence (21/10/2026)
+
+**IMPLEMENTED LOCAL / CLOUD VERIFICATION PENDING**, chưa commit/push/deploy. Blueprint chuyển từ Free sang starter với disk 1 GB `/app/runtime`, storage và SQLite fallback cùng mount, một instance. Metadata vẫn Neon; có runbook sao lưu trước redeploy, migration UUID/checksum, quyền non-root, restart/redeploy, backup/restore và rollback giữ disk. Cấu hình áp dụng sẽ có phí; chưa tạo tài nguyên. Chưa có bằng chứng Render thực, chưa đóng hoàn toàn AUD-09; AUD-11 và TD-11 vẫn mở.
+
+
+### Theo dõi audit AUD-10 — I/O trong async handler (21/10/2026)
+
+**FIXED LOCAL / chờ staging**, chưa commit/push/deploy. Chuyển router đồng bộ
+sang `def` để FastAPI offload; current_user đồng bộ, async KB upload offload
+DB/file; attachment dùng file handle trong worker; cleanup rate limit offload.
+Tái hiện ca HTTP RAG trước sửa bị health timeout; sau sửa 7 ca concurrency PASS.
+Không đổi timeout, transaction, payload hay quyền truy cập. Pool vẫn hữu hạn;
+không tuyên bố giải quyết saturation, CPU throughput hay race nghiệp vụ.
+Chi tiết kết quả suite và bằng chứng được lưu trong báo cáo phiên AUD-10.
+
+
+### Theo dõi audit AUD-11 — KB file/DB consistency (21/10/2026)
+
+**FIXED LOCAL / PostgreSQL và migration thực còn chờ**, chưa commit/push/deploy.
+Multipart import chỉ ghi DB, cùng transaction version với editor; không ghi
+image hay file runtime, không nuốt lỗi DB. Author/reviewer lấy Admin thực,
+is_builtin=false; unique slug xử lý duplicate/concurrent upload thành 409.
+API list/get/reindex/delete bỏ fallback file; delete không unlink và chặn tên
+trùng builtin trước sửa DB. File legacy được giữ để đối chiếu offline.
+Đã tái hiện 11 FAIL trước sửa; nhóm KB/RAG 41 passed, 1 symlink skipped.
+Thêm kiểm restart process, transaction rollback và hai PostgreSQL case chưa
+chạy local. Không tự sửa provenance lịch sử hay migration dữ liệu production.
+
+
+### Theo dõi audit AUD-12 — emergency UI contract (21/10/2026)
+
+**FIXED LOCAL / CI chưa chạy**, chưa commit/push/deploy. Sửa result.ticket.id;
+chỉ xác nhận tạo ticket, ghi delivery/nhân viên tiếp nhận chưa được xác nhận.
+Bỏ lời SOC tự động khỏi payload, nhãn VPN/AD/SOC/live-response chưa chứng minh;
+thay bằng chức năng KB/ticket. Receipt không tự biến mất, submit lặp bị chặn,
+refresh lỗi không gây thông báo tạo thất bại, response thiếu ID hướng dẫn kiểm
+danh sách. Regression Node trước FAIL/sau PASS; Chrome Việt/Anh với backend
+TestClient/SQLite thật PASS; nhóm API 7 passed. Không thêm delivery status API,
+không coi AUD-13/16/18 đã đóng và không kiểm provider/triển khai thật.
+
+
+### Theo dõi audit AUD-13 — escalation và durable notification (21/10/2026)
+
+**IMPLEMENTED LOCAL / PostgreSQL, CI và provider staging còn chờ**, chưa
+commit/push/deploy. Create và escalate enqueue event + hai channel rows cùng
+transaction ticket; serialize status transition tránh hai escalation hợp lệ
+đồng thời. Worker lease/token fence, budget 3, backoff, terminal status và admin
+retry có audit. DB history phục vụ hub/API cursor; không còn seed history giả.
+Không lưu secret/raw exception; target fingerprint đổi cần admin review/retry.
+Baseline escalation durable API FAIL; nhóm notification 21 passed, restart
+process/lease recovery và rollback PASS. Có ba PG case chưa chạy local.
+At-least-once có thể trùng sau send-before-ack/crash; không có exactly-once,
+human acknowledgement, immutable attempt ledger, purge hay backlog monitoring.
+UI nêu đúng create/escalate và trạng thái configured, bỏ SLA-overdue claim.
+AUD-16/email và race khác của AUD-23 vẫn mở; không tự backfill lịch sử.
+
+
+### Theo dõi audit AUD-14 — phân công sau hoàn tất (21/10/2026)
+
+**FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/deploy. Policy khóa
+assignment ở resolved/closed để giữ assignee dùng cho KPI; reopen in_progress
+cho phép giao lại, không thêm resolved_by hoặc sửa dữ liệu lịch sử. Invariant
+được kiểm dưới SQLite writer lock/PG ticket row lock, trước UPDATE và audit;
+API trả 409, lookup mất sau visibility trả 404. UI disabled cả select/nút và
+callback. Baseline API/store/concurrency 7 FAIL, Node resolved FAIL; sau sửa
+nhóm ban đầu 13 passed, thêm hai ca API vào full suite. Quyền/target eligibility
+giữ nguyên; không tuyên bố đã giải quyết các race khác thuộc AUD-23.
+
+
+### Theo dõi audit AUD-15 — logout và JWT resurrection (21/10/2026)
+
+**FIXED LOCAL / PostgreSQL và CI chờ**, chưa commit/push/deploy. JWT gắn nonce
+session_epoch lưu users; logout CAS thu hồi mọi token thuộc epoch xác thực,
+đổi active/role/password rotate cùng transaction, không hồi sinh token khi trả
+giá trị cũ. Migration idempotent, nonce tài khoản mới khác nhau; không nới hỗ
+trợ JWT cũ thiếu epoch. UI dùng endpoint, local clear và thông báo server chưa
+xác nhận khi lỗi, force-change vẫn logout được, không dọn nhầm login mới.
+Baseline 16 FAIL/2 PASS; nhóm session/password-reset 62 passed. Bốn PG case
+mới chưa chạy local. Không có revoke từng thiết bị, cancellation in-flight,
+session audit riêng hay xử lý mọi race AUD-23; rollback/DB restore cần kế
+hoạch key rotation để không làm JWT đã thu hồi hợp lệ lại.
+
+### AUD-23 — CSAT/FSM/versioning concurrency (22/10/2026)
+
+**FIXED LOCAL; PostgreSQL/CI/staging pending**. Không coi finding đóng production.
+Baseline HEAD 811fe81, nhánh fix/aud-01-frontend-boot đã có AUD01–22 chưa commit.
+Tái hiện 8 failure trên snapshot trước phiên: CSAT double acceptance, comment
+undo resolution, KB lost partial fields/history stale, duplicate version được
+nhận, API không trả 409 cho snapshot status cũ. Thêm DB locks trước read, guarded
+rating update, expected_status được kiểm dưới khóa, KB row-lock + unique index.
+Audit/document-version cùng transaction; tests có injected failure/rollback.
+Không đổi credentials/email, last-active-admin policy, runbook hay các issue khác.
+Migration duplicate dừng và yêu cầu owner đối chiếu, không sửa dữ liệu lịch sử.
+
+### AUD-24 — Reset tự trim mật khẩu (22/10/2026)
+
+**FIXED LOCAL; CI/staging pending**. ResetPasswordRequest validator trước sửa
+áp dụng strip cho cả token và new_password, làm đổi credential và kiểm length
+trên chuỗi đã cắt. Validator nay chỉ trim token; mật khẩu giữ nguyên như các
+luồng create/change/admin-reset/login. Regression baseline 7 FAIL/13 PASS gồm
+4 reset API và 3 biên length; bộ test tổng 20 ca. Không đổi policy độ dài, không
+thêm normalization/fallback login hoặc sửa mật khẩu lịch sử. Không mở rộng
+sang accessibility/i18n polish hay các gate PostgreSQL/cloud của issue trước.
+
+### AUD-16 bổ sung sau review 3 tầng (22/10/2026)
+
+Enum-only fix trước chưa đóng đủ finding: 4 acceptance probes còn FAIL. Đã bổ sung
+invitation one-use không password, email_deliveries hash-only + worker/lease/retry/
+status bền vững, transaction account/job/token và fail-closed non-demo config.
+**IMPLEMENTED LOCAL; PG/provider staging/CI pending**. Response/mock status không
+được gọi là delivery/read receipt; at-least-once có thể duplicate, token vẫn one-use.
+Audit report/manifest cũ giữ nguyên theo snapshot; evidence bổ sung trong
+outputs/AUD-16-COMPLETION ở workspace audit. Không có commit/push/deploy hay mail
+thật trong phiên này. Các gate AUD09/18/19 và commit replay AUD03 vẫn chưa đóng.

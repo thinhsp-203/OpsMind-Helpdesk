@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
-from app import config, email_sender, store
+from app import email_sender, store
 from app.config import DEMO_MODE
 from app.dependencies import (
     APP_DIR,
@@ -42,29 +44,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Khởi động: Kiểm tra cấu hình email và đưa ra cảnh báo nếu chạy production mà thiếu kênh email
-    email_status = email_sender.get_email_status()
-    if not config.DEMO_MODE:
-        if email_status.get("is_mock"):
-            logger.warning(
-                "CẢNH BÁO MÔI TRƯỜNG PRODUCTION: Dịch vụ gửi email thật chưa được cấu hình "
-                "(EMAIL_PROVIDER/SMTP_ENABLED/RESEND_API_KEY/BREVO_API_KEY). "
-                "Email khôi phục mật khẩu và thông báo tài khoản mới sẽ chỉ ghi nhận vào mock outbox trong RAM!"
-            )
-        if not config.PUBLIC_BASE_URL:
-            logger.warning(
-                "CẢNH BÁO: PUBLIC_BASE_URL chưa được thiết lập. "
-                "Liên kết khôi phục mật khẩu và đăng nhập có thể không trỏ đúng tên miền public."
-            )
-    else:
-        logger.info(
-            "OpsMind Helpdesk đang chạy ở chế độ DEMO_MODE. Kênh email: %s (%s).",
-            email_status["provider"],
-            email_status["target"],
-        )
+    email_status = email_sender.validate_email_configuration()
+    logger.info("Email provider configured: %s; demo capture=%s", email_status['provider'], email_status['is_mock'])
     # OPS-03: Dọn dẹp bản ghi giới hạn tốc độ (rate-limit attempts) hết hạn
     try:
-        store.cleanup_expired_rate_limits()
+        await run_in_threadpool(store.cleanup_expired_rate_limits)
     except Exception as exc:
         logger.debug("Initial rate-limit cleanup skipped: %s", exc)
 
@@ -74,7 +58,7 @@ async def lifespan(app: FastAPI):
         while True:
             await asyncio.sleep(3600)
             try:
-                store.cleanup_expired_rate_limits()
+                await run_in_threadpool(store.cleanup_expired_rate_limits)
             except Exception as exc:
                 logger.warning("Periodic rate-limit cleanup failed: %s", exc)
 
@@ -83,11 +67,38 @@ async def lifespan(app: FastAPI):
     except RuntimeError:
         cleanup_task = None
 
+    from app.notification_outbox import process_notification_outbox
+    from app.email_outbox import wake_email_worker
+
+    async def _notification_worker():
+        while True:
+            try:
+                await run_in_threadpool(process_notification_outbox)
+            except Exception as exc:
+                logger.warning("Notification worker failed: %s", type(exc).__name__)
+            await asyncio.sleep(5)
+
+    notification_task = asyncio.create_task(_notification_worker())
+
+    async def _email_worker():
+        while True:
+            await run_in_threadpool(wake_email_worker)
+            await asyncio.sleep(5)
+
+    email_task = asyncio.create_task(_email_worker())
     try:
         yield
     finally:
+        notification_task.cancel()
+        email_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await notification_task
+        with suppress(asyncio.CancelledError):
+            await email_task
         if cleanup_task:
             cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
 
 
 app = FastAPI(
@@ -111,6 +122,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Mount Routers
 app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
 app.include_router(tickets_router)
 app.include_router(knowledge_router)
 app.include_router(rag_router)

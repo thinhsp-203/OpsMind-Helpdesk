@@ -1,5 +1,23 @@
 (() => {
   const translations = {
+    "Môi trường demo · Số liệu trình diễn không dùng làm kết quả thực nghiệm.": "Demo environment · Demonstration data is not experimental evidence.",
+    "Đánh giá hữu ích RAG": "RAG helpfulness feedback",
+    "Tỷ lệ hữu ích trên tổng phản hồi": "Helpful ratings as a share of all feedback",
+
+    "Theo dõi yêu cầu": "Track requests",
+    "Tạo yêu cầu ưu tiên P1 để đội IT kiểm tra và xử lý.": "Create a P1 request for the IT team to review and resolve.",
+    "Gửi yêu cầu khẩn cấp P1": "Submit urgent P1 request",
+
+    "Thiết bị/phần mềm: … · Thời điểm: … · Thông báo lỗi: … · Các bước đã thử: … · Số người bị ảnh hưởng: … Nếu chưa rõ, ghi “Không rõ”.": "Device/software: … · Time: … · Error message: … · Steps tried: … · People affected: … Write “Unknown” if unsure.",
+    "Sau khi tạo yêu cầu, bạn có thể đính kèm ảnh chụp màn hình trong chi tiết ticket. Hãy che thông tin nhạy cảm trước khi tải lên.": "After creating a request, attach screenshots in the ticket details. Hide sensitive information before uploading.",
+    "Xem thêm câu hỏi gợi ý": "More suggested questions",
+    "Đóng": "Close",
+    "Chỉnh sửa": "Edit",
+    "Xem hướng dẫn": "Read guide",
+    "Chức năng Helpdesk": "Helpdesk features",
+    "Dịch vụ đang phản hồi chậm. Vui lòng chờ thêm...": "The service is responding slowly. Please wait...",
+    "Kết nối quá lâu. Vui lòng thử đăng nhập lại.": "The connection timed out. Please sign in again.",
+
     "Bỏ bộ lọc": "Clear filters",
     "Không có yêu cầu khớp bộ lọc": "No requests match these filters",
     "Thử thay đổi điều kiện hoặc bấm Bỏ bộ lọc để xem lại danh sách.": "Change the criteria or select Clear filters to view the list again.",

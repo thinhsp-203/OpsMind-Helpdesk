@@ -73,6 +73,7 @@ async function loadPublicConfig() {
     const response = await fetch("/config");
     if (!response.ok) throw new Error(`Không tải được cấu hình (${response.status}).`);
     const config = await response.json();
+    byId("demoDataBanner")?.classList.toggle("hidden", !config.demo_mode);
     const demoEl = byId("demoCredentials");
     if (demoEl) {
       if (config.demo_mode) {
@@ -243,9 +244,18 @@ function setSignedIn(user) {
 
 async function login(event) {
   event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
+  form.setAttribute("aria-busy", "true");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  const slowNotice = setTimeout(() => setMessage("loginMessage", "Dịch vụ đang phản hồi chậm. Vui lòng chờ thêm...", false), 8000);
   setMessage("loginMessage", "Đang xác thực...", false);
   try {
     const result = await api("/auth/login", {
+      signal: controller.signal,
       method: "POST",
       body: JSON.stringify({
         username: byId("username").value.trim(),
@@ -255,7 +265,7 @@ async function login(event) {
     state.token = result.token;
     localStorage.setItem("helpdesk-token", state.token);
     try {
-      const me = await api("/auth/me");
+      const me = await api("/auth/me", { signal: controller.signal });
       setSignedIn(me);
     } catch {
       setSignedIn({ username: result.username, role: result.role });
@@ -264,7 +274,12 @@ async function login(event) {
       openChangePasswordModal(true);
     }
   } catch (error) {
-    setMessage("loginMessage", error.message);
+    setMessage("loginMessage", error.name === "AbortError" ? "Kết nối quá lâu. Vui lòng thử đăng nhập lại." : error.message);
+  } finally {
+    clearTimeout(timeout);
+    clearTimeout(slowNotice);
+    button.disabled = false;
+    form.removeAttribute("aria-busy");
   }
 }
 
@@ -634,18 +649,18 @@ async function handleEmergencyTicket(event) {
     return;
   }
   submitBtn.disabled = true;
-  setMessage("emergencyMessage", "Đang phát cảnh báo khẩn cấp đến SOC...", false);
+  setMessage("emergencyMessage", "Đang gửi yêu cầu khẩn cấp...", false);
   try {
     const result = await api("/tickets", {
       method: "POST",
       body: JSON.stringify({
         title,
-        description: `${desc}\n\n[SỰ CỐ BẢO MẬT KHẨN CẤP P1 - PHÁT TỰ ĐỘNG TỚI SOC 24/7]`,
+        description: `${desc}\n\n[SỰ CỐ BẢO MẬT KHẨN CẤP P1]`,
         category: "security",
         priority: "urgent",
       }),
     });
-    setMessage("emergencyMessage", `Đã phát cảnh báo P1 thành công! Mã ticket: HD-${String(result.id).padStart(4, "0")}. Đội SOC đang tiếp nhận.`, false);
+    setMessage("emergencyMessage", `Đã phát cảnh báo P1 thành công! Mã ticket: HD-${String(result.ticket.id).padStart(4, "0")}. Yêu cầu đã được ghi nhận cho IT.`, false);
     setTimeout(() => {
       closeEmergencyModal();
       refreshWorkspace();
@@ -703,6 +718,9 @@ function configureWorkspaceNavigation(role) {
 
 function setWorkspaceView(view) {
   state.activeView = view;
+  byId("workspaceSidebar").classList.remove("menu-open");
+  byId("workspaceMenuToggle").setAttribute("aria-expanded", "false");
+  document.querySelector(".page-heading").classList.toggle("hidden", view !== "dashboard");
   byId("workspaceView").dataset.view = view;
   byId("assistantContext").classList.toggle("hidden", view !== "assistant");
   const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
@@ -1479,25 +1497,6 @@ function showRagResult(message) {
   result.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// Knowledge Base methods are modularized in /static/modules/knowledge.js
-function loadKnowledge() {
-  return window.loadKnowledge ? window.loadKnowledge() : Promise.resolve();
-}
-
-function uploadKnowledge(event) {
-  return window.uploadKnowledge ? window.uploadKnowledge(event) : Promise.resolve();
-}
-
-const updateLivePreview = () => (window.updateLivePreview ? window.updateLivePreview() : undefined);
-const openKnowledgeEditor = (identifier) => (window.openKnowledgeEditor ? window.openKnowledgeEditor(identifier) : Promise.resolve());
-const saveKnowledgeDocument = (event) => (window.saveKnowledgeDocument ? window.saveKnowledgeDocument(event) : Promise.resolve());
-const openKnowledgeVersions = (identifier, title) => (window.openKnowledgeVersions ? window.openKnowledgeVersions(identifier, title) : Promise.resolve());
-const openKnowledgeEditorForTicket = (ticket) => (window.openKnowledgeEditorForTicket ? window.openKnowledgeEditorForTicket(ticket) : undefined);
-const loadAdminUsers = () => (window.loadAdminUsers ? window.loadAdminUsers() : Promise.resolve());
-const createAdminUser = (event) => (window.createAdminUser ? window.createAdminUser(event) : Promise.resolve());
-const loadNotificationStatus = () => (window.loadNotificationStatus ? window.loadNotificationStatus() : Promise.resolve());
-const testNotification = (channel) => (window.testNotification ? window.testNotification(channel) : Promise.resolve());
-
 async function loadAnalytics() {
   try {
     const analytics = await api("/analytics");
@@ -1698,6 +1697,24 @@ window.addEventListener("helpdesk-language-changed", () => {
   }
 });
 loadPublicConfig();
+document.querySelectorAll("[data-shortcut]").forEach((button) => {
+  button.addEventListener("click", () => {
+    setWorkspaceView(button.dataset.shortcut);
+    if (button.dataset.shortcut === "assistant") byId("ragQuestion").focus();
+    if (button.dataset.shortcut === "submit") byId("ticketTitle").focus();
+  });
+});
+byId("workspaceMenuToggle").addEventListener("click", () => {
+  const open = byId("workspaceSidebar").classList.toggle("menu-open");
+  byId("workspaceMenuToggle").setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && byId("workspaceSidebar").classList.contains("menu-open")) {
+    byId("workspaceSidebar").classList.remove("menu-open");
+    byId("workspaceMenuToggle").setAttribute("aria-expanded", "false");
+    byId("workspaceMenuToggle").focus();
+  }
+});
 byId("loginForm").addEventListener("submit", login);
 byId("logoutBtn").addEventListener("click", signOut);
 byId("changePasswordBtn").addEventListener("click", () => openChangePasswordModal(false));
@@ -2027,7 +2044,7 @@ window.setInterval(refreshServiceState, 30000);
 
 
 // Safe markdown parser method is modularized in /static/modules/markdown.js
-const renderRunbook = (text) => (window.renderRunbook ? window.renderRunbook(text) : document.createElement("div"));
+
 
 async function loadAssistantTickets() {
   const list = byId("assistantRecentTickets");

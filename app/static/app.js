@@ -1415,14 +1415,21 @@ async function askKnowledge(event, options = {}) {
   setWorkspaceView("assistant");
   if (state.ragBusy) return;
   state.ragBusy = true;
+  const requestToken = state.token;
+  byId("newChatBtn").disabled = true;
   const sendButton = byId("ragForm").querySelector('button[type="submit"]');
   sendButton.disabled = true;
   byId("ragForm").setAttribute("aria-busy", "true");
   byId("ragQuestion").value = question;
   byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-  const result = byId("ragResult");
-  result.classList.remove("hidden");
-  result.replaceChildren(node("p", "rag-answer", "Đang tìm trong tài liệu nội bộ..."));
+  const transcript = byId("ragResult");
+  transcript.classList.remove("hidden");
+  const result = node("article", "assistant-turn");
+  result.tabIndex = -1;
+  result.append(node("div", "question-bubble", question), node("p", "rag-answer", "Đang phân loại và tìm hướng dẫn phù hợp..."));
+  transcript.append(result);
+  byId("ragQuestion").value = "";
+  byId("assistantChatScroll").scrollTop = byId("assistantChatScroll").scrollHeight;
   try {
     const data = await api("/rag/ask", {
       method: "POST",
@@ -1431,14 +1438,16 @@ async function askKnowledge(event, options = {}) {
         ...(state.chatSessionId ? { session_id: state.chatSessionId } : {}),
       }),
     });
+    if (state.token !== requestToken) return;
     state.chatSessionId = data.session_id;
+    byId("assistantGapSummary").textContent = data.grounded ? "Đã tìm thấy tài liệu cho câu hỏi vừa gửi. Nguồn tham khảo nằm trong hội thoại." : "Câu hỏi vừa gửi chưa có nguồn phù hợp. Chọn gửi IT để được hỗ trợ và đề nghị bổ sung hướng dẫn.";
     result.replaceChildren(node("div", "question-bubble", question), node("p", "rag-answer", data.answer));
     result.append(node("p", `rag-evidence ${data.grounded ? "" : "rag-evidence-empty"}`,
       data.grounded ? "Có tài liệu tham khảo — hãy đối chiếu trước khi thực hiện." : "Chưa tìm thấy nguồn phù hợp. Bạn có thể bổ sung thông tin hoặc chuyển cho IT."));
     if (data.sources.length) {
       const sourceCard = (match, source, index) => {
-        const card = node("div", "rag-source");
-        const heading = node("strong", "", `${index + 1}. ${source.title} · ${source.source}`);
+        const card = node("details", "rag-source");
+        const heading = node("summary", "", `${index + 1}. ${source.title} · ${source.source}`);
         card.append(heading, renderRunbook(match.content));
         return card;
       };
@@ -1479,10 +1488,15 @@ async function askKnowledge(event, options = {}) {
     result.append(feedback);
     await loadRagSessions();
     result.focus({ preventScroll: true });
-    result.scrollIntoView({ behavior: "smooth", block: "center" });
+    const chatScroll = byId("assistantChatScroll");
+    chatScroll.scrollTop += result.getBoundingClientRect().top - chatScroll.getBoundingClientRect().top;
   } catch (error) {
-    showRagResult(error.message);
+    if (state.token === requestToken) {
+      result.replaceChildren(node("div", "question-bubble", question), node("p", "form-message error", error.message));
+      byId("ragQuestion").value = question;
+    }
   } finally {
+    byId("newChatBtn").disabled = false;
     state.ragBusy = false;
     sendButton.disabled = false;
     byId("ragForm").removeAttribute("aria-busy");
@@ -1561,6 +1575,7 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
     const btnResolved = node("button", "button button-success btn-resolved-close", "✓ Đã khắc phục xong");
     btnResolved.type = "button";
     btnResolved.addEventListener("click", () => {
+      if (state.ragBusy) return;
       actionContainer.replaceChildren(
         node(
           "div",
@@ -1817,8 +1832,11 @@ async function loadRagSessions() {
       );
       button.type = "button";
       button.addEventListener("click", async () => {
+        if (state.ragBusy) return;
+        const sessionToken = state.token;
         try {
           const conversation = await api(`/rag/sessions/${encodeURIComponent(session.id)}`);
+          if (state.token !== sessionToken || state.ragBusy) return;
           state.chatSessionId = session.id;
           const result = byId("ragResult");
           result.classList.remove("hidden");
@@ -2090,6 +2108,7 @@ byId("ragForm").addEventListener("submit", askKnowledge);
 byId("adminUserForm").addEventListener("submit", createAdminUser);
 byId("exportReportBtn").addEventListener("click", exportReport);
 byId("newChatBtn").addEventListener("click", () => {
+  if (state.ragBusy) return;
   state.chatSessionId = null;
   byId("ragQuestion").value = "";
   byId("ragResult").replaceChildren();
@@ -2220,26 +2239,67 @@ window.setInterval(refreshServiceState, 30000);
 // Safe markdown parser method is modularized in /static/modules/markdown.js
 const renderRunbook = (text) => (window.renderRunbook ? window.renderRunbook(text) : document.createElement("div"));
 
+let assistantContextRequest = 0;
 async function loadAssistantTickets() {
+  const requestId = ++assistantContextRequest;
+  const requestToken = state.token;
+  const current = () => requestId === assistantContextRequest && requestToken === state.token;
   const list = byId("assistantRecentTickets");
-  const username = state.user?.username;
+  const knowledge = byId("assistantKnowledgeSummary");
+  const activity = byId("assistantActivity");
+  knowledge.replaceChildren(node("p", "muted", "Đang tải tài liệu..."));
+  activity.replaceChildren(node("p", "muted", "Đang tải hoạt động..."));
   list.replaceChildren(node("p", "muted", "Đang tải yêu cầu..."));
+  // Independent panels: a knowledge failure must not hide working ticket data.
+  const knowledgeTask = api("/knowledge?status=published").then((docs) => {
+    if (!current()) return;
+    knowledge.replaceChildren(node("strong", "assistant-stat", String(docs.length)), node("p", "", "Tài liệu đã xuất bản dùng để tra cứu"));
+  }).catch(() => {
+    if (current()) knowledge.replaceChildren(node("p", "muted", "Chưa tải được kho tri thức. Mở lại Trợ lý để thử lại."));
+  });
   try {
     const tickets = await api("/tickets");
-    if (state.user?.username !== username) return;
+    if (!current()) return;
+    const activeTickets = tickets.filter((ticket) => !["resolved", "closed"].includes(ticket.status));
+    const relevant = state.user?.role === "user" ? activeTickets : activeTickets.filter((ticket) => ticket.assignee === state.user?.username || new Date(ticket.sla_deadline) < new Date());
     list.replaceChildren();
-    if (!tickets.length) {
+    if (!relevant.length) {
       const empty = node("div", "empty-state");
-      empty.append(node("strong", "", "Chưa có yêu cầu nào"), node("span", "", "Ticket của bạn sẽ xuất hiện tại đây."));
+      empty.append(node("strong", "", "Không có việc cần xử lý"), node("span", "", "Các ticket đang mở phù hợp với vai trò sẽ xuất hiện tại đây."));
       list.append(empty);
     }
-    tickets.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 3).forEach((ticket) => {
+    relevant.slice().sort((a, b) => new Date(a.sla_deadline) - new Date(b.sla_deadline)).slice(0, 3).forEach((ticket) => {
       const card = node("article", "recent-ticket");
       card.append(node("span", "ticket-id", `HD-${String(ticket.id).padStart(4, "0")}`), node("h3", "", ticket.title), node("span", `tag tag-status-${ticket.status}`, statusLabels[ticket.status] || ticket.status), node("p", "muted", `IT: ${ticket.assignee || "Chưa phân công"}`));
       list.append(card);
     });
+    const recent = tickets.slice().sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0,3);
+    const histories = await Promise.allSettled(recent.map(ticket => api(`/tickets/${ticket.id}/audit`).then(events => events.map(event => ({...event,ticketId:ticket.id})))));
+    if (!current()) return;
+    const events = histories.filter(result => result.status === "fulfilled").flatMap(result => result.value).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0,5);
+    activity.replaceChildren();
+    activity.append(node("p", "muted", "Từ 3 ticket cập nhật gần nhất bạn có quyền xem."));
+    if (histories.some(result => result.status === "rejected")) activity.append(node("p", "muted", "Một phần nhật ký chưa tải được. Mở lại Trợ lý để thử lại."));
+    if (!events.length) activity.append(node("p", "muted", "Chưa có hoạt động để hiển thị."));
+    events.forEach(event => {
+      const item = node("div", "assistant-activity-item");
+      item.append(node("span", "", `#${event.ticketId} · ${auditEventLabels[event.event] || event.event}`),node("small", "", new Date(event.timestamp).toLocaleString(window.helpdeskI18n.locale())));
+      activity.append(item);
+    });
   } catch {
-    list.replaceChildren(node("p", "muted", "Không tải được ticket. Mở hàng đợi để thử lại."));
+    if (current()) {
+      list.replaceChildren(node("p", "muted", "Không tải được ticket. Mở hàng đợi để thử lại."));
+      activity.replaceChildren(node("p", "muted", "Không tải được hoạt động. Mở lại Trợ lý để thử lại."));
+    }
   }
+  await knowledgeTask;
 }
 byId("openTicketsBtn").addEventListener("click", () => setWorkspaceView("tickets"));
+
+// UI-02: Enter submits once; composition and Shift+Enter preserve text input.
+byId("ragQuestion").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+    event.preventDefault();
+    if (!state.ragBusy) byId("ragForm").requestSubmit();
+  }
+});

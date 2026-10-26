@@ -1,0 +1,70 @@
+/* UI-01 / UI-04: dedicated assistant workspace; other views keep their layout. */
+#workspaceView[data-role][data-view="assistant"] .content-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr);
+  align-items: start;
+  gap: 24px;
+}
+#workspaceView[data-role][data-view="assistant"] .assistant-context { grid-template-columns: minmax(0, 1fr); }
+#assistantPanel { padding: 0; overflow: hidden; background: #fff; border-radius: 22px; }
+#assistantPanel .assistant-heading { padding: 22px 24px 12px; margin: 0; }
+#assistantPanel .agent-integrations { padding: 0 24px; }
+#assistantPanel .scenario-chips-container { padding: 12px 20px; border-bottom: 1px solid var(--line); margin: 0; }
+#assistantPanel .scenario-label { display: none; }
+#assistantPanel .scenario-chips-bar { flex-wrap: nowrap; overflow-x: auto; padding: 0 0 4px; }
+#assistantPanel .scenario-chip { flex: 0 0 auto; }
+#assistantPanel .emergency-alert-banner { margin: 12px 20px 0; padding: 10px 12px; }
+.assistant-chat-scroll { min-height: 220px; padding: 22px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.assistant-welcome { padding: 18px 12px; text-align: center; color: var(--ink-soft); }
+.assistant-welcome h3 { font-size: 20px; margin: 12px 0 8px; }
+.assistant-welcome-icon { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 16px; background: #edf2ff; color: var(--blue); font-size: 25px; }
+.assistant-suggestions { margin-bottom: 16px; color: var(--muted); font-size: 13px; }
+.assistant-suggestions summary { cursor: pointer; }
+.assistant-suggestions .popular-questions { margin-top: 10px; }
+#assistantPanel .rag-result { border: 0; padding: 0; background: transparent; margin: 0; }
+.assistant-turn { margin-bottom: 22px; min-width: 0; overflow-wrap: anywhere; }
+#assistantPanel .question-bubble { width: fit-content; max-width: 90%; margin: 0 0 16px auto; background: var(--blue); color: #fff; border-radius: 18px 18px 4px 18px; padding: 12px 16px; white-space: pre-wrap; }
+#assistantPanel .rag-answer { background: #eef3ff; border-radius: 4px 18px 18px 18px; padding: 16px; font-size: 14px; line-height: 1.65; }
+#assistantPanel .rag-source { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+#assistantPanel .rag-source summary { cursor: pointer; font-weight: 600; color: var(--blue); font-size: 13px; }
+#assistantPanel .rag-source pre { overflow-x: auto; }
+#assistantPanel .triage-navi-header { flex-wrap: wrap; }
+#assistantPanel .triage-badge { max-width: 100%; white-space: normal; }
+.assistant-composer { border-top: 1px solid var(--line); padding: 12px 18px; background: #fff; }
+.assistant-composer .chat-tools { margin: 0 0 8px; gap: 8px; }
+.assistant-composer .chat-tools .muted { font-size: 11px; }
+#ragForm { display: flex; align-items: flex-end; gap: 10px; border: 1px solid #dae3f5; border-radius: 20px; padding: 8px; background: #fbfcff; }
+#ragForm:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px #315de714; }
+#ragForm textarea { flex: 1; min-width: 0; border: 0; background: transparent; padding: 8px; resize: vertical; min-height: 42px; max-height: 130px; box-shadow: none; font-size: 14px; }
+#workspaceView[data-role] #ragForm #ragQuestion { min-height: 48px; height: 48px; padding: 8px; background: transparent; }
+#ragForm .assistant-send { width: 42px; height: 42px; min-height: 42px; flex: 0 0 42px; padding: 0; margin: 0; border-radius: 50%; background: var(--blue); color: #fff; font-size: 25px; }
+#ragForm .assistant-send:disabled { opacity: .45; cursor: wait; }
+#ragQuestionHint { margin: 8px 4px 0; font-size: 10px; line-height: 1.5; }
+.assistant-composer .chat-history { margin: 6px 4px 0; font-size: 12px; }
+.assistant-composer .chat-history-list { max-height: 150px; overflow-y: auto; }
+.assistant-info-card { border-radius: 20px; padding: 22px; box-shadow: 0 2px 8px #172b4d03; }
+.assistant-info-card h2 { font-size: 16px; margin: 6px 0 16px; }
+.assistant-info-card p { font-size: 13px; line-height: 1.65; color: var(--ink-soft); }
+.assistant-stat { font-size: 32px; font-weight: 700; color: var(--blue); display: block; }
+.assistant-activity-item { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 5px; font-size: 13px; overflow-wrap: anywhere; }
+.assistant-activity-item small { color: var(--muted); }
+#workspaceView[data-view="assistant"] #assistantPanel { display: flex; flex-direction: column; height: min(920px, calc(100dvh - 115px)); min-height: 620px; position: sticky; top: 20px; }
+#workspaceView[data-view="assistant"] .assistant-chat-scroll { flex: 1; min-height: 0; }
+@media (max-width: 1150px) {
+  #workspaceView[data-role][data-view="assistant"] .content-grid { grid-template-columns: minmax(0, 1fr); }
+  #workspaceView[data-role][data-view="assistant"] .assistant-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #workspaceView[data-view="assistant"] #assistantPanel { position: static; height: 780px; min-height: 0; }
+}
+@media (max-width: 600px) {
+  #workspaceView[data-role][data-view="assistant"] .assistant-context { grid-template-columns: minmax(0, 1fr); }
+  #workspaceView[data-view="assistant"] #assistantPanel { height: max(620px, 85dvh); }
+  #assistantPanel .assistant-heading { padding: 16px; }
+  #assistantPanel .assistant-title-row { flex-wrap: wrap; }
+  #assistantPanel .agent-integrations { padding: 0 16px; }
+  #assistantPanel .scenario-chips-container { padding: 10px 14px; }
+  #assistantPanel .emergency-alert-banner { margin: 10px 12px 0; }
+  .assistant-chat-scroll { padding: 14px; }
+  .assistant-composer { padding: 10px; }
+  #ragForm textarea { font-size: 16px; }
+  .assistant-info-card { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { .assistant-chat-scroll { scroll-behavior: auto; } }

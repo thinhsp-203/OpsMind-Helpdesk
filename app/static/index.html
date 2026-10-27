@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f3f6fb" />
     <title>Bàn hỗ trợ CNTT | Helpdesk RAG</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20261024-ui" />
+    <link rel="stylesheet" href="/static/styles.css?v=20261027-merge1" />
+    <link rel="stylesheet" href="/static/assistant.css?v=20261027-merge1" />
   </head>
   <body>
     <aside id="workspaceSidebar" class="workspace-sidebar hidden" aria-label="Menu chính">
@@ -25,7 +26,7 @@
         <div class="topbar-right">
           <span id="serviceStateLabel" class="service-state service-state-checking"><i class="status-indicator"></i> <span id="serviceStateText">Đang kiểm tra dịch vụ</span></span>
           <button id="languageToggle" class="button button-quiet language-toggle" type="button" aria-label="Switch language">English</button>
-
+          
           <div id="userMenuWrapper" class="user-menu-wrapper hidden">
             <button id="userMenuBtn" class="user-menu-btn" type="button" aria-expanded="false" aria-haspopup="true">
               <span id="topbarAvatar" class="topbar-avatar">AD</span>
@@ -51,6 +52,10 @@
               <button id="changePasswordBtn" class="dropdown-item" type="button" role="menuitem">
                 <span class="dropdown-icon">🔒</span>
                 <span>Đổi mật khẩu</span>
+              </button>
+              <button id="deleteAccountBtn" class="dropdown-item dropdown-item-danger" type="button" role="menuitem">
+                <span class="dropdown-icon">🗑️</span>
+                <span>Xóa tài khoản vĩnh viễn</span>
               </button>
               <div class="dropdown-divider"></div>
               <button id="logoutBtn" class="dropdown-item dropdown-item-danger" type="button" role="menuitem">
@@ -146,53 +151,13 @@
             <article class="stat-card"><span>Đang mở</span><strong id="statActive">0</strong><small>Mới, xử lý, chờ phản hồi, chuyển cấp</small><i>◷</i></article>
             <article class="stat-card"><span>Đã giải quyết</span><strong id="statResolved">0</strong><small>Đã giải quyết và đã đóng</small><i>✓</i></article>
             <article class="stat-card stat-alert"><span>Quá hạn SLA</span><strong id="statOverdue">0</strong><small>Cần ưu tiên xử lý</small><i>!</i></article>
-            <article id="statSelfServiceCard" class="stat-card stat-ai"><span>Đánh giá hữu ích RAG</span><strong id="statSelfService">—</strong><small>Tỷ lệ hữu ích trên tổng phản hồi</small><i>🤖</i></article>
+            <article id="statSelfServiceCard" class="stat-card stat-ai"><span>Đánh giá hữu ích RAG</span><strong id="statSelfService">—</strong><small id="statSelfServiceDetail">Tỷ lệ hữu ích trên tổng phản hồi</small><i>🤖</i></article>
             <article id="statResolutionCard" class="stat-card"><span>Thời gian xử lý TB</span><strong id="statResolution">—</strong><small>Ticket đã giải quyết · giờ lịch</small><i>◷</i></article>
             <article id="statRatingCard" class="stat-card"><span>Đánh giá hài lòng</span><strong id="statRating">—</strong><small id="ratingCount">Chưa có đánh giá</small><i>☆</i></article>
           </section>
 
           <div class="content-grid">
             <div class="main-column">
-              <section id="createSection" class="panel create-panel hidden workspace-panel" data-view="submit">
-                <div class="section-heading">
-                  <div><span class="eyebrow">KHI CẦN IT CAN THIỆP</span><h2>Gửi yêu cầu có theo dõi</h2></div>
-                  <span class="step-mark">01</span>
-                </div>
-                <form id="ticketForm" class="ticket-form">
-                  <label class="field wide-field" for="ticketTitle">Tiêu đề sự cố <span>*</span>
-                    <input id="ticketTitle" name="title" minlength="5" maxlength="160" placeholder="Ví dụ: Không thể kết nối VPN từ sáng nay" required />
-                  </label>
-                  <label class="field" for="ticketCategory">Danh mục
-                    <select id="ticketCategory" name="category">
-                      <option value="network">Mạng & VPN</option>
-                      <option value="hardware">Phần cứng</option>
-                      <option value="software">Phần mềm</option>
-                      <option value="security">Tài khoản & bảo mật</option>
-                      <option value="general">Khác</option>
-                    </select>
-                  </label>
-                  <label class="field" for="ticketPriority">Mức ưu tiên
-                    <select id="ticketPriority" name="priority">
-                      <option value="low">P4 · Thấp · SLA 48 giờ</option>
-                      <option value="medium" selected>P3 · Thông thường · SLA 24 giờ</option>
-                      <option value="high">P2 · Cao · SLA 8 giờ</option>
-                      <option value="urgent">P1 · Khẩn cấp · SLA 2 giờ</option>
-                    </select>
-                  </label>
-                  <label class="field wide-field" for="ticketDescription">Mô tả chi tiết <span>*</span>
-                    <textarea id="ticketDescription" name="description" rows="4" minlength="10" maxlength="5000" placeholder="Mô tả điều đã xảy ra, thông báo lỗi và các bước bạn đã thử..." required></textarea>
-                    <small>Không nhập mật khẩu hoặc thông tin nhạy cảm.</small>
-                    <small>Thiết bị/phần mềm: … · Thời điểm: … · Thông báo lỗi: … · Các bước đã thử: … · Số người bị ảnh hưởng: … Nếu chưa rõ, ghi “Không rõ”.</small>
-                    <small>Sau khi tạo yêu cầu, bạn có thể đính kèm ảnh chụp màn hình trong chi tiết ticket. Hãy che thông tin nhạy cảm trước khi tải lên.</small>
-                  </label>
-                  <div class="form-actions wide-field">
-                    <button id="draftFromRagBtn" class="button button-soft" type="button">✦ Hỏi hướng dẫn trước</button>
-                    <button class="button button-primary" type="submit">Gửi yêu cầu <span>→</span></button>
-                  </div>
-                  <p id="ticketMessage" class="form-message wide-field" role="status"></p>
-                </form>
-              </section>
-
               <section id="ticketPanel" class="panel ticket-panel workspace-panel" data-view="dashboard tickets">
                 <div class="section-heading ticket-heading">
                   <div><span id="ticketEyebrow" class="eyebrow">THEO DÕI</span><h2 id="ticketHeading">Yêu cầu của tôi</h2></div>
@@ -234,23 +199,22 @@
             </div>
 
             <aside class="side-column">
-              <section id="assistantPanel" class="panel assistant-panel workspace-panel" data-view="dashboard assistant submit">
+              <section id="assistantPanel" class="panel assistant-panel workspace-panel" data-view="dashboard assistant">
                 <div class="assistant-heading">
                   <div class="assistant-icon">✦</div>
                   <div class="assistant-title-group">
                     <div class="assistant-title-row">
                       <span class="eyebrow">TRỢ LÝ AI NỘI BỘ</span>
-                      <span class="agent-live-badge"><span class="live-dot"></span><span>Tra cứu tri thức nội bộ</span></span>
+                      <span class="agent-live-badge"><span>Tra cứu tri thức nội bộ</span></span>
                     </div>
                     <h2 id="assistantTitle">IT Helpdesk Agent</h2>
                   </div>
                 </div>
 
                 <div class="agent-integrations" aria-label="Chức năng Helpdesk">
-                  <button type="button" class="button button-soft integration-chip" data-shortcut="assistant">Tra cứu tri thức</button>
-                  <button type="button" class="button button-soft integration-chip" data-shortcut="submit">Tạo ticket</button>
-                  <button type="button" class="button button-soft integration-chip" data-shortcut="tickets">Theo dõi yêu cầu</button>
-
+                  <span class="integration-chip">Tra cứu tri thức</span>
+                  <span class="integration-chip">Tạo ticket</span>
+                  <span class="integration-chip">Theo dõi yêu cầu</span>
                 </div>
 
                 <div class="scenario-chips-container">
@@ -272,18 +236,14 @@
                   <button id="openEmergencyModalBtn" class="button button-danger-sm" type="button">Báo khẩn cấp</button>
                 </div>
 
-                <p id="assistantIntro" class="assistant-intro">Mô tả lỗi để tìm hướng dẫn nội bộ. Nếu chưa xử lý được, chuyển tiếp thành yêu cầu IT.</p>
-                <p id="ragQuestionHint" class="muted">Nêu thiết bị, thông báo lỗi và các bước đã thử. Không nhập mật khẩu hoặc mã OTP.</p>
-                <form id="ragForm">
-                  <label class="sr-only" for="ragQuestion">Câu hỏi về sự cố</label>
-                  <textarea id="ragQuestion" rows="4" minlength="3" maxlength="2000" required aria-describedby="ragQuestionHint" placeholder="Mô tả sự cố hoặc bấm chọn kịch bản nhanh ở trên..."></textarea>
-                  <button class="button button-dark button-wide" type="submit">Tra cứu hướng dẫn <span>→</span></button>
-                </form>
-                <div class="chat-tools">
-                  <strong>Câu hỏi thường gặp</strong>
-                  <button id="newChatBtn" class="button button-quiet" type="button">Phiên mới</button>
-                </div>
-                <details class="more-questions"><summary>Xem thêm câu hỏi gợi ý</summary><div id="popularQuestions" class="popular-questions" aria-label="Câu hỏi thường gặp">
+                <div class="assistant-chat-scroll" id="assistantChatScroll">
+                  <div class="assistant-welcome">
+                    <span class="assistant-welcome-icon" aria-hidden="true">✦</span>
+                    <h3>Bạn cần hỗ trợ gì hôm nay?</h3>
+                    <p id="assistantIntro" class="assistant-intro">Mô tả lỗi để tìm hướng dẫn nội bộ. Nếu chưa xử lý được, chuyển tiếp thành yêu cầu IT.</p>
+                  </div>
+                  <details class="assistant-suggestions"><summary>Câu hỏi thường gặp</summary>
+                <div id="popularQuestions" class="popular-questions" aria-label="Câu hỏi thường gặp">
                   <button type="button" data-question="Tôi không kết nối được VPN FortiClient">Không kết nối được VPN</button>
                   <button type="button" data-question="Máy in bị kẹt lệnh, tôi cần kiểm tra gì?">Máy in bị kẹt lệnh</button>
                   <button type="button" data-question="Outlook không nhận được email">Outlook không nhận email</button>
@@ -291,13 +251,25 @@
                   <button type="button" data-question="Tài khoản MFA không xác thực được">MFA không xác thực</button>
                   <button type="button" data-question="Wi-Fi văn phòng không kết nối được">Wi-Fi không kết nối</button>
                 </div>
-                </details>
+                  </details>
+                  <div id="ragResult" class="rag-result hidden" aria-live="polite" tabindex="-1"></div>
+                </div>
+                <div class="assistant-composer">
+                  <div class="chat-tools">
+                    <span class="muted">Hướng dẫn có nguồn · Chuyển IT khi cần</span>
+                    <button id="newChatBtn" class="button button-quiet" type="button">Phiên mới</button>
+                  </div>
+                  <form id="ragForm">
+                    <label class="sr-only" for="ragQuestion">Câu hỏi về sự cố</label>
+                    <textarea id="ragQuestion" rows="2" minlength="3" maxlength="2000" required aria-describedby="ragQuestionHint" placeholder="Mô tả sự cố bạn đang gặp..."></textarea>
+                    <button class="button assistant-send" type="submit" aria-label="Gửi câu hỏi">↑</button>
+                  </form>
+                  <p id="ragQuestionHint" class="muted">Enter để gửi · Shift + Enter để xuống dòng. Không nhập mật khẩu hoặc OTP.</p>
                 <details class="chat-history">
                   <summary>Lịch sử tra cứu</summary>
                   <div id="chatHistoryList" class="chat-history-list"><span class="muted">Chưa có hội thoại.</span></div>
                 </details>
-                <p class="disclaimer">Câu trả lời dựa trên tài liệu nội bộ. Kiểm tra nguồn trước khi làm theo; không nhập thông tin nhạy cảm.</p>
-                <div id="ragResult" class="rag-result hidden" aria-live="polite" tabindex="-1"></div>
+                </div>
               </section>
 
               <section id="knowledgePanel" class="panel knowledge-panel hidden workspace-panel" data-view="knowledge">
@@ -410,7 +382,7 @@
                   </div>
                   <button id="refreshNotificationsBtn" class="button button-quiet" type="button">Làm mới trạng thái</button>
                 </div>
-                <p class="muted">Tự động phát thông báo khi có ticket khẩn cấp hoặc vi phạm thời hạn cam kết SLA qua Telegram Bot và Discord Webhook.</p>
+                <p class="muted">Gửi thông báo khi tạo ticket hoặc chuyển cấp qua kênh đã cấu hình. Chưa có cảnh báo tự động khi quá hạn SLA.</p>
 
                 <div class="notification-channels-grid">
                   <article class="channel-card">
@@ -435,7 +407,7 @@
                       </div>
                       <div class="channel-row">
                         <span>Sự kiện:</span>
-                        <span>Ticket khẩn cấp (Urgent), Sự cố cao (High)</span>
+                        <span>Tạo ticket, chuyển cấp</span>
                       </div>
                     </div>
                     <div class="channel-footer">
@@ -444,38 +416,7 @@
                     </div>
                   </article>
 
-                  <article class="channel-card">
-                    <div class="channel-header">
-                      <div class="channel-title-group">
-                        <span class="channel-icon channel-discord">🎮</span>
-                        <div>
-                          <strong>Discord Webhook</strong>
-                          <small>Kênh tin nhóm IT Support</small>
-                        </div>
-                      </div>
-                      <span id="discordStatusBadge" class="tag tag-status-draft">Chưa kết nối</span>
-                    </div>
-                    <div class="channel-body">
-                      <div class="channel-row">
-                        <span>Địa chỉ Webhook:</span>
-                        <span id="discordWebhookUrl" class="mono">—</span>
-                      </div>
-                      <div class="channel-row">
-                        <span>Giao diện:</span>
-                        <span>Rich Embed đổi màu theo mức độ ưu tiên</span>
-                      </div>
-                      <div class="channel-row">
-                        <span>Bảo mật:</span>
-                        <span>Đã kích hoạt bộ lọc SSRF & Whitelist</span>
-                      </div>
-                    </div>
-                    <div class="channel-footer">
-                      <button id="testDiscordBtn" class="button button-soft button-wide" type="button">Gửi thông báo thử nghiệm</button>
-                      <p id="discordTestMessage" class="form-message" role="status"></p>
-                    </div>
-                  </article>
-
-                  <article class="channel-card">
+<article class="channel-card">
                     <div class="channel-header">
                       <div class="channel-title-group">
                         <span class="channel-icon" style="background:#eef2ff; color:#315de7;">✉</span>
@@ -530,7 +471,6 @@
                   <ul>
                     <li><code>TELEGRAM_BOT_TOKEN</code> — <span>Token bot do @BotFather cấp.</span></li>
                     <li><code>TELEGRAM_CHAT_ID</code> — <span>ID nhóm hoặc kênh nhận cảnh báo IT.</span></li>
-                    <li><code>DISCORD_WEBHOOK_URL</code> — <span>Đường dẫn Webhook kênh Discord của đội kỹ thuật.</span></li>
                   </ul>
                 </div>
               </section>
@@ -549,9 +489,11 @@
                 <p class="muted">Số liệu tính theo ticket đang được gán cho tài khoản hiện tại; chưa chuẩn hóa theo ca trực/ngày làm việc.</p>
               </section>
             </aside>
-            <aside id="assistantContext" class="assistant-context hidden" aria-label="Ticket gần đây">
-              <section class="panel"><div class="section-heading"><div><span class="eyebrow">THEO DÕI TIẾN ĐỘ</span><h2>Ticket gần đây</h2></div></div><div id="assistantRecentTickets" class="recent-ticket-list"></div><button id="openTicketsBtn" type="button" class="button button-soft button-wide">Xem tất cả ticket</button></section>
-              <section class="panel help-note"><span class="eyebrow">CÁCH SỬ DỤNG</span><h2>Mô tả rõ, hỗ trợ nhanh</h2><ol><li>Nêu thiết bị và thông báo lỗi.</li><li>Cho biết các bước bạn đã thử.</li><li>Kiểm tra nguồn trước khi làm theo.</li></ol><p>Không nhập mật khẩu hoặc mã xác thực vào hội thoại.</p></section>
+            <aside id="assistantContext" class="assistant-context hidden" aria-label="Thông tin hỗ trợ">
+              <section class="panel assistant-info-card"><span class="eyebrow">NGUỒN THAM KHẢO</span><h2>Kho tri thức đang dùng</h2><div id="assistantKnowledgeSummary" aria-live="polite"></div></section>
+              <section class="panel assistant-info-card"><span class="eyebrow">CHẤT LƯỢNG HỖ TRỢ</span><h2>Lỗ hổng tri thức</h2><p id="assistantGapSummary">Nếu chưa tìm thấy nguồn phù hợp, bạn có thể chuyển câu hỏi cho IT ngay trong hội thoại.</p></section>
+              <section class="panel assistant-info-card"><span class="eyebrow">THEO DÕI TIẾN ĐỘ</span><h2>Việc cần làm</h2><div id="assistantRecentTickets" class="recent-ticket-list"></div><button id="openTicketsBtn" type="button" class="button button-soft button-wide">Xem tất cả ticket</button></section>
+              <section class="panel assistant-info-card"><span class="eyebrow">NHẬT KÝ TICKET</span><h2>Hoạt động gần đây</h2><div id="assistantActivity" aria-live="polite"></div></section>
             </aside>
           </div>
         </section>
@@ -624,6 +566,7 @@
               <span class="muted">Mật khẩu đổi lần cuối:</span>
               <strong id="profilePwdChangedAt">Chưa cập nhật</strong>
               <button id="profileChangePasswordBtn" class="link-button" type="button">Đổi mật khẩu</button>
+              <button id="profileDeleteAccountBtn" class="link-button text-danger" type="button">Xóa tài khoản vĩnh viễn</button>
             </div>
             <div class="modal-actions">
               <button id="cancelUserProfileBtn" class="button button-quiet" type="button">Hủy</button>
@@ -668,6 +611,7 @@
         </div>
       </section>
     </div>
+
     <div id="knowledgeEditorModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="knowledgeEditorTitle">
       <div class="modal-card modal-card-wide">
         <div class="modal-header">
@@ -803,7 +747,7 @@
             <span class="emergency-icon">🚨</span>
             <div>
               <h2 id="emergencyModalHeading">Báo sự cố bảo mật khẩn cấp (P1)</h2>
-              <p class="muted">Tạo yêu cầu ưu tiên P1 để đội IT kiểm tra và xử lý.</p>
+              <p class="muted">Tạo ticket ưu tiên P1; chưa có xác nhận nhân viên tiếp nhận.</p>
             </div>
           </div>
           <button id="closeEmergencyModalBtn" class="button button-quiet" type="button">✕ Đóng</button>
@@ -825,7 +769,7 @@
           <div class="emergency-meta-row">
             <span class="tag tag-urgent">Mức độ: P1 · Khẩn cấp (SLA 2 giờ)</span>
             <span class="tag">Danh mục: Tài khoản & bảo mật</span>
-            <span class="tag">Thông báo: Telegram Bot + Discord Webhook</span>
+            <span class="tag">Thông báo phụ thuộc cấu hình kênh; chưa có xác nhận gửi.</span>
           </div>
           <label class="field" for="emergencyDescriptionInput">Mô tả chi tiết triệu chứng <span>*</span>
             <textarea id="emergencyDescriptionInput" name="description" rows="3" minlength="10" maxlength="5000" placeholder="Mô tả dấu hiệu: mã độc tống tiền, link lạ đã bấm, thiết bị bị mất, hoặc mã OTP bị yêu cầu bất thường..." required></textarea>
@@ -833,17 +777,17 @@
           <p id="emergencyMessage" class="form-message" role="status"></p>
           <div class="modal-actions">
             <button id="cancelEmergencyBtn" class="button button-quiet" type="button">Hủy</button>
-            <button class="button button-danger" type="submit">Gửi yêu cầu khẩn cấp P1</button>
+            <button class="button button-danger" type="submit">🚨 Tạo ticket P1</button>
           </div>
         </form>
       </div>
     </div>
 
-    <script src="/static/i18n.js?v=20261024-ui"></script>
-    <script src="/static/modules/markdown.js?v=20261024-ui"></script>
-    <script src="/static/modules/notifications.js?v=20261024-ui"></script>
-    <script src="/static/modules/admin.js?v=20261024-ui"></script>
-    <script src="/static/modules/knowledge.js?v=20261024-ui"></script>
-    <script src="/static/app.js?v=20261024-ui"></script>
+    <script src="/static/i18n.js?v=20261027-merge1"></script>
+    <script src="/static/modules/markdown.js?v=20261027-merge1"></script>
+    <script src="/static/modules/notifications.js?v=20261027-merge1"></script>
+    <script src="/static/modules/admin.js?v=20261027-merge1"></script>
+    <script src="/static/modules/knowledge.js?v=20261027-merge1"></script>
+    <script src="/static/app.js?v=20261027-merge1"></script>
   </body>
 </html>

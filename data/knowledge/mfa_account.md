@@ -1,17 +1,19 @@
-# Tài khoản và xác thực đa yếu tố (MFA)
+# Hướng dẫn xác thực đa yếu tố (MFA) trên Microsoft Teams và Microsoft 365
 
-**Từ khóa:** đăng nhập, MFA, OTP, Authenticator, khóa tài khoản, mật khẩu.
+**Từ khóa:** đăng nhập, MFA, OTP, Authenticator, Microsoft Teams, Microsoft 365, khóa tài khoản, không nhận được mã, login approval, xác thực 2 bước, bảo mật, device time, recovery through IT.
 
-## Hướng dẫn an toàn
-1. Kiểm tra đúng trang đăng nhập công ty và kết nối mạng/VPN theo hướng dẫn.
-2. Nếu mã MFA không hoạt động, kiểm tra giờ tự động trên thiết bị và chọn đúng tài khoản công việc.
-3. Không chia sẻ OTP, mã khôi phục hoặc phê duyệt thông báo đăng nhập mà bạn không chủ động yêu cầu.
-4. Không gửi mật khẩu qua email/ticket/chat; IT không cần mật khẩu của bạn để xử lý.
+## Triệu chứng / Dấu hiệu nhận biết
+- Đăng nhập vào Microsoft Teams, Outlook hoặc cổng dịch vụ công ty xuất hiện yêu cầu phê duyệt đăng nhập (login approval) nhưng điện thoại không nhận được thông báo đẩy.
+- Mã số 6 chữ số sinh ra từ ứng dụng Microsoft Authenticator bị báo không hợp lệ hoặc đã hết hạn.
+- Nhận được thông báo phê duyệt đăng nhập lạ trên điện thoại trong khi bản thân không hề thực hiện đăng nhập (dấu hiệu tài khoản bị lộ mật khẩu).
 
-## Khôi phục
-- Nếu mất thiết bị hoặc bị khóa, liên hệ IT qua kênh đã xác minh danh tính.
-- Nếu nhận yêu cầu MFA bất ngờ, từ chối yêu cầu và báo IT Security ngay.
-- Chỉ dùng quy trình reset chính thức; không tắt MFA để né lỗi.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra kết nối mạng trên điện thoại:** Đảm bảo điện thoại thông minh cài ứng dụng Microsoft Authenticator đang có kết nối mạng Wi-Fi hoặc 4G/5G ổn định để nhận thông báo đẩy.
+2. **Mở trực tiếp ứng dụng Authenticator:** Đôi khi hệ điều hành điện thoại tắt thông báo ngầm, hãy mở trực tiếp app *Microsoft Authenticator* lên để xem thông báo phê duyệt hoặc lấy mã OTP 6 chữ số theo thời gian.
+3. **Đồng bộ thời gian trên điện thoại (Device time):** Nếu mã OTP bị sai, hãy vào cài đặt ngày giờ của điện thoại, bật chế độ "Tự động đặt ngày & giờ theo mạng" (Automatic date and time) để đồng bộ giờ chuẩn xác.
+4. **Cảnh báo an toàn (Security Alert):** Nếu nhận được yêu cầu phê duyệt đăng nhập bất ngờ mà bản thân không thao tác, bấm ngay nút **Từ chối (Deny)**, tuyệt đối không phê duyệt và không chia sẻ mã OTP cho bất kỳ ai.
 
-## Sources and scope
-- Microsoft Learn, [Manage authentication methods for Microsoft Entra multifactor authentication](https://learn.microsoft.com/en-us/entra/identity/authentication/howto-mfa-userdevicesettings), accessed 2026-10-05. Users manage their own methods through Security info; authorized administrators can manage methods and require re-registration. The article warns against using public profile contact details as MFA methods. Follow the organization's identity verification and recovery process; never share an OTP or approve an unexpected sign-in.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Nhân viên bị mất điện thoại, hỏng điện thoại hoặc đổi máy mới và không thể tự đăng nhập để chuyển Authenticator (Recovery through IT).
+- Cần quản trị viên IT đăng nhập cổng Microsoft 365 Admin Center để đặt lại (reset) phương thức xác thực đa yếu tố MFA cho tài khoản.
+- Tài khoản nghi ngờ bị tấn công dò quét mật khẩu từ bên ngoài, cần đội an toàn thông tin khóa tài khoản khẩn cấp để rà soát.

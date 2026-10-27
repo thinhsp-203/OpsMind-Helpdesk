@@ -1,33 +1,23 @@
-# High Network Latency and Packet Loss Troubleshooting
+# Kiểm tra và xử lý sự cố mạng chậm, độ trễ cao và rớt gói tin (Packet Loss)
 
-**Từ khóa:** mạng chậm, mạng lag, độ trễ cao, ping cao, nghẽn mạng, đường truyền chậm, giật lag, mất gói tin, packet loss.
+**Từ khóa:** mạng chậm, mạng lag, độ trễ cao, ping cao, nghẽn mạng, rớt gói ping, packet loss, mạng nội bộ, kết nối chậm, giật lag, độ trễ mạng.
 
-## Symptoms
-- High ping times (> 150ms) to internal servers or gateways.
-- Video calls (Teams/Zoom) lag, drop audio, or disconnect frequently.
-- File transfer speeds to shared network drives are unusually slow (< 1 MB/s).
+## Triệu chứng / Dấu hiệu nhận biết
+- Duyệt web rất chậm, tải tài liệu trên mạng nội bộ hoặc Google Drive mất nhiều thời gian, video cuộc họp trên Teams bị giật hình hoặc mất tiếng.
+- Ứng dụng quản lý nghiệp vụ và phần mềm kế toán liên tục bị ngắt kết nối giữa chừng với máy chủ.
+- Chạy lệnh ping kiểm tra đến máy chủ thấy thời gian phản hồi (latency) rất cao (trên 150ms - 300ms) hoặc xuất hiện nhiều dòng "Request timed out" (rớt gói tin / packet loss).
 
-## Checks
-1. Check continuous ping to local gateway: ping -t <gateway_ip>. Packet loss should be 0%.
-2. Run 	racert 8.8.8.8 to identify which network hop introduces high latency.
-3. Check Task Manager > Performance > Ethernet/Wi-Fi for background upload/download traffic.
-4. Verify if peer-to-peer applications, cloud sync (OneDrive/Google Drive), or Windows Updates are consuming bandwidth.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra các ứng dụng đang tải dữ liệu ngầm:**
+   - Mở *Task Manager* (`Ctrl + Shift + Esc`), xem cột *Network* để kiểm tra xem có ứng dụng nào đang tải tệp nặng (OneDrive, Torrent, cập nhật phần mềm, tải video) hay không.
+   - Tạm dừng các tiến trình đồng bộ dữ liệu nặng trong giờ làm việc cao điểm.
+2. **Kiểm tra ping tới Gateway mạng nội bộ:**
+   - Mở Command Prompt (`cmd`), gõ lệnh ping địa chỉ Default Gateway của phòng (ví dụ: `ping 192.168.1.1 -n 10`).
+   - Nếu ping mạng nội bộ dưới 5ms nhưng ping ra mạng ngoài bị chậm, nguyên nhân do đường truyền Internet của nhà mạng (ISP).
+3. **Chuyển sang cắm mạng dây LAN thay vì Wi-Fi:** Nếu đang dùng Wi-Fi ở vị trí xa cục phát hoặc có nhiều vật cản, hãy thử cắm dây mạng LAN trực tiếp vào máy để có đường truyền ổn định nhất.
+4. **Khởi động lại máy tính:** Tắt các ứng dụng chạy ngầm và khởi động lại máy để làm mới stack kết nối mạng TCP/IP.
 
-## Resolution
-- Pause heavy background synchronization services (OneDrive, Dropbox, torrent clients).
-- Update network interface card (NIC) drivers via Device Manager.
-- Disable Energy Efficient Ethernet (Green Ethernet) in NIC advanced properties.
-- For Wi-Fi connections, switch from 2.4 GHz to 5 GHz frequency band for lower interference.
-- If using an Ethernet switch hub at the desk, bypass the hub and connect directly to the wall port.
-
-## Escalation
-If packet loss occurs at the core switch or internet firewall gateway, escalate to Network Operations Center (NOC) with traceroute logs.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Mở Command Prompt gõ ping 8.8.8.8 -t để kiểm tra độ trễ và tỷ lệ rớt gói (packet loss).
-2. Mở Task Manager (Ctrl+Shift+Esc), kiểm tra xem có ứng dụng nào (OneDrive, Windows Update) đang chiếm dụng 100% băng thông mạng không.
-3. Nếu dùng Wi-Fi, ưu tiên kết nối vào băng tần 5GHz thay vì 2.4GHz để giảm nhiễu.
-4. Thử cắm trực tiếp dây mạng vào ổ mạng tường thay vì cắm qua các switch chia nhỏ tại bàn làm việc.
-
-## Source and scope
-- Cisco Networking Documentation, [Troubleshooting High Latency and Packet Loss](https://www.cisco.com/c/en/us/support/docs/ip/routing-information-protocol-rip/13769-4.html), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Toàn bộ công ty hoặc toàn bộ phòng ban đều bị chậm mạng đồng thời (nghi ngờ nghẽn băng thông đường truyền chính hoặc sự cố từ nhà cung cấp dịch vụ Internet ISP).
+- Tỷ lệ rớt gói tin ping (packet loss) vượt quá 10% trong mạng dây nội bộ (nghi ngờ lỗi cổng switch mạng hoặc vòng lặp mạng loop mạng).
+- Cần IT kiểm tra và điều chỉnh phân bổ băng thông (QoS) trên tường lửa trung tâm.

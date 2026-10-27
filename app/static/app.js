@@ -9,6 +9,7 @@ const state = {
   knowledgeStatus: "",
   knowledgeCategory: "",
   knowledgeSearch: "",
+  assistantTicketBusy: false,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -215,7 +216,6 @@ function setSignedIn(user) {
   }).format(new Date());
 
   const isStaff = user.role === "agent" || user.role === "admin";
-  byId("createSection").classList.toggle("hidden", isStaff);
   byId("employeeWorkflowNote").classList.toggle("hidden", isStaff);
   byId("serviceCatalogSection")?.classList.toggle("hidden", isStaff);
   byId("analyticsSection").classList.remove("hidden");
@@ -244,30 +244,32 @@ function setSignedIn(user) {
 
 async function login(event) {
   event.preventDefault();
-  const form = event.currentTarget;
-  const button = form.querySelector('button[type="submit"]');
-  if (button.disabled) return;
-  button.disabled = true;
-  form.setAttribute("aria-busy", "true");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  const slowNotice = setTimeout(() => setMessage("loginMessage", "Dịch vụ đang phản hồi chậm. Vui lòng chờ thêm...", false), 8000);
+  const form = event.currentTarget || byId("loginForm");
+  const button = form?.querySelector?.('button[type="submit"]');
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  form?.setAttribute?.("aria-busy", "true");
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeout = controller && typeof setTimeout === "function" ? setTimeout(() => controller.abort(), 45000) : null;
+  const slowNotice = typeof setTimeout === "function" ? setTimeout(() => setMessage("loginMessage", "Dịch vụ đang phản hồi chậm. Vui lòng chờ thêm...", false), 8000) : null;
   setMessage("loginMessage", "Đang xác thực...", false);
   try {
-    const result = await api("/auth/login", {
-      signal: controller.signal,
+    const loginOptions = {
       method: "POST",
       body: JSON.stringify({
         username: byId("username").value.trim(),
         password: byId("password").value,
       }),
-    });
+    };
+    if (controller) loginOptions.signal = controller.signal;
+    const result = await api("/auth/login", loginOptions);
     state.token = result.token;
     localStorage.setItem("helpdesk-token", state.token);
     try {
-      const me = await api("/auth/me", { signal: controller.signal });
+      const me = await api("/auth/me", controller ? { signal: controller.signal } : undefined);
       setSignedIn(me);
-    } catch {
+    } catch (error) {
+      if (!state.token) throw error;
       setSignedIn({ username: result.username, role: result.role });
     }
     if (result.force_password_change) {
@@ -276,10 +278,50 @@ async function login(event) {
   } catch (error) {
     setMessage("loginMessage", error.name === "AbortError" ? "Kết nối quá lâu. Vui lòng thử đăng nhập lại." : error.message);
   } finally {
-    clearTimeout(timeout);
-    clearTimeout(slowNotice);
-    button.disabled = false;
-    form.removeAttribute("aria-busy");
+    if (timeout !== null) clearTimeout(timeout);
+    if (slowNotice !== null) clearTimeout(slowNotice);
+    if (button) button.disabled = false;
+    form?.removeAttribute?.("aria-busy");
+  }
+}
+
+async function logout() {
+  if (state.logoutBusy) return;
+  state.logoutBusy = true;
+  const token = state.token;
+  signOut();
+  if (!token) {
+    state.logoutBusy = false;
+    return;
+  }
+  setMessage("loginMessage", "Đang xác nhận thu hồi phiên trên máy chủ...", false);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    // Use the captured token, independently of any subsequent login in this tab.
+    const response = await fetch("/auth/logout", {
+      method: "POST", headers: {Authorization: `Bearer ${token}`}, signal: controller.signal,
+    });
+    let message;
+    if (response.status === 401) {
+      message = "Phiên gửi lên không còn hiệu lực; dữ liệu đăng nhập trên trình duyệt đã được xóa.";
+    } else {
+      if (!response.ok) throw new Error("logout unconfirmed");
+      const result = await response.json();
+      if (result.revoked === true) {
+        message = "Đã đăng xuất và thu hồi các phiên đăng nhập hiện hành của tài khoản.";
+      } else if (result.revoked === false) {
+        message = "Phiên gửi lên không còn hiệu lực; dữ liệu đăng nhập trên trình duyệt đã được xóa.";
+      } else {
+        throw new Error("logout response unconfirmed");
+      }
+    }
+    if (!state.token) setMessage("loginMessage", message, false);
+  } catch {
+    if (!state.token) setMessage("loginMessage", "Chỉ đã xóa phiên trên trình duyệt; chưa xác nhận thu hồi trên máy chủ. Khi có kết nối, đăng nhập rồi đăng xuất lại.");
+  } finally {
+    clearTimeout(timer);
+    state.logoutBusy = false;
   }
 }
 
@@ -296,11 +338,13 @@ function signOut() {
   state.tickets = [];
   state.chatSessionId = null;
   localStorage.removeItem("helpdesk-token");
+  if (byId("password")) byId("password").value = "";
   byId("workspaceView").classList.add("hidden");
   byId("userMenuWrapper")?.classList.add("hidden");
   closeUserDropdown();
   byId("userBadge")?.classList.add("hidden");
   closeUserProfileModal();
+  if (byId("changePasswordModal")) byId("changePasswordModal").dataset.forced = "false";
   closeChangePasswordModal();
   closeForgotPasswordModal();
   closeResetPasswordModal();
@@ -310,13 +354,34 @@ function signOut() {
   byId("workspaceView").dataset.role = "";
 }
 
+async function deleteAccount() {
+  const confirmMsg = window.helpdeskI18n.t(
+    "Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản của mình? Toàn bộ phiên đăng nhập sẽ bị thu hồi. Các ticket và trao đổi cũ sẽ được lưu dưới dạng ẩn danh."
+  );
+  if (!window.confirm(confirmMsg)) return;
+
+  try {
+    const res = await api("/auth/me", { method: "DELETE" });
+    alert(res.message || window.helpdeskI18n.t("Tài khoản của bạn đã được xóa vĩnh viễn và thông tin cá nhân đã được ẩn danh."));
+  } catch (err) {
+    alert(err.message || window.helpdeskI18n.t("Không thể xóa tài khoản vào lúc này."));
+    return;
+  }
+  closeUserProfileModal();
+  closeUserDropdown();
+  signOut();
+}
+
 function openChangePasswordModal(isForced = false) {
   closeUserDropdown();
   const modal = byId("changePasswordModal");
   if (!modal) return;
   modal.dataset.forced = isForced ? "true" : "false";
   const cancelBtn = byId("cancelChangePasswordBtn");
-  if (cancelBtn) cancelBtn.classList.toggle("hidden", isForced);
+  if (cancelBtn) {
+    cancelBtn.classList.remove("hidden");
+    cancelBtn.textContent = window.helpdeskI18n.translate(isForced ? "Đăng xuất" : "Hủy");
+  }
   const subtitle = byId("changePasswordSubtitle");
   if (subtitle) {
     subtitle.textContent = window.helpdeskI18n.translate(
@@ -624,23 +689,25 @@ function checkResetPasswordTokenInUrl() {
 function openEmergencyModal() {
   const modal = byId("emergencyModal");
   if (!modal) return;
-  byId("emergencyTicketForm")?.reset();
-  setMessage("emergencyMessage", "");
+  const form = byId("emergencyTicketForm");
+  if (form && form.dataset.submitting !== "true") {
+    form.reset();
+    delete form.dataset.ticketCreated;
+    form.querySelector('button[type="submit"]').disabled = false;
+    setMessage("emergencyMessage", "");
+  }
   modal.classList.remove("hidden");
   byId("emergencyDescriptionInput")?.focus();
 }
 
 function closeEmergencyModal() {
-  const modal = byId("emergencyModal");
-  if (!modal) return;
-  modal.classList.add("hidden");
-  byId("emergencyTicketForm")?.reset();
-  setMessage("emergencyMessage", "");
+  byId("emergencyModal")?.classList.add("hidden");
 }
 
 async function handleEmergencyTicket(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  if (form.dataset.submitting === "true" || form.dataset.ticketCreated === "true") return;
   const submitBtn = form.querySelector('button[type="submit"]');
   const title = byId("emergencyTitleInput")?.value.trim() || "Sự cố bảo mật khẩn cấp";
   const desc = byId("emergencyDescriptionInput")?.value.trim() || "";
@@ -648,8 +715,10 @@ async function handleEmergencyTicket(event) {
     setMessage("emergencyMessage", "Vui lòng mô tả ít nhất 10 ký tự về triệu chứng sự cố.");
     return;
   }
+  const translate = window.helpdeskI18n.translate;
+  form.dataset.submitting = "true";
   submitBtn.disabled = true;
-  setMessage("emergencyMessage", "Đang gửi yêu cầu khẩn cấp...", false);
+  setMessage("emergencyMessage", "Đang tạo ticket P1...", false);
   try {
     const result = await api("/tickets", {
       method: "POST",
@@ -660,15 +729,25 @@ async function handleEmergencyTicket(event) {
         priority: "urgent",
       }),
     });
-    setMessage("emergencyMessage", `Đã phát cảnh báo P1 thành công! Mã ticket: HD-${String(result.ticket.id).padStart(4, "0")}. Yêu cầu đã được ghi nhận cho IT.`, false);
-    setTimeout(() => {
-      closeEmergencyModal();
-      refreshWorkspace();
-    }, 2000);
+    // A successful POST does not contain a delivery or responder acknowledgement.
+    form.dataset.ticketCreated = "true";
+    const ticketId = result?.ticket?.id;
+    if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+      setMessage("emergencyMessage", "Chưa xác định được mã ticket từ phản hồi. Kiểm tra danh sách trước khi gửi lại.");
+      return;
+    }
+    const receipt = `${translate("Đã tạo ticket P1")} HD-${String(ticketId).padStart(4, "0")}. ${translate("Chưa có xác nhận gửi thông báo hoặc nhân viên tiếp nhận. Nếu cần hỗ trợ ngay, liên hệ IT qua kênh nội bộ.")}`;
+    setMessage("emergencyMessage", receipt, false);
+    try {
+      await refreshWorkspace();
+    } catch {
+      setMessage("emergencyMessage", `${receipt} ${translate("Chưa tải lại được danh sách; không cần gửi lại ticket.")}`, false);
+    }
   } catch (error) {
-    setMessage("emergencyMessage", error.message || "Không thể gửi cảnh báo khẩn cấp.");
+    setMessage("emergencyMessage", `${translate(error.message || "Không xác nhận được việc tạo ticket.")} ${translate("Kiểm tra danh sách trước khi thử lại.")}`);
   } finally {
-    submitBtn.disabled = false;
+    delete form.dataset.submitting;
+    submitBtn.disabled = form.dataset.ticketCreated === "true";
   }
 }
 
@@ -695,7 +774,7 @@ async function refreshWorkspace() {
 
 function configureWorkspaceNavigation(role) {
   const items = role === "user"
-    ? [["dashboard", "Tổng quan"], ["assistant", "Trợ lý IT"], ["tickets", "Ticket của tôi"], ["submit", "Tạo yêu cầu"]]
+    ? [["dashboard", "Tổng quan"], ["assistant", "Trợ lý IT"], ["tickets", "Ticket của tôi"]]
     : role === "agent"
       ? [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["personal", "Thống kê của tôi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"]]
       : [["dashboard", "Tổng quan"], ["tickets", "Hàng đợi"], ["assistant", "Tra cứu tri thức"], ["knowledge", "Kho tri thức"], ["users", "Người dùng"], ["notifications", "Kênh thông báo"], ["reports", "Báo cáo"]];
@@ -706,7 +785,7 @@ function configureWorkspaceNavigation(role) {
     button.type = "button";
     button.dataset.view = view;
     button.dataset.label = label;
-    const icons = { dashboard: "▦", assistant: "✦", tickets: "▤", submit: "+", knowledge: "▧", users: "♙", notifications: "🔔", reports: "▥", personal: "◷" };
+    const icons = { dashboard: "▦", assistant: "✦", tickets: "▤", knowledge: "▧", users: "♙", notifications: "🔔", reports: "▥", personal: "◷" };
     const icon = node("span", "nav-icon", icons[view] || "•");
     icon.setAttribute("aria-hidden", "true");
     button.prepend(icon);
@@ -718,9 +797,9 @@ function configureWorkspaceNavigation(role) {
 
 function setWorkspaceView(view) {
   state.activeView = view;
-  byId("workspaceSidebar").classList.remove("menu-open");
-  byId("workspaceMenuToggle").setAttribute("aria-expanded", "false");
-  document.querySelector(".page-heading").classList.toggle("hidden", view !== "dashboard");
+  byId("workspaceSidebar")?.classList.remove("menu-open");
+  byId("workspaceMenuToggle")?.setAttribute("aria-expanded", "false");
+  document.querySelector(".page-heading")?.classList.toggle("hidden", view !== "dashboard");
   byId("workspaceView").dataset.view = view;
   byId("assistantContext").classList.toggle("hidden", view !== "assistant");
   const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
@@ -938,10 +1017,10 @@ function createTicketCard(ticket) {
     const confirmation = node("div", "ticket-actions customer-confirmation");
     const resolvedButton = node("button", "button button-primary", "Đã giải quyết");
     resolvedButton.type = "button";
-    resolvedButton.addEventListener("click", () => changeTicketStatus(ticket.id, "closed"));
+    resolvedButton.addEventListener("click", () => changeTicketStatus(ticket.id, "closed", ticket.status));
     const reopenButton = node("button", "button button-soft", "Chưa xong · yêu cầu xử lý lại");
     reopenButton.type = "button";
-    reopenButton.addEventListener("click", () => changeTicketStatus(ticket.id, "in_progress"));
+    reopenButton.addEventListener("click", () => changeTicketStatus(ticket.id, "in_progress", ticket.status));
     confirmation.append(resolvedButton, reopenButton);
     detailsBody.append(confirmation);
   }
@@ -1123,7 +1202,7 @@ function createStaffActions(ticket) {
     try {
       await api(`/tickets/${ticket.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: statusSelect.value }),
+        body: JSON.stringify({ status: statusSelect.value, expected_status: ticket.status }),
       });
       await refreshWorkspace();
     } catch (error) {
@@ -1131,7 +1210,12 @@ function createStaffActions(ticket) {
     }
   });
 
+  const assignmentLocked = ["resolved", "closed"].includes(ticket.status);
   const assigneeSelect = document.createElement("select");
+  assigneeSelect.disabled = assignmentLocked;
+  if (assignmentLocked) {
+    assigneeSelect.title = window.helpdeskI18n.translate("Không thể đổi phân công khi ticket đã giải quyết hoặc đóng.");
+  }
   assigneeSelect.setAttribute("aria-label", `Người xử lý ticket ${ticket.id}`);
   const unassigned = node("option", "", "Chọn nhân viên IT");
   unassigned.value = "";
@@ -1145,11 +1229,12 @@ function createStaffActions(ticket) {
   });
   const assignButton = node("button", "button button-quiet", "Giao cho IT");
   assignButton.type = "button";
-  assignButton.disabled = !state.staff.length || !ticket.assignee;
+  assignButton.disabled = assignmentLocked || !state.staff.length || !ticket.assignee;
   assigneeSelect.addEventListener("change", () => {
-    assignButton.disabled = !assigneeSelect.value;
+    assignButton.disabled = assignmentLocked || !assigneeSelect.value;
   });
   assignButton.addEventListener("click", async () => {
+    if (assignmentLocked) return;
     try {
       await api(`/tickets/${ticket.id}/assignment`, {
         method: "PUT",
@@ -1213,7 +1298,7 @@ async function submitComment(event) {
   }
 }
 
-async function changeTicketStatus(ticketId, status) {
+async function changeTicketStatus(ticketId, status, expectedStatus) {
   const prompt = status === "in_progress"
     ? "Yêu cầu IT tiếp tục xử lý ticket này?"
     : status === "closed"
@@ -1223,7 +1308,7 @@ async function changeTicketStatus(ticketId, status) {
   try {
     await api(`/tickets/${ticketId}`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, expected_status: expectedStatus }),
     });
     await refreshWorkspace();
   } catch (error) {
@@ -1295,41 +1380,6 @@ async function submitRating(event) {
   }
 }
 
-async function submitTicket(event) {
-  event.preventDefault();
-  if (state.ticketBusy) return;
-  state.ticketBusy = true;
-  const form = event.currentTarget;
-  const submitButton = form.querySelector('button[type="submit"]');
-  submitButton.disabled = true;
-  form.setAttribute("aria-busy", "true");
-  setMessage("ticketMessage", "");
-  const payload = Object.fromEntries(new FormData(form).entries());
-  try {
-    const created = await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
-    form.reset();
-    byId("ticketSearch").value = "";
-    byId("statusFilter").value = "";
-    byId("categoryFilter").value = "";
-    byId("fromDateFilter").value = "";
-    byId("toDateFilter").value = "";
-    setMessage("ticketMessage", "Đã gửi yêu cầu. Mã ticket và tiến độ được lưu trong mục bên dưới.", false);
-    await refreshWorkspace();
-    setWorkspaceView("tickets");
-    const receipt = byId("ticketReceipt");
-    receipt.textContent = `${window.helpdeskI18n.translate("Đã tạo yêu cầu")} HD-${String(created.ticket.id).padStart(4, "0")}. ${window.helpdeskI18n.translate("Bạn có thể theo dõi tiến độ trong danh sách bên dưới.")}`;
-    receipt.classList.remove("hidden");
-    const firstTicket = byId("ticketList").querySelector(".ticket-card");
-    firstTicket?.scrollIntoView({ behavior: "smooth", block: "center" });
-  } catch (error) {
-    setMessage("ticketMessage", error.message);
-  } finally {
-    state.ticketBusy = false;
-    submitButton.disabled = false;
-    form.removeAttribute("aria-busy");
-  }
-}
-
 function buildHandoffDescription(question, matches = []) {
   const sources = [...new Set(matches.map((match) => match.source).filter(Boolean))];
   if (!sources.length) return question;
@@ -1349,14 +1399,21 @@ async function askKnowledge(event, options = {}) {
   setWorkspaceView("assistant");
   if (state.ragBusy) return;
   state.ragBusy = true;
+  const requestToken = state.token;
+  byId("newChatBtn").disabled = true;
   const sendButton = byId("ragForm").querySelector('button[type="submit"]');
   sendButton.disabled = true;
   byId("ragForm").setAttribute("aria-busy", "true");
   byId("ragQuestion").value = question;
   byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-  const result = byId("ragResult");
-  result.classList.remove("hidden");
-  result.replaceChildren(node("p", "rag-answer", "Đang tìm trong tài liệu nội bộ..."));
+  const transcript = byId("ragResult");
+  transcript.classList.remove("hidden");
+  const result = node("article", "assistant-turn");
+  result.tabIndex = -1;
+  result.append(node("div", "question-bubble", question), node("p", "rag-answer", "Đang phân loại và tìm hướng dẫn phù hợp..."));
+  transcript.append(result);
+  byId("ragQuestion").value = "";
+  byId("assistantChatScroll").scrollTop = byId("assistantChatScroll").scrollHeight;
   try {
     const data = await api("/rag/ask", {
       method: "POST",
@@ -1365,14 +1422,16 @@ async function askKnowledge(event, options = {}) {
         ...(state.chatSessionId ? { session_id: state.chatSessionId } : {}),
       }),
     });
+    if (state.token !== requestToken) return;
     state.chatSessionId = data.session_id;
+    byId("assistantGapSummary").textContent = data.grounded ? "Đã tìm thấy tài liệu cho câu hỏi vừa gửi. Nguồn tham khảo nằm trong hội thoại." : "Câu hỏi vừa gửi chưa có nguồn phù hợp. Chọn gửi IT để được hỗ trợ và đề nghị bổ sung hướng dẫn.";
     result.replaceChildren(node("div", "question-bubble", question), node("p", "rag-answer", data.answer));
     result.append(node("p", `rag-evidence ${data.grounded ? "" : "rag-evidence-empty"}`,
       data.grounded ? "Có tài liệu tham khảo — hãy đối chiếu trước khi thực hiện." : "Chưa tìm thấy nguồn phù hợp. Bạn có thể bổ sung thông tin hoặc chuyển cho IT."));
     if (data.sources.length) {
       const sourceCard = (match, source, index) => {
-        const card = node("div", "rag-source");
-        const heading = node("strong", "", `${index + 1}. ${source.title} · ${source.source}`);
+        const card = node("details", "rag-source");
+        const heading = node("summary", "", `${index + 1}. ${source.title} · ${source.source}`);
         card.append(heading, renderRunbook(match.content));
         return card;
       };
@@ -1413,29 +1472,128 @@ async function askKnowledge(event, options = {}) {
     result.append(feedback);
     await loadRagSessions();
     result.focus({ preventScroll: true });
-    result.scrollIntoView({ behavior: "smooth", block: "center" });
+    const chatScroll = byId("assistantChatScroll");
+    chatScroll.scrollTop += result.getBoundingClientRect().top - chatScroll.getBoundingClientRect().top;
   } catch (error) {
-    showRagResult(error.message);
+    if (state.token === requestToken) {
+      result.replaceChildren(node("div", "question-bubble", question), node("p", "form-message error", error.message));
+      byId("ragQuestion").value = question;
+    }
   } finally {
+    byId("newChatBtn").disabled = false;
     state.ragBusy = false;
     sendButton.disabled = false;
     byId("ragForm").removeAttribute("aria-busy");
   }
 }
 
-function addTicketHandoff(container, question, grounded, triage, options = {}) {
-  const triageCard = node("div", "triage-card");
-  triageCard.append(
-    node("strong", "", "Gợi ý phân loại · cần bạn xác nhận"),
+function appendAssistantTicketReceipt(container, ticket, priorityLabel) {
+  const receipt = node("div", "assistant-ticket-receipt");
+  const ticketId = `HD-${String(ticket.id).padStart(4, "0")}`;
+  receipt.append(
+    node("strong", "", "Đã tạo ticket IT"),
+    node("p", "", `${ticketId} · ${ticket.title}`),
     node(
-      "span",
-      "triage-values",
-      `${categoryLabels[triage.category] || triage.category} · ${priorityLabels[triage.priority] || triage.priority}`,
+      "p",
+      "muted",
+      `${categoryLabels[ticket.category] || ticket.category} · ${priorityLabels[ticket.priority] || priorityLabel} · ${statusLabels[ticket.status] || ticket.status}`
     ),
-    node("small", "", `${triage.category_reason} ${triage.priority_reason}`),
+    node("p", "muted", "Trạng thái sẽ được cập nhật trong mục Ticket của tôi.")
+  );
+
+  const actions = node("div", "triage-action-buttons");
+  const viewTickets = node("button", "button button-soft", "Ticket IT của tôi đến đâu?");
+  viewTickets.type = "button";
+  viewTickets.addEventListener("click", () => setWorkspaceView("tickets"));
+  const done = node("button", "button button-success", "Xong, cảm ơn");
+  done.type = "button";
+  done.addEventListener("click", () => {
+    state.chatSessionId = null;
+    byId("ragQuestion").focus({ preventScroll: true });
+  });
+  actions.append(viewTickets, done);
+  receipt.append(actions);
+  container.replaceChildren(receipt);
+}
+
+async function createAssistantTicket(actionContainer, submitButton, question, cleanTitle, triage, options, priorityLabel) {
+  if (state.assistantTicketBusy || submitButton.disabled) return;
+  state.assistantTicketBusy = true;
+  const requestToken = state.token;
+  submitButton.disabled = true;
+  submitButton.textContent = "Đang gửi yêu cầu cho IT...";
+  const payload = {
+    title: cleanTitle,
+    description: buildHandoffDescription(question, options.matches),
+    category: triage.category || "general",
+    priority: triage.priority || "medium",
+  };
+
+  try {
+    const created = await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
+    const ticket = created?.ticket;
+    if (!Number.isSafeInteger(ticket?.id) || ticket.id <= 0) {
+      throw new Error("Chưa xác định được mã ticket từ phản hồi.");
+    }
+    // Do not render a success receipt into a chat that belongs to a signed-out user.
+    if (state.token !== requestToken) return;
+    appendAssistantTicketReceipt(actionContainer, ticket, priorityLabel);
+    try {
+      await refreshWorkspace();
+    } catch {
+      // The ticket was already created; refreshing the surrounding widgets is non-critical.
+    }
+  } catch (error) {
+    if (state.token !== requestToken) return;
+    const notice = node(
+      "div",
+      "triage-escalate-banner",
+      `${error.message || "Không xác nhận được việc tạo ticket."} Kiểm tra Ticket của tôi trước khi gửi lại để tránh tạo trùng.`
+    );
+    const viewTickets = node("button", "button button-soft", "Mở Ticket của tôi");
+    viewTickets.type = "button";
+    viewTickets.addEventListener("click", () => setWorkspaceView("tickets"));
+    actionContainer.replaceChildren(notice, viewTickets);
+  } finally {
+    state.assistantTicketBusy = false;
+  }
+}
+
+function addTicketHandoff(container, question, grounded, triage, options = {}) {
+  const isEscalate = triage.resolution_scope === "ESCALATE_IT";
+  const naviCategory = triage.navi_category || categoryLabels[triage.category] || triage.category;
+  const priorityLabel = triage.priority_label || priorityLabels[triage.priority] || triage.priority;
+  const title = question.replace(/\s+/g, " ").trim().slice(0, 160);
+  const cleanTitle = title.length >= 5 ? title : `Hỗ trợ: ${title}`;
+
+  // Thẻ phân loại tự động (Auto-Triage Card - Navi IT Helpdesk)
+  const triageCard = node("div", `triage-card triage-navi-card ${isEscalate ? "triage-card-escalate" : "triage-card-selfservice"}`);
+  const triageHeader = node("div", "triage-navi-header");
+
+  const badgeCategory = node("span", "triage-badge triage-badge-category", `📂 Danh mục: ${naviCategory}`);
+  const badgePriority = node("span", `triage-badge triage-badge-priority triage-badge-priority-${triage.priority}`, `⚡ Mức ưu tiên: ${priorityLabel}`);
+  const badgeScope = node(
+    "span",
+    `triage-badge triage-badge-scope ${isEscalate ? "triage-badge-scope-escalate" : "triage-badge-scope-selfservice"}`,
+    isEscalate ? "🛡️ Phân luồng: Cần IT can thiệp (ESCALATE_IT)" : "🔧 Phân luồng: Tự khắc phục (SELF_SERVICE)"
+  );
+  triageHeader.append(badgeCategory, badgePriority, badgeScope);
+
+  const triageReason = node(
+    "small",
+    "triage-navi-reason",
+    `${triage.category_reason || ""} ${triage.priority_reason || ""}`.trim()
+  );
+
+  triageCard.append(
+    node("strong", "triage-navi-title", "Phân loại sự cố tự động (Auto-Triage)"),
+    triageHeader,
+    triageReason
   );
   container.append(triageCard);
-  if (state.user.role !== "user") {
+
+  // Đối với IT Staff / Admin: Giữ nguyên công cụ chèn gợi ý phản hồi
+  if (state.user && state.user.role !== "user") {
     container.append(
       node("p", "handoff-note", "Đối chiếu nguồn trước khi dùng hướng dẫn để phản hồi ticket."),
     );
@@ -1461,32 +1619,77 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
     }
     return;
   }
-  const handoff = node(
-    "p",
-    "handoff-note",
-    grounded
-      ? "Chưa giải quyết được? Chuyển nội dung này cho IT, không cần gõ lại."
-      : "Chưa có hướng dẫn phù hợp. Gửi yêu cầu để IT tiếp nhận.",
-  );
-  const draftButton = node(
-    "button",
-    "button button-soft",
-    grounded ? "Chuyển thành yêu cầu IT" : "Gửi yêu cầu cho IT",
-  );
-  draftButton.type = "button";
-  draftButton.addEventListener("click", () => {
-    setWorkspaceView("submit");
-    const title = question.replace(/\s+/g, " ").trim().slice(0, 160);
-    byId("ticketTitle").value = title.length >= 5 ? title : `Hỗ trợ: ${title}`;
-    byId("ticketDescription").value = buildHandoffDescription(question, options.matches);
-    byId("ticketCategory").value = triage.category;
-    byId("ticketPriority").value = triage.priority;
-    byId("ticketMessage").textContent = "Đã điền sẵn nội dung. Kiểm tra lại rồi gửi cho IT.";
-    byId("ticketMessage").classList.add("success-message");
-    byId("createSection").scrollIntoView({ behavior: "smooth", block: "start" });
-    byId("ticketTitle").focus({ preventScroll: true });
-  });
-  container.append(handoff, draftButton);
+
+  // Bước 2: Phản hồi & Tương tác giao diện theo mô hình Navi IT Helpdesk
+  if (!isEscalate) {
+    // --- Trường hợp 1: Người dùng tự khắc phục được (SELF_SERVICE) ---
+    const actionContainer = node("div", "triage-action-box triage-selfservice-box");
+    const hint = node("p", "triage-action-hint", "💡 Thực hiện theo các bước hướng dẫn tự khắc phục ở trên. Hãy chọn kết quả sau khi thử:");
+    const btnGroup = node("div", "triage-action-buttons");
+
+    // Nút 1: [Đã khắc phục xong] (Đóng phiên hỗ trợ)
+    const btnResolved = node("button", "button button-success btn-resolved-close", "✓ Đã khắc phục xong");
+    btnResolved.type = "button";
+    btnResolved.addEventListener("click", () => {
+      if (state.ragBusy) return;
+      actionContainer.replaceChildren(
+        node(
+          "div",
+          "triage-resolved-alert",
+          "🎉 Cảm ơn bạn! Phiên hỗ trợ sự cố đã hoàn tất thành công. Bạn có thể nhấn 'Phiên mới' để bắt đầu câu hỏi khác bất cứ lúc nào."
+        )
+      );
+      state.chatSessionId = null;
+      byId("ragQuestion").value = "";
+    });
+
+    // Nút 2: only an explicit click creates a ticket, without sending the user to a second form.
+    const btnEscalateFallback = node("button", "button button-soft btn-still-issue", "⚠️ Vẫn chưa được - Gửi phiếu cho IT");
+    btnEscalateFallback.type = "button";
+    btnEscalateFallback.addEventListener("click", () =>
+      createAssistantTicket(actionContainer, btnEscalateFallback, question, cleanTitle, triage, options, priorityLabel)
+    );
+
+    btnGroup.append(btnResolved, btnEscalateFallback);
+    actionContainer.append(hint, btnGroup);
+    container.append(actionContainer);
+  } else {
+    // --- Trường hợp 2: Sự cố vượt thẩm quyền / cần IT can thiệp (ESCALATE_IT) ---
+    const escalateContainer = node("div", "triage-action-box triage-escalate-box");
+
+    // Cảnh báo vượt quyền / cần IT
+    const alertBanner = node("div", "triage-escalate-banner");
+    alertBanner.append(
+      node("strong", "", "⚠️ Tác vụ cần kỹ thuật viên IT can thiệp trực tiếp"),
+      node("p", "", triage.escalation_reason || "Sự cố này vượt thẩm quyền người dùng (cần quyền Quản trị viên Admin, cấp quyền NAS/VPN hoặc thay thế linh kiện phần cứng). Hệ thống đã tự động phân loại và điền sẵn thông tin."),
+    );
+
+    // Tóm tắt thông tin phân loại tự động điền sẵn
+    const summary = node("div", "triage-prefilled-summary");
+    const line1 = node("div");
+    line1.append(node("strong", "", "Tiêu đề: "), document.createTextNode(cleanTitle));
+    const line2 = node("div");
+    line2.append(
+      node("strong", "", "Danh mục: "),
+      document.createTextNode(naviCategory),
+      document.createTextNode(" · "),
+      node("strong", "", "Mức ưu tiên: "),
+      document.createTextNode(priorityLabel)
+    );
+    summary.append(line1, line2);
+
+    const btnGroup = node("div", "triage-action-buttons");
+    // Nút nổi bật: [Gửi thẳng yêu cầu cho IT ngay] (1-click handoff tạo ticket)
+    const btnDirectHandoff = node("button", "button button-primary-escalate btn-direct-handoff", "🚀 Gửi thẳng yêu cầu cho IT ngay");
+    btnDirectHandoff.type = "button";
+    btnDirectHandoff.addEventListener("click", () =>
+      createAssistantTicket(escalateContainer, btnDirectHandoff, question, cleanTitle, triage, options, priorityLabel)
+    );
+
+    btnGroup.append(btnDirectHandoff);
+    escalateContainer.append(alertBanner, summary, btnGroup);
+    container.append(escalateContainer);
+  }
 }
 
 function showRagResult(message) {
@@ -1496,6 +1699,20 @@ function showRagResult(message) {
   result.focus({ preventScroll: true });
   result.scrollIntoView({ behavior: "smooth", block: "center" });
 }
+
+// Knowledge Base methods are modularized in /static/modules/knowledge.js
+const loadKnowledge = () => (window.loadKnowledge ? window.loadKnowledge() : Promise.resolve());
+const uploadKnowledge = (event) => (window.uploadKnowledge ? window.uploadKnowledge(event) : Promise.resolve());
+
+const updateLivePreview = () => (window.updateLivePreview ? window.updateLivePreview() : undefined);
+const openKnowledgeEditor = (identifier) => (window.openKnowledgeEditor ? window.openKnowledgeEditor(identifier) : Promise.resolve());
+const saveKnowledgeDocument = (event) => (window.saveKnowledgeDocument ? window.saveKnowledgeDocument(event) : Promise.resolve());
+const openKnowledgeVersions = (identifier, title) => (window.openKnowledgeVersions ? window.openKnowledgeVersions(identifier, title) : Promise.resolve());
+const openKnowledgeEditorForTicket = (ticket) => (window.openKnowledgeEditorForTicket ? window.openKnowledgeEditorForTicket(ticket) : undefined);
+const loadAdminUsers = () => (window.loadAdminUsers ? window.loadAdminUsers() : Promise.resolve());
+const createAdminUser = (event) => (window.createAdminUser ? window.createAdminUser(event) : Promise.resolve());
+const loadNotificationStatus = () => (window.loadNotificationStatus ? window.loadNotificationStatus() : Promise.resolve());
+const testNotification = (channel) => (window.testNotification ? window.testNotification(channel) : Promise.resolve());
 
 async function loadAnalytics() {
   try {
@@ -1510,10 +1727,17 @@ async function loadAnalytics() {
       (analytics.status_breakdown.resolved || 0) + (analytics.status_breakdown.closed || 0);
     byId("statOverdue").textContent = analytics.overdue_tickets;
     if (byId("statSelfService")) {
+      const rate = analytics.helpful_feedback_rate !== undefined ? analytics.helpful_feedback_rate : analytics.self_service_rate;
       byId("statSelfService").textContent =
-        analytics.self_service_rate !== null && analytics.self_service_rate !== undefined
-          ? `${analytics.self_service_rate}%`
-          : "—";
+        rate !== null && rate !== undefined ? `${rate}%` : "—";
+      const detail = byId("statSelfServiceDetail");
+      if (detail) {
+        if (analytics.total_feedback > 0) {
+          detail.textContent = `${analytics.helpful_feedback_count}/${analytics.total_feedback} đánh giá hữu ích (${analytics.total_rag_queries} câu hỏi)`;
+        } else {
+          detail.textContent = "Chưa có phản hồi từ người dùng";
+        }
+      }
     }
     byId("statResolution").textContent = analytics.average_resolution_hours === null
       ? "—"
@@ -1629,8 +1853,11 @@ async function loadRagSessions() {
       );
       button.type = "button";
       button.addEventListener("click", async () => {
+        if (state.ragBusy) return;
+        const sessionToken = state.token;
         try {
           const conversation = await api(`/rag/sessions/${encodeURIComponent(session.id)}`);
+          if (state.token !== sessionToken || state.ragBusy) return;
           state.chatSessionId = session.id;
           const result = byId("ragResult");
           result.classList.remove("hidden");
@@ -1697,28 +1924,15 @@ window.addEventListener("helpdesk-language-changed", () => {
   }
 });
 loadPublicConfig();
-document.querySelectorAll("[data-shortcut]").forEach((button) => {
-  button.addEventListener("click", () => {
-    setWorkspaceView(button.dataset.shortcut);
-    if (button.dataset.shortcut === "assistant") byId("ragQuestion").focus();
-    if (button.dataset.shortcut === "submit") byId("ticketTitle").focus();
-  });
-});
-byId("workspaceMenuToggle").addEventListener("click", () => {
-  const open = byId("workspaceSidebar").classList.toggle("menu-open");
-  byId("workspaceMenuToggle").setAttribute("aria-expanded", String(open));
-});
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && byId("workspaceSidebar").classList.contains("menu-open")) {
-    byId("workspaceSidebar").classList.remove("menu-open");
-    byId("workspaceMenuToggle").setAttribute("aria-expanded", "false");
-    byId("workspaceMenuToggle").focus();
-  }
-});
 byId("loginForm").addEventListener("submit", login);
-byId("logoutBtn").addEventListener("click", signOut);
+byId("logoutBtn").addEventListener("click", logout);
 byId("changePasswordBtn").addEventListener("click", () => openChangePasswordModal(false));
-byId("cancelChangePasswordBtn").addEventListener("click", closeChangePasswordModal);
+byId("deleteAccountBtn")?.addEventListener("click", deleteAccount);
+byId("profileDeleteAccountBtn")?.addEventListener("click", deleteAccount);
+byId("cancelChangePasswordBtn").addEventListener("click", () => {
+  if (byId("changePasswordModal")?.dataset.forced === "true") logout();
+  else closeChangePasswordModal();
+});
 byId("changePasswordForm").addEventListener("submit", handleChangePassword);
 const changePasswordModal = byId("changePasswordModal");
 if (changePasswordModal) {
@@ -1800,6 +2014,19 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+byId("workspaceMenuToggle")?.addEventListener("click", () => {
+  const open = byId("workspaceSidebar").classList.toggle("menu-open");
+  byId("workspaceMenuToggle").setAttribute("aria-expanded", String(open));
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && byId("workspaceSidebar").classList.contains("menu-open")) {
+    byId("workspaceSidebar").classList.remove("menu-open");
+    byId("workspaceMenuToggle").setAttribute("aria-expanded", "false");
+    byId("workspaceMenuToggle").focus();
+  }
+});
+
 byId("openEmergencyModalBtn")?.addEventListener("click", openEmergencyModal);
 byId("closeEmergencyModalBtn")?.addEventListener("click", closeEmergencyModal);
 byId("cancelEmergencyBtn")?.addEventListener("click", closeEmergencyModal);
@@ -1829,17 +2056,16 @@ if (knowledgeVersionsModal) {
 
 byId("refreshNotificationsBtn")?.addEventListener("click", loadNotificationStatus);
 byId("testTelegramBtn")?.addEventListener("click", () => testNotification("telegram"));
-byId("testDiscordBtn")?.addEventListener("click", () => testNotification("discord"));
 byId("testEmailBtn")?.addEventListener("click", () => testNotification("email"));
 
 document.querySelectorAll(".service-tile").forEach((tile) => {
   tile.addEventListener("click", () => {
     const category = tile.dataset.category;
-    if (category && byId("ticketCategory")) {
-      byId("ticketCategory").value = category;
+    setWorkspaceView("assistant");
+    if (category && !byId("ragQuestion").value.trim()) {
+      byId("ragQuestion").value = `Tôi cần hỗ trợ về ${categoryLabels[category] || category}.`;
     }
-    setWorkspaceView("submit");
-    byId("ticketTitle")?.focus();
+    byId("ragQuestion").focus();
   });
 });
 
@@ -1911,11 +2137,11 @@ byId("closeKnowledgeVersionsBtn")?.addEventListener("click", () => {
   byId("knowledgeVersionsModal").classList.add("hidden");
 });
 
-byId("ticketForm").addEventListener("submit", submitTicket);
 byId("ragForm").addEventListener("submit", askKnowledge);
 byId("adminUserForm").addEventListener("submit", createAdminUser);
 byId("exportReportBtn").addEventListener("click", exportReport);
 byId("newChatBtn").addEventListener("click", () => {
+  if (state.ragBusy) return;
   state.chatSessionId = null;
   byId("ragQuestion").value = "";
   byId("ragResult").replaceChildren();
@@ -1934,20 +2160,6 @@ byId("popularQuestions").addEventListener("click", (event) => {
   if (!button) return;
   byId("ragQuestion").value = button.dataset.question;
   byId("ragForm").requestSubmit();
-});
-byId("draftFromRagBtn").addEventListener("click", () => {
-  const ticketDescription = byId("ticketDescription").value.trim();
-  const ticketTitle = byId("ticketTitle").value.trim();
-  const question = ticketDescription || ticketTitle;
-  if (question) byId("ragQuestion").value = question;
-  setWorkspaceView("assistant");
-  byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-  byId("ragQuestion").focus({ preventScroll: true });
-  if (question) {
-    byId("ragForm").requestSubmit();
-  } else {
-    setMessage("ticketMessage", "Nhập sự cố ở ô tra cứu phía trên; nếu chưa xử lý được, chuyển nội dung sang yêu cầu IT.", false);
-  }
 });
 byId("clearFiltersBtn").addEventListener("click", () => {
   window.clearTimeout(searchTimer);
@@ -2044,28 +2256,69 @@ window.setInterval(refreshServiceState, 30000);
 
 
 // Safe markdown parser method is modularized in /static/modules/markdown.js
+const renderRunbook = (text) => (window.renderRunbook ? window.renderRunbook(text) : document.createElement("div"));
 
-
+let assistantContextRequest = 0;
 async function loadAssistantTickets() {
+  const requestId = ++assistantContextRequest;
+  const requestToken = state.token;
+  const current = () => requestId === assistantContextRequest && requestToken === state.token;
   const list = byId("assistantRecentTickets");
-  const username = state.user?.username;
+  const knowledge = byId("assistantKnowledgeSummary");
+  const activity = byId("assistantActivity");
+  knowledge.replaceChildren(node("p", "muted", "Đang tải tài liệu..."));
+  activity.replaceChildren(node("p", "muted", "Đang tải hoạt động..."));
   list.replaceChildren(node("p", "muted", "Đang tải yêu cầu..."));
+  // Independent panels: a knowledge failure must not hide working ticket data.
+  const knowledgeTask = api("/knowledge?status=published").then((docs) => {
+    if (!current()) return;
+    knowledge.replaceChildren(node("strong", "assistant-stat", String(docs.length)), node("p", "", "Tài liệu đã xuất bản dùng để tra cứu"));
+  }).catch(() => {
+    if (current()) knowledge.replaceChildren(node("p", "muted", "Chưa tải được kho tri thức. Mở lại Trợ lý để thử lại."));
+  });
   try {
     const tickets = await api("/tickets");
-    if (state.user?.username !== username) return;
+    if (!current()) return;
+    const activeTickets = tickets.filter((ticket) => !["resolved", "closed"].includes(ticket.status));
+    const relevant = state.user?.role === "user" ? activeTickets : activeTickets.filter((ticket) => ticket.assignee === state.user?.username || new Date(ticket.sla_deadline) < new Date());
     list.replaceChildren();
-    if (!tickets.length) {
+    if (!relevant.length) {
       const empty = node("div", "empty-state");
-      empty.append(node("strong", "", "Chưa có yêu cầu nào"), node("span", "", "Ticket của bạn sẽ xuất hiện tại đây."));
+      empty.append(node("strong", "", "Không có việc cần xử lý"), node("span", "", "Các ticket đang mở phù hợp với vai trò sẽ xuất hiện tại đây."));
       list.append(empty);
     }
-    tickets.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 3).forEach((ticket) => {
+    relevant.slice().sort((a, b) => new Date(a.sla_deadline) - new Date(b.sla_deadline)).slice(0, 3).forEach((ticket) => {
       const card = node("article", "recent-ticket");
       card.append(node("span", "ticket-id", `HD-${String(ticket.id).padStart(4, "0")}`), node("h3", "", ticket.title), node("span", `tag tag-status-${ticket.status}`, statusLabels[ticket.status] || ticket.status), node("p", "muted", `IT: ${ticket.assignee || "Chưa phân công"}`));
       list.append(card);
     });
+    const recent = tickets.slice().sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0,3);
+    const histories = await Promise.allSettled(recent.map(ticket => api(`/tickets/${ticket.id}/audit`).then(events => events.map(event => ({...event,ticketId:ticket.id})))));
+    if (!current()) return;
+    const events = histories.filter(result => result.status === "fulfilled").flatMap(result => result.value).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0,5);
+    activity.replaceChildren();
+    activity.append(node("p", "muted", "Từ 3 ticket cập nhật gần nhất bạn có quyền xem."));
+    if (histories.some(result => result.status === "rejected")) activity.append(node("p", "muted", "Một phần nhật ký chưa tải được. Mở lại Trợ lý để thử lại."));
+    if (!events.length) activity.append(node("p", "muted", "Chưa có hoạt động để hiển thị."));
+    events.forEach(event => {
+      const item = node("div", "assistant-activity-item");
+      item.append(node("span", "", `#${event.ticketId} · ${auditEventLabels[event.event] || event.event}`),node("small", "", new Date(event.timestamp).toLocaleString(window.helpdeskI18n.locale())));
+      activity.append(item);
+    });
   } catch {
-    list.replaceChildren(node("p", "muted", "Không tải được ticket. Mở hàng đợi để thử lại."));
+    if (current()) {
+      list.replaceChildren(node("p", "muted", "Không tải được ticket. Mở hàng đợi để thử lại."));
+      activity.replaceChildren(node("p", "muted", "Không tải được hoạt động. Mở lại Trợ lý để thử lại."));
+    }
   }
+  await knowledgeTask;
 }
 byId("openTicketsBtn").addEventListener("click", () => setWorkspaceView("tickets"));
+
+// UI-02: Enter submits once; composition and Shift+Enter preserve text input.
+byId("ragQuestion").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+    event.preventDefault();
+    if (!state.ragBusy) byId("ragForm").requestSubmit();
+  }
+});

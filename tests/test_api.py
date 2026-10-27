@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,44 @@ from app.main import app
 from app.rag import build_retrieval_index, generate_answer, load_knowledge_base, retrieve_relevant_context
 
 client = TestClient(app)
+
+
+def test_knowledge_lookup_does_not_read_paths_outside_database(tmp_path, monkeypatch):
+    knowledge_dir = tmp_path / "knowledge"
+    knowledge_dir.mkdir()
+    marker = tmp_path / "outside.md"
+    marker.write_text("# Private marker\nAUD02-PRIVATE", encoding="utf-8")
+    (knowledge_dir / "safe-runbook.md").write_text("# Untracked file", encoding="utf-8")
+    store.create_knowledge_document("Safe runbook", "general", "# Safe runbook",
+                                    custom_slug="safe-runbook.md", status="published")
+    monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
+    headers = auth()
+    identifiers = [
+        str(marker), marker.as_posix(), "../outside.md", "..\\outside.md",
+        "C:\\outside.md", "C:outside.md", "\\\\server\\share\\outside.md",
+        "/outside.md", "safe-runbook.md:outside.md", "%2e%2e%5coutside.md",
+    ]
+    for identifier in identifiers:
+        response = client.get("/knowledge/" + quote(identifier, safe=""), headers=headers)
+        assert response.status_code in {404, 422}, (identifier, response.text)
+        assert "AUD02-PRIVATE" not in response.text
+    response = client.get("/knowledge/safe-runbook.md", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["content"] == "# Safe runbook"
+
+
+def test_knowledge_lookup_ignores_symlink_file(tmp_path, monkeypatch):
+    knowledge_dir = tmp_path / "knowledge"
+    knowledge_dir.mkdir()
+    marker = tmp_path / "outside.md"
+    marker.write_text("# Private marker", encoding="utf-8")
+    try:
+        (knowledge_dir / "linked.md").symlink_to(marker)
+    except OSError as exc:
+        pytest.skip(f"File symlinks unavailable: {exc}")
+    monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
+    response = client.get("/knowledge/linked.md", headers=auth())
+    assert response.status_code == 404
 
 
 @pytest.fixture(autouse=True)
@@ -274,7 +313,6 @@ def test_admin_can_ingest_valid_markdown_and_retriever_refreshes(
 ) -> None:
     knowledge_dir = tmp_path / "knowledge"
     monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
-    monkeypatch.setattr("app.rag.KNOWLEDGE_DIR", knowledge_dir)
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     files = {
@@ -349,6 +387,26 @@ def test_knowledge_upload_rejects_invalid_documents(
         files={"document": (filename, content, "text/markdown")},
     )
     assert response.status_code == expected_status
+
+
+def test_knowledge_multipart_parser_rejects_oversized_text_part(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_save(*args, **kwargs):
+        pytest.fail("Oversized multipart text must be rejected before document save")
+
+    monkeypatch.setattr("app.routers.knowledge.save_knowledge_document", unexpected_save)
+    response = client.post(
+        "/knowledge",
+        headers=auth("admin"),
+        files={
+            "title": (None, "x" * (1024 * 1024 + 1)),
+            "document": ("bounded-test.md", "# Test\nLocal regression", "text/markdown"),
+        },
+    )
+    assert response.status_code in {400, 422}
+    if response.status_code == 400:
+        assert "Part exceeded maximum size" in response.json()["detail"]
 
 
 def test_whitespace_only_ticket_comment_and_rag_input_are_rejected() -> None:
@@ -575,14 +633,17 @@ def test_admin_can_reindex_and_delete_knowledge_document(
     target = knowledge_dir / "vpn.md"
     target.write_text("# VPN Guide\n\nReset the vpn quasar connector.", encoding="utf-8")
     monkeypatch.setattr("app.main.KNOWLEDGE_DIR", knowledge_dir)
-    monkeypatch.setattr("app.rag.KNOWLEDGE_DIR", knowledge_dir)
+    store.create_knowledge_document("VPN Guide", "network", target.read_text(encoding="utf-8"),
+                                    custom_slug="vpn.md", status="published")
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
     assert client.post("/knowledge/vpn.md/reindex", headers=auth("admin")).status_code == 200
     assert client.delete("/knowledge/vpn.md", headers=auth("agent")).status_code == 403
     assert client.delete("/knowledge/..-outside.md", headers=auth("admin")).status_code == 422
     assert client.delete("/knowledge/vpn.md", headers=auth("admin")).status_code == 200
-    assert not target.exists()
+    assert target.exists()  # Legacy files are retained for offline reconciliation.
+    assert store.get_knowledge_document("vpn.md") is None
+    assert client.get("/knowledge/vpn.md", headers=auth("admin")).status_code == 404
     assert client.delete("/knowledge/vpn.md", headers=auth("admin")).status_code == 404
     load_knowledge_base.cache_clear()
     build_retrieval_index.cache_clear()
@@ -703,6 +764,149 @@ def test_analytics_and_ticket_filters() -> None:
         f"/tickets?from={today}&to=2020-01-01",
         headers=staff_headers,
     ).status_code == 422
+
+
+@pytest.mark.parametrize("change", ["edit", "archive", "reject", "restore", "delete", "publish"])
+def test_knowledge_changes_reach_an_independent_warm_reader(change: str, knowledge_reader_process) -> None:
+    # Setup only touches the isolated fixture DB; keep a single controlled document.
+    with store._connect() as connection:
+        connection.execute("UPDATE knowledge_documents SET status = 'archived'")
+    admin_headers = auth("admin")
+    user_headers = auth()
+    initial = "# VPN FortiClient\nAUD08-INITIAL FortiClient VPN troubleshooting policy"
+    revised = "# VPN FortiClient\nAUD08-REVISED FortiClient VPN troubleshooting policy"
+    created = client.post(
+        "/knowledge", headers=admin_headers,
+        json={"title": "VPN Worker Policy", "category": "network", "content": initial,
+              "status": "draft" if change == "publish" else "published"},
+    )
+    assert created.status_code == 201
+    slug = created.json()["slug"]
+    if change == "restore":
+        assert client.put(
+            f"/knowledge/{slug}", headers=admin_headers, json={"content": revised},
+        ).status_code == 200
+    question = "Tôi không kết nối được VPN FortiClient"
+    before = client.post("/rag/ask", headers=user_headers, json={"question": question})
+    assert before.status_code == 200
+    with knowledge_reader_process() as ask:
+        warm = ask(question)
+        assert warm["grounded"] is (change != "publish")
+        if change in {"edit", "archive"}:
+            payload = {"content": revised} if change == "edit" else {"status": "archived"}
+            updated = client.put(f"/knowledge/{slug}", headers=admin_headers, json=payload)
+        elif change in {"reject", "publish"}:
+            updated = client.post(
+                f"/knowledge/{slug}/review", headers=admin_headers,
+                json={"action": "approve" if change == "publish" else "reject"},
+            )
+        elif change == "restore":
+            updated = client.post(f"/knowledge/{slug}/restore/1", headers=admin_headers)
+        else:
+            updated = client.delete(f"/knowledge/{slug}", headers=admin_headers)
+        assert updated.status_code == 200
+        parent = client.post("/rag/ask", headers=user_headers, json={"question": question}).json()
+        remote = ask(question)
+        assert remote["pid"] == warm["pid"]
+        assert remote["matches"] == parent["matches"]
+        visible = change in {"edit", "restore", "publish"}
+        assert remote["grounded"] is visible
+        if visible:
+            marker = "AUD08-REVISED" if change == "edit" else "AUD08-INITIAL"
+            assert marker in remote["matches"][0]["content"]
+        else:
+            assert remote["matches"] == remote["sources"] == []
+
+
+def test_warm_retrieval_cache_fails_closed_on_store_error(monkeypatch):
+    from sqlite3 import OperationalError
+
+    headers = auth()
+    question = {"question": "Tôi không kết nối được VPN FortiClient"}
+    warm = client.post("/rag/ask", headers=headers, json=question)
+    assert warm.status_code == 200 and warm.json()["grounded"] is True
+    session_id = warm.json()["session_id"]
+
+    def unavailable(*args, **kwargs):
+        raise OperationalError("AUD08-SYNTHETIC-DB-ERROR")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "list_knowledge_documents", unavailable)
+        failed = client.post("/rag/ask", headers=headers, json=question)
+        assert failed.status_code == 503
+        assert "AUD08-SYNTHETIC-DB-ERROR" not in failed.text
+        session = client.get(f"/rag/sessions/{session_id}", headers=headers).json()
+        assert len(session["messages"]) == 2
+    recovered = client.post("/rag/ask", headers=headers, json=question)
+    assert recovered.status_code == 200 and recovered.json()["grounded"] is True
+
+
+def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
+    admin_headers = auth("admin")
+    user_headers = auth()
+    documents = store.list_knowledge_documents(status="published")
+    last_slug = "vpn_forticlient.md"
+    assert any(doc["slug"] == last_slug for doc in documents)
+    for doc in documents:
+        if doc["slug"] != last_slug:
+            response = client.put(
+                f"/knowledge/{doc['slug']}", headers=admin_headers, json={"status": "archived"},
+            )
+            assert response.status_code == 200
+    question = {"question": "Tôi không kết nối được VPN FortiClient"}
+    before = client.post("/rag/ask", headers=user_headers, json=question)
+    assert before.status_code == 200
+    assert before.json()["grounded"] is True
+    archived = client.put(
+        f"/knowledge/{last_slug}", headers=admin_headers, json={"status": "archived"},
+    )
+    assert archived.status_code == 200
+    assert store.list_knowledge_documents(status="published") == []
+    from app.rag import BASE_KNOWLEDGE_DIR
+    assert (BASE_KNOWLEDGE_DIR / last_slug).is_file()
+    assert client.get("/knowledge", headers=user_headers).json() == []
+    assert client.get(f"/knowledge/{last_slug}", headers=user_headers).status_code == 404
+    after = client.post("/rag/ask", headers=user_headers, json=question)
+    assert after.status_code == 200
+    assert after.json()["grounded"] is False
+    assert after.json()["matches"] == []
+    assert after.json()["sources"] == []
+    assert after.json()["llm_generated"] is False
+    assert load_knowledge_base() == []
+    assert build_retrieval_index() == []
+
+    # Re-publishing invalidates the empty cache and reads the approved DB content.
+    published = client.put(
+        f"/knowledge/{last_slug}", headers=admin_headers,
+        json={"status": "published", "content": "# VPN FortiClient\nAUD05-DB-PUBLISHED VPN access"},
+    )
+    assert published.status_code == 200
+    restored = client.post("/rag/ask", headers=user_headers, json=question)
+    assert restored.status_code == 200
+    assert restored.json()["grounded"] is True
+    assert [doc["source"] for doc in restored.json()["sources"]] == [last_slug]
+    assert "AUD05-DB-PUBLISHED" in restored.json()["matches"][0]["content"]
+
+
+def test_rag_database_failure_returns_503_and_recovers_without_cache_clear(monkeypatch):
+    from sqlite3 import OperationalError
+
+    headers = auth()
+    question = {"question": "Tôi không kết nối được VPN FortiClient"}
+
+    def unavailable(*args, **kwargs):
+        raise OperationalError("AUD05-SYNTHETIC-PRIVATE-DB-DETAIL")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "list_knowledge_documents", unavailable)
+        response = client.post("/rag/ask", headers=headers, json=question)
+        assert response.status_code == 503
+        assert "AUD05-SYNTHETIC-PRIVATE-DB-DETAIL" not in response.text
+        assert "matches" not in response.json()
+        assert client.get("/rag/sessions", headers=headers).json() == []
+    recovered = client.post("/rag/ask", headers=headers, json=question)
+    assert recovered.status_code == 200
+    assert recovered.json()["grounded"] is True
 
 
 def test_rag_finds_vietnamese_printer_and_vpn_sources() -> None:
@@ -1256,14 +1460,56 @@ def test_idor_and_ticket_ownership_isolation() -> None:
     assert client.get(f"/tickets/{alice_t_id}/audit", headers=bob_headers).status_code == 404
 
 
-def test_html_escaping_in_email_dispatch() -> None:
-    # SEC-06 / OPS-02: Dữ liệu động chứa ký tự HTML đặc biệt phải được escape an toàn
-    import html as html_lib
+def test_html_escaping_in_email_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SEC-06 / OPS-02 / AUD-21: Kiểm tra trực tiếp mã sản phẩm app.email_sender
+    # Dữ liệu động chứa ký tự HTML đặc biệt phải được escape an toàn trong payload HTML gửi đi
+    from typing import Any
+    from app import config, email_sender
 
-    raw_body = 'Xin chào <script>alert("xss")</script> & "admin"!'
-    safe_body = html_lib.escape(raw_body).replace("\n", "<br>")
+    captured_payloads: list[dict[str, Any]] = []
 
-    assert "<script>" not in safe_body
-    assert "&lt;script&gt;" in safe_body
-    assert "&amp;" in safe_body
-    assert "&quot;" in safe_body
+    def mock_post(url: str, **kwargs: Any) -> Any:
+        captured_payloads.append(kwargs.get("json", {}))
+
+        class MockResponse:
+            status_code = 200
+            is_success = True
+
+            def json(self) -> dict[str, Any]:
+                return {"id": "msg-mock-123"}
+
+        return MockResponse()
+
+    monkeypatch.setattr(email_sender.httpx, "post", mock_post)
+
+    raw_body = 'Xin chào <script>alert("xss")</script> & "admin"!\nLine 2'
+
+    # 1. Kiểm tra qua Resend provider
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_test_key_12345")
+    success_resend = email_sender._send_via_resend("user@example.com", "Thử nghiệm an toàn HTML", raw_body)
+    assert success_resend is True
+    resend_payload = captured_payloads[-1]
+
+    # Raw text giữ nguyên
+    assert resend_payload["text"] == raw_body
+    # HTML payload phải được escape an toàn
+    assert "<script>" not in resend_payload["html"]
+    assert "&lt;script&gt;" in resend_payload["html"]
+    assert "&amp;" in resend_payload["html"]
+    assert "&quot;" in resend_payload["html"]
+    assert "<br>" in resend_payload["html"]
+
+    # 2. Kiểm tra qua Brevo provider
+    monkeypatch.setattr(config, "BREVO_API_KEY", "xkeysib-test-key-12345")
+    success_brevo = email_sender._send_via_brevo("user@example.com", "Thử nghiệm an toàn HTML Brevo", raw_body)
+    assert success_brevo is True
+    brevo_payload = captured_payloads[-1]
+
+    # Raw textContent giữ nguyên
+    assert brevo_payload["textContent"] == raw_body
+    # HTML payload phải được escape an toàn
+    assert "<script>" not in brevo_payload["htmlContent"]
+    assert "&lt;script&gt;" in brevo_payload["htmlContent"]
+    assert "&amp;" in brevo_payload["htmlContent"]
+    assert "&quot;" in brevo_payload["htmlContent"]
+    assert "<br>" in brevo_payload["htmlContent"]

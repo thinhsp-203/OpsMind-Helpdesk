@@ -1,3 +1,5 @@
+// Keep implementation names private; expose only the existing window API.
+(() => {
 // Render a small Markdown subset using text nodes only: never execute document HTML.
 function renderRunbook(text) {
   const container = document.createElement("div");
@@ -57,3 +59,4 @@ function renderRunbook(text) {
 if (typeof window !== "undefined") {
   window.renderRunbook = renderRunbook;
 }
+})();

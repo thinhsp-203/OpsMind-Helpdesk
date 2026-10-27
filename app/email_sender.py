@@ -9,6 +9,7 @@ import logging
 import smtplib
 import ssl
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -42,6 +43,9 @@ def _mask_token(token: str) -> str:
     return f"{token[:4]}...{token[-4:]}"
 
 
+_VALID_EMAIL_PROVIDERS = frozenset({"smtp", "resend", "brevo", "webhook", "console", "mock"})
+
+
 def resolve_email_provider() -> str:
     """Xác định email provider đang kích hoạt:
     - Nếu EMAIL_PROVIDER được cấu hình cụ thể: 'smtp', 'resend', 'brevo', 'webhook', 'console'.
@@ -50,9 +54,21 @@ def resolve_email_provider() -> str:
         2. brevo (nếu có BREVO_API_KEY)
         3. smtp (nếu SMTP_ENABLED=True)
         4. console (fallback mặc định cho local dev/test)
+
+    Raises:
+        ValueError: Nếu EMAIL_PROVIDER được đặt thành tên không hợp lệ (typo).
+            Giá trị hợp lệ: smtp, resend, brevo, webhook, console.
+            AUD-16: Validates enum to prevent silent mock fallback on misconfiguration.
     """
     configured = (config.EMAIL_PROVIDER or "").lower()
     if configured:
+        # AUD-16: Reject unknown/typo'd provider names — do NOT silently fall back to mock.
+        if configured not in _VALID_EMAIL_PROVIDERS:
+            raise ValueError(
+                f"EMAIL_PROVIDER='{configured}' is not a recognised provider. "
+                f"Valid values: {', '.join(sorted(_VALID_EMAIL_PROVIDERS))}. "
+                "Check for typos (e.g. 'smpt' instead of 'smtp')."
+            )
         return configured
     if config.RESEND_API_KEY:
         return "resend"
@@ -70,7 +86,7 @@ def get_email_status() -> dict[str, Any]:
 
     if provider == "smtp":
         target = f"{config.SMTP_HOST}:{config.SMTP_PORT}"
-        enabled = config.SMTP_ENABLED
+        enabled = bool(config.SMTP_ENABLED and config.SMTP_HOST and 0 < config.SMTP_PORT < 65536)
     elif provider == "resend":
         key = config.RESEND_API_KEY
         target = f"Resend API (...{key[-4:]})" if len(key) >= 4 else "Resend API"
@@ -80,11 +96,7 @@ def get_email_status() -> dict[str, Any]:
         target = f"Brevo API (...{key[-4:]})" if len(key) >= 4 else "Brevo API"
         enabled = bool(key)
     elif provider == "webhook":
-        target = (
-            f"...{config.EMAIL_WEBHOOK_URL[-12:]}"
-            if len(config.EMAIL_WEBHOOK_URL) >= 12
-            else (config.EMAIL_WEBHOOK_URL or "Chưa cấu hình")
-        )
+        target = "Webhook (configured)" if config.EMAIL_WEBHOOK_URL else "Not configured"
         enabled = bool(config.EMAIL_WEBHOOK_URL)
     else:
         target = "Mock Outbox (In-Memory)"
@@ -95,8 +107,45 @@ def get_email_status() -> dict[str, Any]:
         "enabled": enabled,
         "from_email": from_email,
         "target": target,
-        "is_mock": provider == "console" or (provider == "smtp" and not config.SMTP_ENABLED),
+        "is_mock": provider in ("console", "mock"),
     }
+
+
+class EmailConfigurationError(ValueError):
+    """Invalid email configuration; no network call has been attempted."""
+
+
+def validate_email_configuration() -> dict[str, Any]:
+    try:
+        status = get_email_status()
+    except ValueError as exc:
+        raise EmailConfigurationError(str(exc)) from exc
+    if not status['enabled']:
+        raise EmailConfigurationError('Email provider is not configured')
+    if status['is_mock']:
+        if not config.DEMO_MODE:
+            raise EmailConfigurationError('A real email provider is required outside DEMO_MODE')
+        return status
+    sender = parseaddr(config.EMAIL_FROM)[1]
+    if '@' not in sender or any(c in config.EMAIL_FROM for c in ('\r','\n')):
+        raise EmailConfigurationError('EMAIL_FROM must be a valid sender')
+    if status['provider']=='webhook':
+        try:
+            endpoint = urlsplit(config.EMAIL_WEBHOOK_URL)
+        except ValueError as exc:
+            raise EmailConfigurationError('Invalid email webhook URL') from exc
+        if endpoint.scheme!='https' or not endpoint.hostname or endpoint.username or endpoint.password or endpoint.fragment:
+            raise EmailConfigurationError('Email webhook requires an HTTPS URL without user info or fragment')
+    if not config.DEMO_MODE:
+        try:
+            base = urlsplit(config.PUBLIC_BASE_URL)
+        except ValueError as exc:
+            raise EmailConfigurationError('Invalid PUBLIC_BASE_URL') from exc
+        if base.scheme!='https' or not base.hostname or base.username or base.password or base.query or base.fragment:
+            raise EmailConfigurationError('PUBLIC_BASE_URL requires a trusted HTTPS base URL')
+        if status['provider']=='smtp' and (not config.SMTP_SSL_VERIFY or (config.SMTP_PORT!=465 and not config.SMTP_USE_TLS)):
+            raise EmailConfigurationError('Production SMTP requires verified TLS')
+    return status
 
 
 def _send_via_smtp(to_email: str, subject: str, body_text: str) -> bool:
@@ -120,15 +169,15 @@ def _send_via_smtp(to_email: str, subject: str, body_text: str) -> bool:
         with smtp_cls(config.SMTP_HOST, config.SMTP_PORT, timeout=10.0, context=ssl_context) as server:
             if config.SMTP_USER and config.SMTP_PASSWORD:
                 server.login(config.SMTP_USER, config.SMTP_PASSWORD)
-            server.send_message(msg)
+            refused = server.send_message(msg)
     else:
         with smtp_cls(config.SMTP_HOST, config.SMTP_PORT, timeout=10.0) as server:
             if config.SMTP_USE_TLS:
                 server.starttls(context=ssl_context)
             if config.SMTP_USER and config.SMTP_PASSWORD:
                 server.login(config.SMTP_USER, config.SMTP_PASSWORD)
-            server.send_message(msg)
-    return True
+            refused = server.send_message(msg)
+    return refused == {}
 
 
 def _send_via_resend(to_email: str, subject: str, body_text: str) -> bool:
@@ -160,16 +209,11 @@ def _send_via_resend(to_email: str, subject: str, body_text: str) -> bool:
         if resp.is_success:
             _last_send_error = ""
             return True
-        try:
-            err_json = resp.json()
-            err_msg = err_json.get("message") or resp.text
-        except Exception:
-            err_msg = resp.text
-        _last_send_error = f"Resend API (mã {resp.status_code}): {err_msg}"
-        logger.error("Resend API failed: %s - %s", resp.status_code, err_msg)
+        _last_send_error = "Resend provider rejected request (HTTP " + str(resp.status_code) + ")"
+        logger.error("Resend provider rejected request: HTTP %s", resp.status_code)
         return False
     except Exception as exc:
-        _last_send_error = f"Lỗi gọi Resend API: {exc}"
+        _last_send_error = "Resend provider exception: " + type(exc).__name__
         logger.error(_last_send_error)
         return False
 
@@ -208,16 +252,11 @@ def _send_via_brevo(to_email: str, subject: str, body_text: str) -> bool:
         if resp.is_success:
             _last_send_error = ""
             return True
-        try:
-            err_json = resp.json()
-            err_msg = err_json.get("message") or resp.text
-        except Exception:
-            err_msg = resp.text
-        _last_send_error = f"Brevo API (mã {resp.status_code}): {err_msg}"
-        logger.error("Brevo API failed: %s - %s", resp.status_code, err_msg)
+        _last_send_error = "Brevo provider rejected request (HTTP " + str(resp.status_code) + ")"
+        logger.error("Brevo provider rejected request: HTTP %s", resp.status_code)
         return False
     except Exception as exc:
-        _last_send_error = f"Lỗi gọi Brevo API: {exc}"
+        _last_send_error = "Brevo provider exception: " + type(exc).__name__
         logger.error(_last_send_error)
         return False
 
@@ -246,9 +285,19 @@ def dispatch_email(
         logger.warning("Không thể gửi email: địa chỉ email không hợp lệ: %s", to_email)
         return False
 
-    provider = resolve_email_provider()
+    # AUD-16: resolve_email_provider raises ValueError for unknown/typo'd providers.
+    # Catch it so dispatch_email returns False (not raises) on misconfiguration.
+    global _last_send_error
+    try:
+        status = validate_email_configuration()
+        provider = status["provider"]
+        _last_send_error = ""
+    except ValueError as cfg_err:
+        _last_send_error = str(cfg_err)
+        logger.error("Email dispatch aborted — invalid EMAIL_PROVIDER: %s", cfg_err)
+        return False
 
-    if provider == "console" or (provider == "smtp" and not config.SMTP_ENABLED):
+    if provider in ("console", "mock"):
         rec = {
             "to": to_email,
             "subject": subject,
@@ -271,17 +320,21 @@ def dispatch_email(
         elif provider == "webhook":
             ok = _send_via_webhook(to_email, subject, body_text)
         else:
-            logger.warning("Unknown EMAIL_PROVIDER: %s. Falling back to mock outbox.", provider)
-            _outbox.append({"to": to_email, "subject": subject, "body": body_text})
-            return True
+            # AUD-16: This branch is unreachable: resolve_email_provider() already
+            # raised ValueError for any unknown provider. Guard kept for defense-in-depth.
+            _last_send_error = f"EMAIL_PROVIDER='{provider}' is not a recognised provider."
+            logger.error(
+                "Unknown EMAIL_PROVIDER: %s. Refusing to send — no silent mock fallback.",
+                provider,
+            )
+            return False
 
         if ok:
-            logger.info("Email sent successfully via %s to %s", provider, to_email)
+            logger.info("Email request accepted by provider %s", provider)
         return ok
     except Exception as exc:
-        global _last_send_error
-        _last_send_error = str(exc)
-        logger.error("Failed to send email via %s to %s: %s", provider, to_email, exc)
+        _last_send_error = "Provider exception: " + type(exc).__name__
+        logger.error("Email provider %s failed: %s", provider, type(exc).__name__)
         return False
 
 
@@ -333,43 +386,22 @@ def send_password_reset_email(
 def send_account_created_email(
     to_email: str,
     username: str,
-    temp_password: str,
+    reset_token: str,
     base_url: str = "",
     force_change: bool = True,
 ) -> bool:
-    """Gửi email thông báo tài khoản mới được tạo và mật khẩu tạm kèm yêu cầu đổi mật khẩu."""
-    if not to_email or "@" not in to_email:
-        logger.warning("Không thể gửi email tài khoản mới: địa chỉ email không hợp lệ.")
+    """Send a one-use password setup link, never an account password."""
+    if not to_email or '@' not in to_email:
         return False
-
-    clean_base = config.PUBLIC_BASE_URL or (base_url.rstrip("/") if base_url else "http://localhost:8000")
-    login_link = f"{clean_base}/"
-
-    subject = "[OpsMind Helpdesk] Thông tin tài khoản cổng hỗ trợ CNTT"
-    force_note = (
-        "\nLƯU Ý QUAN TRỌNG: Bạn được yêu cầu đổi mật khẩu ngay trong lần đăng nhập đầu tiên để đảm bảo an toàn bảo mật."
-        if force_change
-        else ""
-    )
-    body_text = (
-        f"Xin chào {username},\n\n"
-        f"Tài khoản của bạn trên hệ thống OpsMind Helpdesk đã được khởi tạo thành công.\n\n"
-        f"Thông tin đăng nhập:\n"
-        f"- Cổng truy cập: {login_link}\n"
-        f"- Tên đăng nhập: {username}\n"
-        f"- Mật khẩu tạm thời: {temp_password}\n"
-        f"{force_note}\n\n"
-        f"Trân trọng,\n"
-        f"Bộ phận Hỗ trợ CNTT (IT Support Team)"
-    )
-
-    extra = {
-        "type": "account_created",
-        "username": username,
-        "temp_password": temp_password,
-        "link": login_link,
-    }
-    return dispatch_email(to_email, subject, body_text, extra_record=extra)
+    clean_base = config.PUBLIC_BASE_URL or base_url.rstrip('/')
+    link = f"{clean_base}/#reset-token={reset_token}"
+    note = "Bạn cần đổi mật khẩu ngay trong lần đăng nhập đầu tiên.\n" if force_change else ""
+    body = (f"Xin chào {username},\n\nTài khoản OpsMind Helpdesk của bạn đã được tạo.\n"
+            f"Tên đăng nhập: {username}\n"
+            f"Dùng liên kết một lần để đặt mật khẩu (có hiệu lực tối đa {config.RESET_TOKEN_EXPIRE_MINUTES} phút):\n"
+            f"{link}\n\n{note}Không chia sẻ liên kết này. Nếu không mong đợi thư này, hãy liên hệ IT.")
+    return dispatch_email(to_email, '[OpsMind Helpdesk] Thiết lập mật khẩu tài khoản', body,
+                          extra_record={'type':'account_created','username':username,'token':reset_token,'link':link})
 
 
 def send_test_email(to_email: str) -> tuple[bool, str]:
@@ -388,6 +420,8 @@ def send_test_email(to_email: str) -> tuple[bool, str]:
     )
     ok = dispatch_email(to_email, subject, body_text)
     if ok:
-        return True, f"Đã gửi email thử nghiệm thành công qua {provider.upper()} tới {to_email}."
+        if provider in {'console','mock'}:
+            return True, "Đã ghi nhận thư thử trong DEMO outbox; không gửi email thật."
+        return True, "Provider đã chấp nhận yêu cầu gửi email; chưa xác nhận phát thư."
     err_detail = _last_send_error or "Vui lòng kiểm tra lại cấu hình biến môi trường và log máy chủ."
     return False, f"Không thể gửi email qua {provider.upper()}: {err_detail}"

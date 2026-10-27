@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
 from app import config, email_sender, store
-from app.dependencies import current_user
+from app.dependencies import current_user, require_admin
 from app.notifications import (
     get_notification_channels_status,
     send_test_notification_result,
@@ -16,6 +16,7 @@ from app.schemas import (
     NotificationTestRequest,
     UserCreate,
     UserUpdate,
+    UserDeletion,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,20 +25,20 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/users")
-async def get_users(request: Request) -> list[dict[str, object]]:
-    user = await current_user(request)
+def get_users(request: Request) -> list[dict[str, object]]:
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
     return store.list_users()
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
-async def add_user(
+def add_user(
     request: Request,
     payload: UserCreate,
     background_tasks: BackgroundTasks,
 ) -> dict[str, str]:
-    user = await current_user(request)
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được tạo tài khoản.")
     try:
@@ -50,29 +51,27 @@ async def add_user(
             payload.department.strip(),
             payload.phone.strip(),
             force_password_change=1,
+            invitation_base_url=(config.PUBLIC_BASE_URL or str(request.base_url).rstrip('/')) if payload.email.strip() else None,
         )
         if payload.email.strip():
-            base_url = config.PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
-            background_tasks.add_task(
-                email_sender.send_account_created_email,
-                to_email=payload.email.strip(),
-                username=payload.username,
-                temp_password=payload.password,
-                base_url=base_url,
-                force_change=True,
-            )
+            from app.email_outbox import wake_email_worker
+            background_tasks.add_task(wake_email_worker)
         return created
+    except email_sender.EmailConfigurationError as exc:
+        raise HTTPException(status_code=503, detail="Email chưa được cấu hình hợp lệ; chưa tạo tài khoản.") from exc
+    except store.DatabaseError as exc:
+        raise HTTPException(status_code=503, detail="Chưa lưu được tài khoản và thư mời.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Tên đăng nhập đã tồn tại.") from exc
 
 
 @router.patch("/users/{username}")
-async def update_admin_user(
+def update_admin_user(
     request: Request,
     username: str,
     payload: UserUpdate,
 ) -> dict[str, object]:
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
     existing = store.get_user_credentials(username)
@@ -105,13 +104,30 @@ async def update_admin_user(
     return updated
 
 
+@router.delete("/users/{username}")
+def delete_admin_user(request: Request, username: str, payload: UserDeletion) -> dict[str, str]:
+    actor = current_user(request)
+    require_admin(actor)
+    if payload.confirm_username != username:
+        raise HTTPException(status_code=422, detail="Tên xác nhận phải khớp chính xác tài khoản cần xóa.")
+    try:
+        deleted = store.delete_user(username, actor['username'])
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
+    return {'message': 'Đã xóa tài khoản và dữ liệu đăng nhập. Lịch sử nghiệp vụ đã ẩn danh.'}
+
+
 @router.post("/users/{username}/reset-password")
-async def admin_reset_user_password(
+def admin_reset_user_password(
     request: Request,
     username: str,
     payload: AdminResetPasswordRequest,
 ) -> dict[str, Any]:
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài khoản.")
     existing = store.get_user_credentials(username)
@@ -138,9 +154,9 @@ async def admin_reset_user_password(
 
 
 @router.post("/users/{username}/create-reset-token")
-async def admin_create_user_reset_token(request: Request, username: str) -> dict[str, Any]:
+def admin_create_user_reset_token(request: Request, username: str) -> dict[str, Any]:
     """Cấp mã xác thực và liên kết khôi phục mật khẩu dùng một lần (Dành cho IT Support hỗ trợ trực tiếp)."""
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(
             status_code=403, detail="Chỉ Admin mới được cấp mã khôi phục mật khẩu."
@@ -165,21 +181,58 @@ async def admin_create_user_reset_token(request: Request, username: str) -> dict
 
 
 @router.get("/notifications/status")
-async def get_notifications_status(request: Request) -> dict:
-    actor = await current_user(request)
+def get_notifications_status(request: Request) -> dict:
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được xem cấu hình thông báo.")
     return get_notification_channels_status()
 
 
 @router.post("/notifications/test")
-async def test_notification_channel(
+def test_notification_channel(
     request: Request, payload: NotificationTestRequest
 ) -> dict:
-    actor = await current_user(request)
+    actor = current_user(request)
     if actor["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được gửi thông báo thử nghiệm.")
     ok, msg = send_test_notification_result(payload.channel, target_email=payload.target_email or "")
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "channel": payload.channel, "message": msg}
+
+
+@router.get("/notifications/deliveries")
+def notification_deliveries(request: Request, status: str | None = None, limit: int = 50, before_id: str | None = None) -> list[dict]:
+    from app.notification_outbox import list_deliveries
+    require_admin(current_user(request))
+    if status not in {None, 'pending', 'processing', 'accepted', 'failed', 'not_configured', 'config_changed'}:
+        raise HTTPException(status_code=422, detail="Invalid delivery status")
+    try:
+        return list_deliveries(status, limit, before_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/notifications/deliveries/{delivery_id}/retry")
+def retry_notification_delivery(request: Request, delivery_id: str, background_tasks: BackgroundTasks) -> dict:
+    from app.notification_outbox import retry_delivery, wake_notification_worker
+    actor = current_user(request)
+    require_admin(actor)
+    try:
+        retry_delivery(delivery_id, actor['username'])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Delivery not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(wake_notification_worker)
+    return {"message": "Delivery queued; provider acceptance is not yet confirmed."}
+
+
+@router.get("/email-deliveries")
+def email_deliveries(request: Request, limit: int = 50) -> list[dict]:
+    from app.email_outbox import list_deliveries
+    require_admin(current_user(request))
+    try:
+        return list_deliveries(limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

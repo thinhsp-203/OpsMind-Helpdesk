@@ -16,22 +16,22 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.get("")
-async def analytics(request: Request) -> dict:
-    user = await current_user(request)
+def analytics(request: Request) -> dict:
+    user = current_user(request)
     require_staff(user)
     return store.get_analytics()
 
 
 @router.get("/agents/me")
-async def agent_analytics(request: Request) -> dict:
-    user = await current_user(request)
+def agent_analytics(request: Request) -> dict:
+    user = current_user(request)
     require_staff(user)
     return store.get_agent_analytics(user["username"])
 
 
 @router.get("/export")
-async def export_analytics(request: Request) -> StreamingResponse:
-    user = await current_user(request)
+def export_analytics(request: Request) -> StreamingResponse:
+    user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được xuất báo cáo.")
     tickets = store.list_tickets("", "admin")

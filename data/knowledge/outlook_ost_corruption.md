@@ -1,35 +1,23 @@
-# Outlook Data File (.OST / .PST) Corruption and Repair
+# Sửa lỗi tệp dữ liệu Outlook .OST / .PST và khắc phục profile hỏng
 
-**Từ khóa:** tệp OST, file OST hỏng, lỗi dữ liệu Outlook, sửa lỗi OST, tạo lại profile Outlook, lỗi mở hòm thư, SCANPST.
+**Từ khóa:** tệp OST, file OST hỏng, lỗi dữ liệu Outlook, sửa file pst, scanpst, corrupt profile, tạo profile mới, Outlook không mở được, Webmail, prerequisite & synchronization safety check, user@company.com.ost.old.
 
-## Symptoms
-- Outlook displays startup error: 'Cannot start Microsoft Outlook. Cannot open the Outlook window. The set of folders cannot be opened'.
-- Error: 'Errors have been detected in the file C:\Users\...\AppData\Local\Microsoft\Outlook\user@company.com.ost'.
-- Outlook freezes, enters continuous 'Loading Profile...' or 'Not Responding' state upon launch.
+## Triệu chứng / Dấu hiệu nhận biết
+- Mở Outlook xuất hiện thông báo lỗi: "Cannot start Microsoft Outlook. Cannot open the Outlook window. The set of folders cannot be opened."
+- Outlook báo tệp dữ liệu `.ost` hoặc `.pst` bị lỗi và yêu cầu chạy công cụ quét sửa chữa Scanpst.exe.
+- Outlook thường xuyên bị treo đơ khi đang tải hoặc gửi email, một số thư mục hiển thị sai số lượng thư chưa đọc.
 
-## Checks
-1. Close all Outlook processes via Task Manager (`outlook.exe`).
-2. Locate the offline cache data file at `%LOCALAPPDATA%\Microsoft\Outlook`.
-3. Check the file size of the `.ost` file; if it exceeds 50 GB, Outlook may experience corrupt indexing headers.
-4. Try launching Outlook in Safe Mode: press Win+R > type `outlook.exe /safe` > press Enter.
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Kiểm tra an toàn dữ liệu trên Webmail (Prerequisite & synchronization safety check):** Trước khi thao tác sửa tệp cục bộ trên máy, hãy mở trình duyệt web đăng nhập vào Webmail công ty để xác nhận toàn bộ thư từ quan trọng vẫn còn nguyên vẹn trên máy chủ.
+2. **Khởi động Outlook ở chế độ Safe Mode:** Nhấn tổ hợp phím `Windows + R`, gõ `outlook.exe /safe` rồi nhấn Enter. Nếu Outlook mở được bình thường, nguyên nhân do add-in xung đột.
+3. **Đổi tên tệp OST bị hỏng để hệ thống tự tạo lại:**
+   - Tắt hoàn toàn Outlook (kiểm tra trong Task Manager không còn tiến trình Outlook).
+   - Nhấn `Windows + R`, dán đường dẫn `%localappdata%\Microsoft\Outlook` rồi nhấn Enter.
+   - Tìm file dữ liệu có đuôi `.ost` tương ứng với tài khoản mail của bạn, đổi tên tệp (ví dụ từ file hiện tại thành `user@company.com.ost.old`).
+   - Mở lại Outlook, hệ thống sẽ tự động kết nối máy chủ Exchange và tạo mới tệp `.ost` sạch sẽ để tải dữ liệu về.
+4. **Sử dụng công cụ Scanpst.exe:** Đối với file `.pst` lưu trữ cục bộ, mở công cụ `SCANPST.EXE` trong thư mục cài đặt Office (`C:\Program Files\Microsoft Office\root\Office16`) để quét và khắc phục các lỗi hỏng tệp dữ liệu.
 
-## Resolution
-- For Exchange/Microsoft 365 accounts: Re-create the `.ost` cache file (Safe and standard procedure):
-  1. Close Outlook completely.
-  2. Press Win+R > type `%LOCALAPPDATA%\Microsoft\Outlook` > press Enter.
-  3. Rename `user@company.com.ost` to `user@company.com.ost.old`.
-  4. Launch Outlook: Outlook will automatically create a fresh `.ost` file and re-synchronize emails from the Exchange server.
-- For POP3 local `.pst` archives: Run the Inbox Repair Tool (`scanpst.exe` located in `C:\Program Files\Microsoft Office\root\Office16`):
-  Browse to the `.pst` file, click Start, and click Repair.
-
-## Escalation
-If profile recreation fails with autodiscover errors, open a ticket for IT Helpdesk to rebuild the Windows Mail profile in Control Panel > Mail (Microsoft Outlook).
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Nhấn chuột phải vào thanh Taskbar mở Task Manager, tìm `Microsoft Outlook` và bấm End Task để đóng hoàn toàn.
-2. Thử mở Outlook ở chế độ Safe Mode bằng cách nhấn Win+R gõ `outlook.exe /safe`.
-3. Nếu file dữ liệu `.ost` bị lỗi, nhấn Win+R gõ `%localappdata%\Microsoft\Outlook`, đổi tên file `.ost` thành `.old`. Khi mở lại Outlook, hệ thống sẽ tự động tải lại hòm thư mới từ máy chủ.
-4. Đối với file lưu trữ `.pst` cá nhân, sử dụng công cụ `scanpst.exe` có sẵn của Office để quét và sửa lỗi.
-
-## Source and scope
-- Microsoft Learn, [Repair Outlook Data Files (.pst and .ost)](https://support.microsoft.com/en-us/office/repair-outlook-data-files-pst-and-ost-25663bc3-11ec-4412-86c4-60488afc52f0), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Tệp dữ liệu dung lượng quá lớn (trên 45GB - 50GB) bị phân mảnh nặng, Scanpst không thể khắc phục được.
+- Đã đổi tên tạo lại tệp OST nhưng Outlook vẫn báo lỗi không thể tạo profile mới hoặc lỗi xác thực máy chủ.
+- Cần kỹ thuật viên IT hỗ trợ khôi phục lại dữ liệu lịch sử email từ các bản sao lưu dự phòng máy chủ.

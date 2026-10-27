@@ -179,4 +179,4 @@ py -m scripts.evaluate_rag
 
 1. **Bản chất Prototype:** Hệ thống được thiết kế phục vụ đề tài khóa luận tốt nghiệp, ưu tiên tính minh bạch học thuật, kiểm chứng được nguồn trích dẫn và tối ưu tài nguyên vận hành.
 2. **Mô hình truy xuất:** Hệ thống mặc định sử dụng giải thuật BM25 kết hợp tiền xử lý tiếng Việt chuyên sâu cho môi trường nội bộ không phụ thuộc Internet. Khi cấu hình khóa API LLM, hệ thống có khả năng tổng hợp câu trả lời tự động với cơ chế kiểm soát hallucination.
-3. **Cơ chế kênh thông báo:** Phiên bản hiện tại tập trung hoàn thiện trải nghiệm web portal tập trung, hỗ trợ tích hợp mở rộng sang Telegram/Discord webhook cho các giai đoạn tiếp theo.
+3. **Cơ chế kênh thông báo:** Phiên bản hiện tại tập trung hoàn thiện trải nghiệm web portal tập trung, hỗ trợ tích hợp mở rộng sang Telegram webhook cho các giai đoạn tiếp theo.

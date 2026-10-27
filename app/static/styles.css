@@ -1522,7 +1522,180 @@ button:disabled { cursor: wait; opacity: .65; }
 
 
 
-/* Responsive workspace and accessible reading view. */
+/* Navi IT Helpdesk Auto-Triage & Handoff Styles */
+.triage-navi-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.triage-card-selfservice {
+  border-left: 4px solid #10b981;
+}
+.triage-card-escalate {
+  border-left: 4px solid #ef4444;
+}
+.triage-navi-title {
+  display: block;
+  font-size: 11px;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.triage-navi-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px 0;
+}
+.triage-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+}
+.triage-badge-category {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+.triage-badge-priority {
+  background: #fefce8;
+  color: #854d0e;
+  border: 1px solid #fef08a;
+}
+.triage-badge-priority-urgent {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.triage-badge-priority-high {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+.triage-badge-scope-selfservice {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.triage-badge-scope-escalate {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.triage-navi-reason {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+.triage-action-box {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+}
+.triage-selfservice-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+.triage-escalate-box {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+.triage-action-hint {
+  font-size: 12px;
+  color: #166534;
+  font-weight: 500;
+  margin: 0 0 8px 0;
+}
+.triage-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.button-success {
+  background: #10b981;
+  color: #ffffff;
+  border: 1px solid #059669;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+.button-success:hover {
+  background: #059669;
+}
+.button-primary-escalate {
+  background: #dc2626;
+  color: #ffffff;
+  border: 1px solid #b91c1c;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 9px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+  transition: all 0.15s ease;
+}
+.button-primary-escalate:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+.triage-resolved-alert {
+  padding: 10px 14px;
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 13px;
+}
+.triage-escalate-banner {
+  margin-bottom: 10px;
+}
+.triage-escalate-banner strong {
+  display: block;
+  font-size: 13px;
+  color: #9a3412;
+  margin-bottom: 4px;
+}
+.triage-escalate-banner p {
+  margin: 0;
+  font-size: 12px;
+  color: #7c2d12;
+  line-height: 1.4;
+}
+.assistant-ticket-receipt {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #8ee0b7;
+  border-radius: 12px;
+  background: #effcf4;
+}
+.assistant-ticket-receipt p {
+  margin: 0;
+}
+.triage-prefilled-summary {
+  background: #ffffff;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #374151;
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+/* Responsive workspace and accessible runbook reader from main. */
 .mobile-menu-toggle { display: none; }
 .knowledge-reader { width: min(850px, 100%); max-height: 90dvh; overflow-y: auto; }
 .knowledge-reader h2, .knowledge-document strong { overflow-wrap: anywhere; }
@@ -1560,7 +1733,5 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
-
 @media(max-width:760px) { .knowledge-header-actions { display:flex; flex-wrap:wrap; gap:8px; width:100%; } .knowledge-header-actions .button { flex:1 1 140px; } }
-
 .agent-integrations button { min-height:44px; white-space:normal; }

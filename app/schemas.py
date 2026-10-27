@@ -5,6 +5,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 Role = Literal["user", "agent", "admin"]
+
+
+class UserDeletion(BaseModel):
+    confirm_username: str = Field(min_length=1, max_length=120)
+
 TicketStatus = Literal[
     "new", "in_progress", "pending_waiting_user", "resolved", "closed", "escalated"
 ]
@@ -132,9 +137,9 @@ class ResetPasswordRequest(BaseModel):
     token: str = Field(min_length=16, max_length=128)
     new_password: str = Field(min_length=12, max_length=200)
 
-    @field_validator("token", "new_password", mode="before")
+    @field_validator("token", mode="before")
     @classmethod
-    def trim_fields(cls, value: object) -> object:
+    def trim_token(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
 
 
@@ -162,6 +167,7 @@ class TicketCreate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: TicketStatus
+    expected_status: TicketStatus | None = None
 
 
 class TicketUpdate(BaseModel):
@@ -269,5 +275,15 @@ class KnowledgeReviewRequest(BaseModel):
 
 
 class NotificationTestRequest(BaseModel):
-    channel: Literal["telegram", "discord", "email"]
+    channel: Literal["telegram", "email"]
     target_email: str | None = Field(default=None, max_length=254)
+
+class AccountDeleteRequest(BaseModel):
+    confirmation: str | None = None
+    password: str | None = None
+
+
+class AccountDeleteResponse(BaseModel):
+    message: str
+    username: str
+

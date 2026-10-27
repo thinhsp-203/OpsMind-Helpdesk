@@ -38,7 +38,7 @@ Hệ thống tập trung vào môi trường vận hành CNTT doanh nghiệp v�
   - Tính năng Đổi mật khẩu chủ động và Admin đặt lại mật khẩu kèm cờ bắt buộc đổi ở lần đăng nhập kế tiếp (`force_password_change`).
   - Khôi phục mật khẩu thông qua liên kết bảo mật gửi qua Email (Reset Token băm một lần, có thời hạn).
 - **Phân hệ Thông báo Đa kênh (Notification Hub):**
-  - Gửi thông báo tự động khi có ticket mới hoặc chuyển cấp khẩn cấp qua Telegram Bot và Discord Webhook.
+  - Gửi thông báo tự động khi có ticket mới hoặc chuyển cấp khẩn cấp qua Telegram Bot.
 - **Phân hệ Báo cáo Quản trị & Giám sát:**
   - Thống kê tỷ lệ tuân thủ SLA theo từng Kỹ thuật viên, phân bố danh mục sự cố và điểm CSAT.
   - Nhật ký Audit Log minh bạch, bất biến cho từng thao tác trên ticket; hỗ trợ xuất báo cáo CSV.
@@ -63,7 +63,7 @@ Hệ thống tập trung vào môi trường vận hành CNTT doanh nghiệp v�
 |---|---|---|---|
 | **Nhân viên nội bộ (End-user / Employee)** | Cán bộ nhân viên thuộc các phòng ban nghiệp vụ (Kế toán, Kinh doanh, Nhân sự, Vận hành...). Không có chuyên môn sâu về CNTT. Thường gặp gián đoạn công việc do sự cố máy trạm, máy in, mạng Wi-Fi/VPN, cấp quyền phần mềm hoặc quên mật khẩu. Cần kênh tự phục vụ 24/7 trực quan, đơn giản, giải quyết ngay hoặc tạo yêu cầu mà không phải gọi điện/nhắn tin riêng cho IT. | - Tự khắc phục nhanh sự cố máy tính văn phòng trong < 3 phút.<br>- Tạo ticket có phân loại chuẩn xác mà không cần hiểu sâu kỹ thuật.<br>- Nắm bắt minh bạch tiến độ và thời hạn cam kết SLA. | - Cung cấp mô tả triệu chứng và ảnh chụp lỗi/log trung thực.<br>- Phối hợp phản hồi khi Kỹ thuật viên yêu cầu bổ sung thông tin.<br>- Đánh giá khách quan chất lượng hỗ trợ qua khảo sát CSAT sau khi sự cố hoàn tất. |
 | **Kỹ thuật viên IT (IT Support / Agent)** | Cán bộ hỗ trợ kỹ thuật CNTT (L1/L2) thuộc Trung tâm Hỗ trợ Kỹ thuật / Phòng Vận hành CNTT. Chịu áp lực xử lý lượng lớn ticket mỗi ngày, nguy cơ trễ hạn SLA, thường xuyên phải trả lời lặp đi lặp lại các câu hỏi phổ biến. Cần công cụ quản lý hàng đợi tập trung, nhận biết vé khẩn cấp và tra cứu nhanh tri thức để giải quyết vé chuẩn xác. | - Giảm thời gian giải quyết trung bình (MTTR).<br>- Không để sót vé khẩn cấp hoặc quá hạn cam kết SLA.<br>- Tái sử dụng runbook chuẩn hóa để nâng cao chất lượng phản hồi. | - Tiếp nhận, phân loại và cập nhật tiến độ xử lý trung thực trên hệ thống.<br>- Chuyển đổi các sự cố mới đã xử lý thành tài liệu Runbook mới (Ticket-to-Knowledge).<br>- Soạn thảo bản nháp tri thức gửi Quản trị viên thẩm định. |
-| **Quản trị viên IT (IT Administrator / Lead)** | Trưởng phòng CNTT, Trưởng nhóm Hỗ trợ Kỹ thuật hoặc Kỹ sư An toàn thông tin. Chịu trách nhiệm bảo đảm tính sẵn sàng của hạ tầng dịch vụ, chuẩn hóa quy trình vận hành theo ITIL, kiểm soát an toàn bảo mật và giám sát KPI của đội ngũ hỗ trợ. | - Giám sát toàn diện tỷ lệ tuân thủ SLA và chỉ số hài lòng CSAT.<br>- Chuẩn hóa và kiểm soát chất lượng kho tri thức Runbook trước khi xuất bản.<br>- Đảm bảo an toàn thông tin, kiểm soát định danh và kênh thông báo khẩn. | - Phê duyệt xuất bản hoặc yêu cầu hiệu chỉnh các bản nháp Runbook.<br>- Quản lý định danh người dùng, cấp quyền và xử lý sự cố tài khoản.<br>- Cấu hình và giám sát các kênh cảnh báo tức thì (Telegram/Discord).<br>- Định kỳ xuất báo cáo phân tích hiệu suất và kiểm toán vết thao tác (Audit Log). |
+| **Quản trị viên IT (IT Administrator / Lead)** | Trưởng phòng CNTT, Trưởng nhóm Hỗ trợ Kỹ thuật hoặc Kỹ sư An toàn thông tin. Chịu trách nhiệm bảo đảm tính sẵn sàng của hạ tầng dịch vụ, chuẩn hóa quy trình vận hành theo ITIL, kiểm soát an toàn bảo mật và giám sát KPI của đội ngũ hỗ trợ. | - Giám sát toàn diện tỷ lệ tuân thủ SLA và chỉ số hài lòng CSAT.<br>- Chuẩn hóa và kiểm soát chất lượng kho tri thức Runbook trước khi xuất bản.<br>- Đảm bảo an toàn thông tin, kiểm soát định danh và kênh thông báo khẩn. | - Phê duyệt xuất bản hoặc yêu cầu hiệu chỉnh các bản nháp Runbook.<br>- Quản lý định danh người dùng, cấp quyền và xử lý sự cố tài khoản.<br>- Cấu hình và giám sát các kênh cảnh báo tức thì (Telegram).<br>- Định kỳ xuất báo cáo phân tích hiệu suất và kiểm toán vết thao tác (Audit Log). |
 
 ### 2.2. Không gian làm việc theo vai trò (Role-based Workspace Views)
 
@@ -85,7 +85,7 @@ Hệ thống cung cấp trải nghiệm giao diện người dùng được thi�
    - **Quy trình Phê duyệt Tri thức 2 lớp (Knowledge Approval Workflow):** Tab chuyên biệt quản lý các bản nháp Runbook chờ duyệt (`pending_review`), cho phép phê duyệt xuất bản (`published`) hoặc trả lời từ chối kèm ghi chú.
    - **Quản lý Phiên bản & Khôi phục (Version Control & Restore):** Xem lịch sử các lần sửa đổi Runbook (v1, v2...), so sánh thay đổi và khôi phục về phiên bản cũ an toàn.
    - **Quản lý Định danh & Cưỡng bức đổi mật khẩu:** Danh sách tài khoản nhân viên, đổi vai trò, khóa/mở khóa tài khoản, đặt lại mật khẩu tạm kèm cờ bắt buộc đổi ở lần đăng nhập tiếp theo (`force_password_change`).
-   - **Trung tâm Kênh thông báo Đa kênh (Notification Hub):** Giám sát trạng thái kết nối Telegram Bot và Discord Webhook, nút kiểm tra kết nối tức thì (`Test Notification`), bảo vệ chống SSRF và che dấu token bảo mật.
+   - **Trung tâm Kênh thông báo Đa kênh (Notification Hub):** Giám sát trạng thái kết nối Telegram Bot, nút kiểm tra kết nối tức thì (`Test Notification`), bảo vệ chống SSRF và che dấu token bảo mật.
    - **Báo cáo Điều hành & Kiểm toán (Executive Analytics & Audit):** Biểu đồ SLA Compliance, phân bổ danh mục sự cố, xếp hạng đánh giá CSAT, hiệu suất từng Agent, xuất báo cáo CSV và xem nhật ký Audit Log bất biến.
 
 ### 2.3. Ma trận Phân quyền Nghiệp vụ (RBAC CRUD Matrix)
@@ -107,7 +107,7 @@ Hệ thống cung cấp trải nghiệm giao diện người dùng được thi�
 | | Xem danh sách ticket | ✔ (Chỉ vé của mình) | ✔ (Toàn bộ hàng đợi) | ✔ (Toàn bộ hàng đợi) | Kiểm tra quyền truy cập ở mức API và CSDL |
 | | Sửa nội dung ticket | ✔ (Chỉ khi `new`) | ✔ (Trước `closed`) | ✔ (Trước `closed`) | Tính lại SLA nếu thay đổi Mức độ ưu tiên |
 | | Chuyển trạng thái (FSM) | ✖ | ✔ (new $\rightarrow$ in_prog, v.v.) | ✔ (Toàn quyền FSM) | Tuân thủ nghiêm ngặt máy trạng thái hữu hạn |
-| | Tự nhận / Phân công ticket | ✖ | ✔ | ✔ | Chỉ gán cho tài khoản có vai trò Agent/Admin |
+| | Tự nhận / Phân công ticket | ✖ | ✔ | ✔ | Chỉ gán cho Agent/Admin khi ticket chưa resolved/closed |
 | | Trao đổi bình luận | ✔ (Vé của mình) | ✔ (Vé được giao/xem) | ✔ (Toàn bộ vé) | Người tạo bình luận tự động mở lại vé chờ |
 | | Đính kèm tệp tin | ✔ (Vé của mình) | ✔ (Vé được giao/xem) | ✔ (Toàn bộ vé) | Allow-list PNG/JPG/TXT/LOG $\le$ 10 MiB |
 | | Tải về tệp đính kèm | ✔ (Vé của mình) | ✔ (Vé được giao/xem) | ✔ (Toàn bộ vé) | Xác thực JWT trước khi cho phép tải stream |
@@ -123,7 +123,7 @@ Hệ thống cung cấp trải nghiệm giao diện người dùng được thi�
 | | Xem lịch sử phiên bản & Diff | ✖ | ✔ | ✔ | Quản lý lịch sử các lần sửa đổi v1, v2... |
 | | Khôi phục phiên bản cũ | ✖ | ✖ | ✔ | Khôi phục nội dung từ phiên bản lịch sử |
 | | Xóa Runbook / Đánh chỉ mục | ✖ | ✖ | ✔ | Không cho phép xóa Runbook mặc định hệ thống |
-| **Thông báo & Báo cáo** | Cấu hình kênh Telegram/Discord | ✖ | ✖ | ✔ | Kiểm tra an toàn URL chống SSRF |
+| **Thông báo & Báo cáo** | Cấu hình kênh Telegram | ✖ | ✖ | ✔ | Kiểm tra an toàn URL chống SSRF |
 | | Bắn thông báo test | ✖ | ✖ | ✔ | Kiểm tra kết nối kênh thông báo |
 | | Xem Dashboard SLA & Analytics | ✖ | ✔ (Chỉ vé của mình) | ✔ (Toàn hệ thống) | Phân tích tuân thủ SLA, CSAT, phân bổ lỗi |
 | | Xuất báo cáo dữ liệu CSV | ✖ | ✖ | ✔ | Chỉ Quản trị viên mới được trích xuất dữ liệu |
@@ -170,7 +170,7 @@ Nhóm cam kết 5 chỉ số định lượng xuyên suốt quá trình thực h
 | **FR-19** | Quy trình kiểm duyệt 2 lớp | Quản trị tri thức | Kỹ thuật viên soạn thảo bản nháp (`draft`) $\rightarrow$ Gửi yêu cầu phê duyệt (`pending_review`) $\rightarrow$ Admin thẩm định và xuất bản (`published`) hoặc trả về bản nháp kèm ghi chú phản hồi. Người dùng cuối chỉ tra cứu các bài đã `published`. |
 | **FR-20** | Lịch sử phiên bản & Khôi phục | Quản trị tri thức | Tự động lưu trữ lịch sử chỉnh sửa (v1, v2...) kèm tác nhân và tóm tắt thay đổi; cho phép Quản trị viên khôi phục về bất kỳ phiên bản nào trong quá khứ. |
 | **FR-21** | Đóng vòng Ticket $\rightarrow$ Runbook | Quản trị tri thức | Trích xuất trực tiếp thông tin từ ticket đã giải quyết (mô tả lỗi, các bước xử lý trong comment) thành bản nháp Runbook mới, giúp làm giàu kho tri thức từ thực tế. |
-| **FR-22** | Thông báo Telegram & Discord | Tích hợp | Tự động gửi tin nhắn thông báo về kênh Telegram hoặc Discord webhook khi có sự cố mới hoặc sự cố khẩn cấp chuyển cấp; có kiểm tra chặn SSRF và nút gửi thử nghiệm. |
+| **FR-22** | Thông báo Telegram | Tích hợp | Tự động gửi tin nhắn thông báo về kênh Telegram Bot khi có sự cố mới hoặc sự cố khẩn cấp chuyển cấp; có kiểm tra chặn SSRF và nút gửi thử nghiệm. |
 | **FR-23** | Quản lý người dùng & phân quyền | Quản trị hệ thống | Admin tạo tài khoản, đổi vai trò, khóa/mở khóa tài khoản; bảo vệ tài khoản Admin cuối cùng không bị khóa hoặc hạ quyền. |
 | **FR-24** | Báo cáo SLA & Thống kê | Quản trị hệ thống | Dashboard thống kê tổng số sự cố, phân bố trạng thái, tỷ lệ tuân thủ SLA theo Kỹ thuật viên, điểm CSAT trung bình; hỗ trợ xuất báo cáo định dạng CSV. |
 | **FR-25** | Nhật ký Audit Log bất biến | Quản trị hệ thống | Ghi nhận chi tiết mọi thay đổi trạng thái, phân công, chỉnh sửa ticket kèm định danh tác nhân và dấu thời gian; không thể xóa sửa. |
@@ -248,11 +248,11 @@ Nhóm cam kết 5 chỉ số định lượng xuyên suốt quá trình thực h
 **When** nhập tên đăng nhập hoặc email hợp lệ và gửi yêu cầu\
 **Then** hệ thống luôn trả thông báo tiếp nhận đồng nhất (tránh lộ thông tin tồn tại tài khoản); gửi email chứa liên kết với token băm ngẫu nhiên có hiệu lực 15 phút; giới hạn 5 yêu cầu/15 phút (trả HTTP 429 nếu vượt quá); khi đặt lại mật khẩu thành công, token bị hủy và toàn bộ phiên JWT cũ bị vô hiệu hóa tức thì.
 
-### US-12 — Kênh thông báo sự cố Telegram & Discord có bảo vệ SSRF
+### US-12 — Kênh thông báo sự cố Telegram có bảo vệ SSRF
 
 **Given** Quản trị viên cấu hình kênh thông báo qua biến môi trường hoặc giao diện quản trị\
 **When** có ticket mới được tạo, ticket khẩn cấp được chuyển cấp, hoặc bấm nút gửi thử nghiệm\
-**Then** hệ thống kiểm tra an toàn URL (chặn triệt để giao thức HTTP không mã hóa, chặn địa chỉ localhost, IP mạng nội bộ RFC 1918 và AWS metadata); nếu hợp lệ thì định dạng thông điệp Markdown và gửi tới Telegram/Discord; trạng thái hiển thị che mờ token nhạy cảm.
+**Then** hệ thống kiểm tra an toàn URL (chặn triệt để giao thức HTTP không mã hóa, chặn địa chỉ localhost, IP mạng nội bộ RFC 1918 và AWS metadata); nếu hợp lệ thì định dạng thông điệp Markdown và gửi tới Telegram; trạng thái hiển thị che mờ token nhạy cảm.
 
 ### US-13 — Quy trình kiểm duyệt Runbook 2 lớp và Khôi phục phiên bản
 
@@ -326,4 +326,62 @@ Các con số sau là **mục tiêu dự kiến trong kế hoạch**, không ph�
 - **An toàn tệp tin nâng cao:** Không tích hợp Antivirus engine quét mã độc thời gian thực; kiểm soát an toàn bằng allow-list định dạng (PNG, JPG, TXT, LOG) và giới hạn dung lượng 10 MiB.
 - **Tính toán SLA nâng cao:** Chưa xử lý ca làm việc linh hoạt, ngày nghỉ lễ hay múi giờ phức tạp; áp dụng SLA giờ lịch liên tục phục vụ môi trường thực nghiệm.
 - **Định dạng tri thức nâng cao:** Tập trung tối ưu Markdown chuẩn hóa cho 30 runbook; chưa hỗ trợ tự động bóc tách PDF/DOCX phức tạp có biểu bảng và hình ảnh lồng ghép.
-- **Kênh thoại & Mạng xã hội:** Không mở tổng đài VoIP hoặc tích hợp trả phí với WhatsApp Business / Viber do rào cản chi phí và thủ tục xác minh doanh nghiệp; tập trung vào Web Portal, Telegram Bot và Discord Webhook.
+- **Kênh thoại & Mạng xã hội:** Không mở tổng đài VoIP hoặc tích hợp trả phí với WhatsApp Business / Viber do rào cản chi phí và thủ tục xác minh doanh nghiệp; tập trung vào Web Portal, Telegram Bot.
+
+
+### Chính sách phân công sau hoàn tất — AUD-14
+
+Agent và Admin chỉ được nhận/chuyển giao ticket ở new, in_progress,
+pending_waiting_user hoặc escalated. Khi resolved/closed, mọi PUT assignment
+(kể cả gửi lại cùng assignee) trả 409, không đổi assignee/updated_at/audit/KPI.
+Chính sách áp dụng cả service store, không chỉ UI/API. Requester vẫn không có
+quyền phân công; ticket archived/missing trả 404 theo hợp đồng hiện hành.
+
+Nếu cần chuyển người xử lý sau resolved, dùng luồng mở lại hợp lệ về in_progress,
+sau đó phân công và xử lý lại. Phân công trước khi hoàn tất vẫn được phép;
+ticket không có assignee cũng không được bổ sung owner sau hoàn tất qua API.
+Không có ngoại lệ Admin hoặc endpoint sửa lịch sử. Số liệu hiện tính theo
+assignee của chu kỳ hoàn tất hiện hành; không thêm resolved_by hay sổ KPI bất
+biến qua các lần mở lại. Dữ liệu bị phân công sai từ trước cần đối chiếu audit
+và quy trình hiệu chỉnh riêng, bản vá không tự sửa lịch sử.
+
+
+### Chính sách thu hồi phiên — AUD-15
+
+Logout là hành động có xác nhận server: POST /auth/logout thu hồi mọi JWT đang
+dùng epoch của tài khoản được xác thực, trên mọi thiết bị. Không nhận username
+để thu hồi tài khoản khác. Không hỗ trợ logout riêng từng thiết bị hay refresh
+token. Khóa/mở khóa, đổi quyền thực sự, đổi/reset mật khẩu đổi session epoch;
+đưa quyền/trạng thái về giá trị cũ không làm JWT cũ sống lại. Update role/active
+không đổi giá trị và sửa thông tin hồ sơ thông thường không đổi epoch.
+
+JWT thiếu epoch (phát hành trước bản vá) phải đăng nhập lại. UI xóa token local
+và mật khẩu đang nhập ngay khi logout; chỉ báo thu hồi các phiên khi server
+xác nhận revoked=true. Khi mạng lỗi/timeout, nêu chỉ xóa phiên trình duyệt,
+chưa xác nhận server; khi có kết nối cần đăng nhập rồi logout lại hoặc dùng
+luồng đổi mật khẩu. Người dùng bị buộc đổi mật khẩu vẫn có thể logout.
+Request đã được xác thực trước khi thu hồi có thể hoàn thành; không có hủy
+in-flight hoặc xóa dữ liệu ứng dụng trong mọi tab theo thời gian thực.
+
+### AUD-24 — Mật khẩu là chuỗi nguyên trạng (22/10/2026)
+
+Create, login, change, admin-reset và reset bảo toàn nguyên chuỗi mật khẩu,
+bao gồm khoảng trắng đầu/cuối và Unicode; không trim, không chuẩn hóa NFC/NFD.
+Hai chuỗi khác code point là hai mật khẩu khác nhau. Ngưỡng hiện hành cho mật
+khẩu mới là 12–200 ký tự theo validator, tính trên chuỗi nhập nguyên trạng.
+Reset token vẫn trim riêng. Không tự thử mật khẩu trimmed/normalized khi login.
+Mật khẩu đã bị trim bởi bản cũ không thể suy ra khoảng trắng đã mất: người dùng
+cần reset lại bằng liên kết mới nếu không nhớ chuỗi đang có hiệu lực; không tự
+sửa hash hoặc thay đổi mật khẩu của tài khoản hiện có trong migration.
+
+### AUD-16 bổ sung — Thư mời và khôi phục mật khẩu (22/10/2026)
+
+Thư chào mừng chỉ chứa username và link đặt mật khẩu một lần, không chứa mật
+khẩu mà Admin nhập. Mật khẩu Admin nhập vẫn có hiệu lực ngoài kênh email và
+force_password_change vẫn bật; không thay policy tạo tài khoản. Reset endpoint
+hiện có consume token và đổi password atomic, thu hồi các link cũ theo AUD06/07.
+Yêu cầu forgot-password dùng response đồng nhất chống enumeration, không khẳng
+định thư đã được phát; status nội bộ giúp Admin phân biệt pending/failed/accepted.
+DEMO console/mock chỉ capture RAM và đánh dấu mocked; non-demo phải có provider
+thật đã cấu hình, sender và PUBLIC_BASE_URL HTTPS hợp lệ. Provider accepted
+không tương đương delivered, inbox receipt hoặc đã đọc.

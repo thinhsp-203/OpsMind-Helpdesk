@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import hmac
+import json
 import logging
 import re
 import secrets
@@ -28,6 +29,7 @@ from app.config import (
 
 logger = logging.getLogger(__name__)
 
+MIN_PASSWORD_LENGTH = 12
 PRIORITY_HOURS = {"low": 48, "medium": 24, "high": 8, "urgent": 2}
 TRANSITIONS = {
     "new": {"in_progress"},
@@ -151,10 +153,19 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
         category = category_map.get(path.name, "general")
         tags = f"{category}, runbook"
         existing = connection.execute(
-            "SELECT id FROM knowledge_documents WHERE slug = ?",
+            "SELECT id, content FROM knowledge_documents WHERE slug = ?",
             (path.name,),
         ).fetchone()
         if existing:
+            if existing["content"] != content:
+                connection.execute(
+                    """
+                    UPDATE knowledge_documents
+                    SET title = ?, category = ?, tags = ?, content = ?, updated_at = ?
+                    WHERE id = ? AND is_builtin = 1
+                    """,
+                    (title, category, tags, content, now, existing["id"]),
+                )
             continue
         connection.execute(
             """
@@ -178,6 +189,23 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
                 (doc_row["id"], title, category, tags, content, now),
             )
 
+ANONYMIZED_USER = "Người dùng đã xóa"
+
+
+def _ensure_anonymized_user(connection) -> str:
+    row = connection.execute(
+        "SELECT username FROM users WHERE username = ?",
+        (ANONYMIZED_USER,),
+    ).fetchone()
+    if not row:
+        connection.execute(
+            "INSERT INTO users (username, password_hash, role, full_name, is_active, is_deleted, session_epoch) "
+            "VALUES (?, '!', 'user', 'Người dùng đã xóa', 0, 1, ?)",
+            (ANONYMIZED_USER, secrets.token_hex(32)),
+        )
+    return ANONYMIZED_USER
+
+
 INSECURE_ADMIN_PASSWORDS: set[str] = {
     "adminsecurepassword123!",
     "admin12345678!",
@@ -185,6 +213,15 @@ INSECURE_ADMIN_PASSWORDS: set[str] = {
     "changeme123456!",
     "opsmindadmin2026!",
 }
+
+
+def _ensure_session_epochs(connection) -> None:
+    # Conditional initialization is safe across concurrent initializers and never
+    # resets epochs already used by live sessions.
+    rows = connection.execute("SELECT username FROM users WHERE session_epoch = ''").fetchall()
+    for row in rows:
+        connection.execute("UPDATE users SET session_epoch = ? WHERE username = ? AND session_epoch = ''",
+                           (secrets.token_hex(32), row["username"]))
 
 
 def initialize_store() -> None:
@@ -200,6 +237,7 @@ def initialize_store() -> None:
                 phone TEXT NOT NULL DEFAULT '',
                 is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
                 password_changed_at TEXT,
+                session_epoch TEXT NOT NULL DEFAULT '',
                 force_password_change INTEGER NOT NULL DEFAULT 0 CHECK (force_password_change IN (0, 1))
             );
             CREATE TABLE IF NOT EXISTS tickets (
@@ -318,6 +356,11 @@ def initialize_store() -> None:
         if _database_url:
             schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
         connection.executescript(schema)
+        try:
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_document_version "
+                               "ON knowledge_versions(document_id, version_number)")
+        except DatabaseIntegrityError as exc:
+            raise RuntimeError("AUD-23: duplicate KB version numbers; stop and reconcile history before migration") from exc
         if _database_url:
             for table, column, definition in (
                 ("tickets", "archived_at", "TEXT"),
@@ -330,7 +373,9 @@ def initialize_store() -> None:
                 ("users", "department", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "phone", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "is_active", "INTEGER NOT NULL DEFAULT 1"),
+                ("users", "is_deleted", "INTEGER NOT NULL DEFAULT 0"),
                 ("users", "password_changed_at", "TEXT"),
+                ("users", "session_epoch", "TEXT NOT NULL DEFAULT ''"),
                 ("users", "force_password_change", "INTEGER NOT NULL DEFAULT 0"),
                 ("knowledge_documents", "is_builtin", "INTEGER NOT NULL DEFAULT 0"),
             ):
@@ -352,7 +397,9 @@ def initialize_store() -> None:
                 ("department", "TEXT NOT NULL DEFAULT ''"),
                 ("phone", "TEXT NOT NULL DEFAULT ''"),
                 ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+                ("is_deleted", "INTEGER NOT NULL DEFAULT 0"),
                 ("password_changed_at", "TEXT"),
+                ("session_epoch", "TEXT NOT NULL DEFAULT ''"),
                 ("force_password_change", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if column not in user_columns:
@@ -413,7 +460,7 @@ def initialize_store() -> None:
                 connection.execute("PRAGMA foreign_keys = ON")
         if (
             INITIAL_ADMIN_USERNAME
-            and len(INITIAL_ADMIN_PASSWORD) >= 8
+            and len(INITIAL_ADMIN_PASSWORD) >= MIN_PASSWORD_LENGTH
             and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
             and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
         ):
@@ -442,8 +489,8 @@ def initialize_store() -> None:
             ):
                 if ALLOW_DEMO_CREDENTIALS:
                     logger.warning(
-                        "Demo credentials are present in non-demo mode. ALLOW_DEMO_CREDENTIALS=true is enabled; "
-                        "skipping startup refusal. Please change demo passwords before real production use."
+                        "CẢNH BÁO BẢO MẬT: ALLOW_DEMO_CREDENTIALS=true đang được bật ở chế độ non-demo! "
+                        "Cờ này CHỈ ĐƯỢC DÙNG cho môi trường thử nghiệm/staging tạm thời, tuyệt đối không dùng trên production."
                     )
                 else:
                     raise RuntimeError(
@@ -457,7 +504,7 @@ def initialize_store() -> None:
                     INITIAL_ADMIN_PASSWORD
                     if (
                         INITIAL_ADMIN_USERNAME == "admin"
-                        and len(INITIAL_ADMIN_PASSWORD) >= 8
+                        and len(INITIAL_ADMIN_PASSWORD) >= MIN_PASSWORD_LENGTH
                         and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
                     )
                     else "admin"
@@ -473,7 +520,7 @@ def initialize_store() -> None:
                 )
             elif (
                 INITIAL_ADMIN_USERNAME
-                and len(INITIAL_ADMIN_PASSWORD) >= 8
+                and len(INITIAL_ADMIN_PASSWORD) >= MIN_PASSWORD_LENGTH
                 and INITIAL_ADMIN_PASSWORD.lower() not in INSECURE_ADMIN_PASSWORDS
                 and INITIAL_ADMIN_USERNAME.lower() != INITIAL_ADMIN_PASSWORD.lower()
             ):
@@ -493,10 +540,16 @@ def initialize_store() -> None:
                 )
             else:
                 raise RuntimeError(
-                    "INITIAL_ADMIN_PASSWORD (at least 8 characters, not using known placeholder passwords) "
+                    "INITIAL_ADMIN_PASSWORD (at least 12 characters, not using known placeholder passwords) "
                     "and INITIAL_ADMIN_USERNAME must be configured in environment variables for fresh non-demo setup."
                 )
+        _ensure_session_epochs(connection)
+        _ensure_anonymized_user(connection)
         seed_builtin_knowledge(connection)
+        from app.notification_outbox import initialize
+        initialize(connection)
+        from app.email_outbox import initialize as initialize_email
+        initialize_email(connection)
 
 
 def reset_store() -> None:
@@ -504,7 +557,7 @@ def reset_store() -> None:
     with _connect() as connection:
         if _database_url:
             connection.execute(
-                "TRUNCATE TABLE audit_logs, comments, tickets, chat_messages, chat_sessions, "
+                "TRUNCATE TABLE email_deliveries, notification_outbox, audit_logs, comments, tickets, chat_messages, chat_sessions, "
                 "ticket_attachments, users, knowledge_versions, knowledge_documents, "
                 "password_reset_tokens, rate_limit_attempts RESTART IDENTITY CASCADE"
             )
@@ -525,8 +578,11 @@ def reset_store() -> None:
                     "INSERT INTO users (username, password_hash, role, force_password_change) VALUES (?, ?, 'admin', 1)",
                     (admin_name, _password_hash(admin_pwd)),
                 )
+            _ensure_session_epochs(connection)
             seed_builtin_knowledge(connection)
             return
+        connection.execute("DELETE FROM email_deliveries")
+        connection.execute("DELETE FROM notification_outbox")
         connection.execute("DELETE FROM audit_logs")
         connection.execute("DELETE FROM comments")
         connection.execute("DELETE FROM tickets")
@@ -547,11 +603,20 @@ def get_user_credentials(username: str) -> dict[str, Any] | None:
     with _connect() as connection:
         row = connection.execute(
             "SELECT username, password_hash, role, full_name, email, department, phone, is_active, "
-            "password_changed_at, force_password_change "
-            "FROM users WHERE username = ?",
+            "password_changed_at, force_password_change, session_epoch "
+            "FROM users WHERE username = ? AND is_deleted = 0",
             (username,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def revoke_user_sessions(username: str, expected_epoch: str) -> bool:
+    """Revoke the authenticated epoch without invalidating a newer epoch on retry."""
+    with _connect() as connection:
+        result = connection.execute(
+            "UPDATE users SET session_epoch = ? WHERE username = ? AND session_epoch = ?",
+            (secrets.token_hex(32), username, expected_epoch))
+        return result.rowcount == 1
 
 
 def get_user_activity(username: str) -> dict[str, int]:
@@ -589,7 +654,7 @@ def list_users() -> list[dict[str, Any]]:
     with _connect() as connection:
         rows = connection.execute(
             "SELECT username, role, full_name, email, department, phone, is_active "
-            "FROM users ORDER BY role, username"
+            "FROM users WHERE is_deleted = 0 ORDER BY role, username"
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -612,19 +677,65 @@ def create_user(
     department: str = "",
     phone: str = "",
     force_password_change: int = 0,
+    invitation_base_url: str | None = None,
 ) -> dict[str, str]:
     now_str = _now()
     with _connect() as connection:
         try:
             connection.execute(
                 "INSERT INTO users "
-                "(username, password_hash, role, full_name, email, department, phone, password_changed_at, force_password_change) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (username, _password_hash(password), role, full_name, email, department, phone, now_str, force_password_change),
+                "(username, password_hash, role, full_name, email, department, phone, password_changed_at, force_password_change, session_epoch) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (username, _password_hash(password), role, full_name, email, department, phone, now_str, force_password_change, secrets.token_hex(32)),
             )
         except DatabaseIntegrityError as exc:
             raise ValueError("Username already exists.") from exc
+        if invitation_base_url is not None and email:
+            from app.email_outbox import enqueue
+            enqueue(connection, username, 'invitation', invitation_base_url)
     return {"username": username, "role": role}
+
+
+def _begin_credential_write(connection: sqlite3.Connection | _PostgresConnection) -> None:
+    if isinstance(connection, sqlite3.Connection):
+        # Acquire the writer before reading state; avoid deferred read-to-write races.
+        connection.execute("BEGIN IMMEDIATE")
+
+
+def _lock_credential_user(
+    connection: sqlite3.Connection | _PostgresConnection,
+    username: str,
+) -> sqlite3.Row | dict[str, Any] | None:
+    query = "SELECT is_active, password_changed_at FROM users WHERE username = ?"
+    if isinstance(connection, _PostgresConnection):
+        query += " FOR UPDATE"
+    return connection.execute(query, (username,)).fetchone()
+
+
+def _revoke_password_reset_tokens(
+    connection: sqlite3.Connection | _PostgresConnection,
+    username: str,
+) -> None:
+    connection.execute(
+        "UPDATE password_reset_tokens SET used = 1 WHERE username = ? AND used = 0",
+        (username,),
+    )
+
+
+def _set_user_password(
+    connection: sqlite3.Connection | _PostgresConnection,
+    username: str,
+    new_password: str,
+    force_password_change: int = 0,
+) -> None:
+    encoded = _password_hash(new_password)
+    now_str = _now()
+    connection.execute(
+        "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ?, session_epoch = ? "
+        "WHERE username = ?",
+        (encoded, now_str, force_password_change, secrets.token_hex(32), username),
+    )
+    _revoke_password_reset_tokens(connection, username)
 
 
 def update_user_password(
@@ -632,13 +743,10 @@ def update_user_password(
     new_password: str,
     force_password_change: int = 0,
 ) -> None:
-    now_str = _now()
     with _connect() as connection:
-        connection.execute(
-            "UPDATE users SET password_hash = ?, password_changed_at = ?, force_password_change = ? "
-            "WHERE username = ?",
-            (_password_hash(new_password), now_str, force_password_change, username),
-        )
+        _begin_credential_write(connection)
+        _lock_credential_user(connection, username)
+        _set_user_password(connection, username, new_password, force_password_change)
 
 
 def admin_reset_password(
@@ -665,65 +773,83 @@ def find_user_for_password_reset(identifier: str) -> dict[str, Any] | None:
 def create_password_reset_token(username: str, expires_minutes: int = 15) -> str:
     raw_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    now_dt = datetime.now(timezone.utc)
-    expires_dt = now_dt + timedelta(minutes=expires_minutes)
-    created_at = now_dt.isoformat()
-    expires_at = expires_dt.isoformat()
 
     with _connect() as connection:
-        connection.execute(
-            "UPDATE password_reset_tokens SET used = 1 WHERE username = ? AND used = 0",
-            (username,),
-        )
+        _begin_credential_write(connection)
+        # All credential flows lock the user before touching token rows.
+        _lock_credential_user(connection, username)
+        now_dt = datetime.now(timezone.utc)
+        expires_dt = now_dt + timedelta(minutes=expires_minutes)
+        _revoke_password_reset_tokens(connection, username)
         connection.execute(
             "INSERT INTO password_reset_tokens (username, token_hash, expires_at, used, created_at) "
             "VALUES (?, ?, ?, 0, ?)",
-            (username, token_hash, expires_at, created_at),
+            (username, token_hash, expires_dt.isoformat(), now_dt.isoformat()),
         )
     return raw_token
+
+
+def _consume_reset_token(
+    connection: sqlite3.Connection | _PostgresConnection,
+    raw_token: str,
+) -> str | None:
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    identity = connection.execute(
+        "SELECT username FROM password_reset_tokens WHERE token_hash = ?", (token_hash,),
+    ).fetchone()
+    if not identity:
+        return None
+    user = _lock_credential_user(connection, identity["username"])
+    if not user or not user["is_active"]:
+        return None
+    # Re-read after acquiring the user lock: issuance or revocation may have won first.
+    row = connection.execute(
+        "SELECT username, expires_at, used, created_at FROM password_reset_tokens WHERE token_hash = ?",
+        (token_hash,),
+    ).fetchone()
+    if not row or row["used"] == 1:
+        return None
+    now_dt = datetime.now(timezone.utc)
+    try:
+        if datetime.fromisoformat(row["expires_at"]) < now_dt:
+            return None
+    except (TypeError, ValueError):
+        return None
+
+    if user["password_changed_at"]:
+        try:
+            if datetime.fromisoformat(row["created_at"]) < datetime.fromisoformat(
+                user["password_changed_at"]
+            ):
+                return None
+        except (TypeError, ValueError):
+            return None
+
+    claimed = connection.execute(
+        "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ? AND used = 0",
+        (token_hash,),
+    )
+    return str(row["username"]) if claimed.rowcount == 1 else None
 
 
 def verify_and_consume_reset_token(raw_token: str) -> str | None:
     if not raw_token or len(raw_token) < 16:
         return None
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    now_dt = datetime.now(timezone.utc)
     with _connect() as connection:
-        row = connection.execute(
-            "SELECT username, expires_at, used FROM password_reset_tokens WHERE token_hash = ?",
-            (token_hash,),
-        ).fetchone()
-        if not row:
-            return None
-        if row["used"] == 1:
-            return None
-        try:
-            exp_time = datetime.fromisoformat(row["expires_at"])
-            if exp_time < now_dt:
-                return None
-        except Exception:
-            return None
-
-        user = connection.execute(
-            "SELECT is_active FROM users WHERE username = ?",
-            (row["username"],),
-        ).fetchone()
-        if not user or not user["is_active"]:
-            return None
-
-        connection.execute(
-            "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
-            (token_hash,),
-        )
-        return str(row["username"])
+        _begin_credential_write(connection)
+        return _consume_reset_token(connection, raw_token)
 
 
 def reset_password_with_token(raw_token: str, new_password: str) -> str | None:
-    username = verify_and_consume_reset_token(raw_token)
-    if not username:
+    if not raw_token or len(raw_token) < 16:
         return None
-    update_user_password(username, new_password, force_password_change=0)
-    return username
+    with _connect() as connection:
+        _begin_credential_write(connection)
+        username = _consume_reset_token(connection, raw_token)
+        if username is None:
+            return None
+        _set_user_password(connection, username, new_password, force_password_change=0)
+        return username
 
 
 _failed_login_attempts: dict[str, list[float]] = {}
@@ -812,6 +938,100 @@ def cleanup_expired_rate_limits(max_window_seconds: float = 3600.0) -> None:
             connection.execute("DELETE FROM rate_limit_attempts WHERE attempt_time < ?", (cutoff,))
 
 
+def _lock_admin_membership(connection) -> None:
+    # Serialize delete/demotion before counting administrators, including PG.
+    if isinstance(connection, _PostgresConnection):
+        connection.execute('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE')
+
+
+def delete_user_and_anonymize(username: str) -> bool:
+    """Permanently delete a user account and anonymize their tickets, comments, and history."""
+    if username == ANONYMIZED_USER or username.startswith("nguoi_dung_da_xoa_"):
+        raise ValueError("Không thể xóa tài khoản ẩn danh hệ thống.")
+
+    with _connect() as connection:
+        _begin_credential_write(connection)
+        _lock_admin_membership(connection)
+        user = connection.execute(
+            "SELECT role, is_active FROM users WHERE username = ? AND is_deleted = 0",
+            (username,),
+        ).fetchone()
+        if not user:
+            raise LookupError("Người dùng không tồn tại.")
+
+        if user["role"] == "admin" and user["is_active"]:
+            count_row = connection.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND is_active = 1 AND is_deleted = 0"
+            ).fetchone()
+            count = count_row["n"] if hasattr(count_row, "__getitem__") else count_row[0]
+            if count <= 1:
+                raise ValueError("Không thể xóa tài khoản Admin duy nhất của hệ thống.")
+
+        anonymous = _ensure_anonymized_user(connection)
+
+        for table, column in (
+            ("tickets", "requester"),
+            ("comments", "author"),
+            ("audit_logs", "actor"),
+            ("ticket_attachments", "uploaded_by"),
+            ("knowledge_documents", "author"),
+            ("knowledge_documents", "reviewer"),
+            ("knowledge_versions", "author"),
+        ):
+            connection.execute(
+                f"UPDATE {table} SET {column} = ? WHERE {column} = ?",  # noqa: S608 -- fixed identifier list
+                (anonymous, username),
+            )
+
+        # Open tickets need a new responsible staff member after deletion.
+        connection.execute("UPDATE tickets SET assignee = NULL WHERE assignee = ?", (username,))
+        connection.execute("DELETE FROM chat_sessions WHERE user_id = ?", (username,))
+
+        # Snapshots must not keep the deleted requester's identifier or be sent later.
+        try:
+            rows = connection.execute("SELECT id, payload FROM notification_outbox").fetchall()
+            for row in rows:
+                payload = json.loads(row["payload"])
+                if payload.get("requester") == username:
+                    payload["requester"] = anonymous
+                    connection.execute(
+                        "UPDATE notification_outbox SET payload = ? WHERE id = ?",
+                        (json.dumps(payload, ensure_ascii=False), row["id"]),
+                    )
+        except Exception as exc:
+            logger.warning("Could not anonymize notification outbox payload: %s", exc)
+
+        # Revoke tokens and jobs
+        connection.execute("DELETE FROM password_reset_tokens WHERE username = ?", (username,))
+        try:
+            connection.execute("DELETE FROM email_outbox WHERE username = ?", (username,))
+        except Exception as exc:
+            logger.warning("Could not delete email outbox records: %s", exc)
+
+        # Clear rate limiting
+        connection.execute("DELETE FROM rate_limit_attempts WHERE key LIKE ?", (f"%:{username}",))
+
+        # Delete user record from users table
+        connection.execute("DELETE FROM users WHERE username = ?", (username,))
+
+    return True
+
+
+def delete_user(username: str, actor: str) -> bool:
+    """Admin-initiated identity removal."""
+    with _connect() as connection:
+        _begin_credential_write(connection)
+        _lock_admin_membership(connection)
+        acting = connection.execute(
+            "SELECT role, is_active FROM users WHERE username = ? AND is_deleted = 0", (actor,)
+        ).fetchone()
+        if not acting or acting["role"] != "admin" or not acting["is_active"]:
+            raise PermissionError("Chỉ Admin đang hoạt động được xóa tài khoản.")
+        if username == actor:
+            raise ValueError("Không thể xóa tài khoản đang đăng nhập.")
+    return delete_user_and_anonymize(username)
+
+
 def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None:
     allowed = {"role", "full_name", "email", "department", "phone", "is_active"}
     if not updates or not set(updates).issubset(allowed):
@@ -820,8 +1040,11 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
     if "is_active" in normalized:
         normalized["is_active"] = int(normalized["is_active"])
     with _connect() as connection:
+        _begin_credential_write(connection)
+        _lock_admin_membership(connection)
+        _lock_credential_user(connection, username)
         existing = connection.execute(
-            "SELECT username, role, is_active FROM users WHERE username = ?", (username,)
+            "SELECT username, role, is_active, email FROM users WHERE username = ? AND is_deleted = 0", (username,)
         ).fetchone()
         if existing is None:
             return None
@@ -841,9 +1064,22 @@ def update_user(username: str, updates: dict[str, Any]) -> dict[str, Any] | None
             f"UPDATE users SET {fields} WHERE username = ?",  # noqa: S608
             (*normalized.values(), username),
         )
+        email_changed = (
+            "email" in normalized
+            and normalized["email"].strip().lower() != (existing["email"] or "").strip().lower()
+        )
+        active_state_changed = (
+            "is_active" in normalized and normalized["is_active"] != existing["is_active"]
+        )
+        role_changed = "role" in normalized and normalized["role"] != existing["role"]
+        if role_changed or active_state_changed:
+            connection.execute("UPDATE users SET session_epoch = ? WHERE username = ?",
+                               (secrets.token_hex(32), username))
+        if email_changed or active_state_changed:
+            _revoke_password_reset_tokens(connection, username)
         row = connection.execute(
             "SELECT username, role, full_name, email, department, phone, is_active "
-            "FROM users WHERE username = ?",
+            "FROM users WHERE username = ? AND is_deleted = 0",
             (username,),
         ).fetchone()
     return dict(row)
@@ -915,6 +1151,8 @@ def create_ticket(
             ticket_id = int(cursor.lastrowid)
         _record_audit(connection, ticket_id, requester, "created", None, "new")
         row = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        from app.notification_outbox import enqueue
+        enqueue(connection, dict(row), 'created')
         return _ticket_dict(connection, row)
 
 
@@ -975,8 +1213,11 @@ def update_ticket_fields(
     if not updates or not set(updates).issubset(allowed):
         raise ValueError("Invalid ticket update fields")
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
@@ -1016,8 +1257,11 @@ def update_ticket_fields(
 
 def archive_ticket(ticket_id: int, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
@@ -1040,14 +1284,18 @@ def archive_ticket(ticket_id: int, actor: str) -> dict[str, Any]:
         return _ticket_dict(connection, archived)
 
 
-def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[str, Any]:
+def update_ticket_status(ticket_id: int, new_status: str, actor: str, expected_status: str | None = None) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""), (ticket_id,)  # noqa: S608 -- fixed dialect suffix, bound ticket ID
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
         previous_status = row["status"]
+        if expected_status is not None and previous_status != expected_status:
+            raise ValueError("Ticket changed since it was read; refresh before changing status")
         if new_status not in TRANSITIONS[previous_status]:
             raise ValueError(f"Cannot move ticket from {previous_status} to {new_status}")
         timestamp = _now()
@@ -1059,16 +1307,23 @@ def update_ticket_status(ticket_id: int, new_status: str, actor: str) -> dict[st
         )
         _record_audit(connection, ticket_id, actor, "status_changed", previous_status, new_status)
         updated = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+        if new_status == "escalated":
+            from app.notification_outbox import enqueue
+            enqueue(connection, dict(updated), 'escalated')
         return _ticket_dict(connection, updated)
 
 
 def assign_ticket(ticket_id: int, assignee: str, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""), (ticket_id,)  # noqa: S608 -- fixed dialect suffix; bound ticket ID
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] in {"resolved", "closed"}:
+            raise ValueError("Không thể đổi phân công khi ticket đã giải quyết hoặc đóng.")
         timestamp = _now()
         connection.execute(
             "UPDATE tickets SET assignee = ?, updated_at = ? WHERE id = ?",
@@ -1081,11 +1336,16 @@ def assign_ticket(ticket_id: int, assignee: str, actor: str) -> dict[str, Any]:
 
 def add_comment(ticket_id: int, author: str, comment: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT * FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] == "closed":
+            raise ValueError("Closed tickets cannot receive comments")
         timestamp = _now()
         connection.execute(
             "INSERT INTO comments (ticket_id, author, comment, created_at) VALUES (?, ?, ?, ?)",
@@ -1160,8 +1420,10 @@ def get_attachment(attachment_id: str) -> dict[str, Any] | None:
 
 def rate_ticket(ticket_id: int, rating: int, comment: str | None, actor: str) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT status, requester, rating FROM tickets WHERE id = ? AND archived_at IS NULL",
+            "SELECT status, requester, rating FROM tickets WHERE id = ? AND archived_at IS NULL" + (" FOR UPDATE" if _database_url else ""),  # noqa: S608 -- fixed dialect suffix
             (ticket_id,),
         ).fetchone()
         if row is None:
@@ -1172,10 +1434,13 @@ def rate_ticket(ticket_id: int, rating: int, comment: str | None, actor: str) ->
             raise PermissionError("Only the requester can rate this ticket")
         if row["rating"] is not None:
             raise ValueError("Ticket has already been rated")
-        connection.execute(
-            "UPDATE tickets SET rating = ?, rating_comment = ?, updated_at = ? WHERE id = ?",
+        changed = connection.execute(
+            "UPDATE tickets SET rating = ?, rating_comment = ?, updated_at = ? "
+            "WHERE id = ? AND rating IS NULL AND status IN ('resolved', 'closed') AND archived_at IS NULL",
             (rating, comment, _now(), ticket_id),
         )
+        if changed.rowcount != 1:
+            raise ValueError("Ticket can no longer be rated")
         _record_audit(connection, ticket_id, actor, "rated", row["status"], row["status"], str(rating))
         updated = connection.execute(
             "SELECT * FROM tickets WHERE id = ?", (ticket_id,)
@@ -1339,10 +1604,17 @@ def get_analytics() -> dict[str, Any]:
         helpful_feedback_count = rag_stats["helpful_count"] or 0
         unhelpful_feedback_count = rag_stats["unhelpful_count"] or 0
         total_feedback = helpful_feedback_count + unhelpful_feedback_count
+        unrated_queries = max(0, total_rag_queries - total_feedback)
         if total_feedback > 0:
-            self_service_rate = round(helpful_feedback_count / total_feedback * 100, 1)
+            helpful_feedback_rate = round(helpful_feedback_count / total_feedback * 100, 1)
         else:
-            self_service_rate = None
+            helpful_feedback_rate = None
+        feedback_response_rate = (
+            round(total_feedback / total_rag_queries * 100, 1) if total_rag_queries > 0 else None
+        )
+        # AUD-20: helpful_feedback_rate accurately measures thumbs-up proportion among rated answers.
+        # self_service_rate is maintained as a legacy backward-compatible alias.
+        self_service_rate = helpful_feedback_rate
 
     agent_stats: dict[str, dict[str, Any]] = {}
     resolution_hours: list[float] = []
@@ -1382,9 +1654,16 @@ def get_analytics() -> dict[str, Any]:
         "rating_count": rating_row["rating_count"],
         "daily_created": created_daily,
         "agent_performance": agent_performance,
+        "helpful_feedback_rate": helpful_feedback_rate,
         "self_service_rate": self_service_rate,
         "total_rag_queries": total_rag_queries,
         "helpful_feedback_count": helpful_feedback_count,
+        "unhelpful_feedback_count": unhelpful_feedback_count,
+        "total_feedback": total_feedback,
+        "feedback_sample_size": total_feedback,
+        "unrated_queries": unrated_queries,
+        "feedback_response_rate": feedback_response_rate,
+        "self_resolution_verified_rate": None,
     }
 
 
@@ -1568,30 +1847,44 @@ def create_knowledge_document(
     return get_knowledge_document(doc_id)  # type: ignore[return-value]
 
 
+def _lock_knowledge_document(connection, identifier: int | str):
+    if not _database_url:
+        connection.execute("BEGIN IMMEDIATE")
+    suffix = " FOR UPDATE" if _database_url else ""
+    if isinstance(identifier, int) or str(identifier).isdigit():
+        return connection.execute("SELECT * FROM knowledge_documents WHERE id = ?" + suffix,  # noqa: S608 -- fixed dialect suffix
+                                  (int(identifier),)).fetchone()
+    slug = str(identifier)
+    if not slug.endswith(".md"):
+        slug += ".md"
+    return connection.execute("SELECT * FROM knowledge_documents WHERE slug = ?" + suffix,  # noqa: S608 -- fixed dialect suffix
+                              (slug,)).fetchone()
+
+
 def update_knowledge_document(
     identifier: int | str,
     updates: dict[str, Any],
     actor: str,
     change_summary: str = "Cập nhật nội dung",
 ) -> dict[str, Any] | None:
-    doc = get_knowledge_document(identifier)
-    if not doc:
-        return None
-
-    new_title = updates.get("title", doc["title"]).strip() if updates.get("title") is not None else doc["title"]
-    new_category = updates.get("category", doc["category"]) if updates.get("category") is not None else doc["category"]
-    new_tags = updates.get("tags", doc["tags"]).strip() if updates.get("tags") is not None else doc["tags"]
-    new_content = updates.get("content", doc["content"]).strip() if updates.get("content") is not None else doc["content"]
-    new_status = updates.get("status", doc["status"]) if updates.get("status") is not None else doc["status"]
-
-    content_changed = (
-        new_title != doc["title"]
-        or new_category != doc["category"]
-        or new_tags != doc["tags"]
-        or new_content != doc["content"]
-    )
-
     with _connect() as connection:
+        doc = _lock_knowledge_document(connection, identifier)
+        if not doc:
+            return None
+
+        new_title = updates.get("title", doc["title"]).strip() if updates.get("title") is not None else doc["title"]
+        new_category = updates.get("category", doc["category"]) if updates.get("category") is not None else doc["category"]
+        new_tags = updates.get("tags", doc["tags"]).strip() if updates.get("tags") is not None else doc["tags"]
+        new_content = updates.get("content", doc["content"]).strip() if updates.get("content") is not None else doc["content"]
+        new_status = updates.get("status", doc["status"]) if updates.get("status") is not None else doc["status"]
+
+        content_changed = (
+            new_title != doc["title"]
+            or new_category != doc["category"]
+            or new_tags != doc["tags"]
+            or new_content != doc["content"]
+        )
+
         now = _now()
         reviewer = doc["reviewer"]
         approved_at = doc["approved_at"]
@@ -1636,11 +1929,11 @@ def review_knowledge_document(
     reviewer: str,
     feedback: str = "",
 ) -> dict[str, Any] | None:
-    doc = get_knowledge_document(identifier)
-    if not doc:
-        return None
 
     with _connect() as connection:
+        doc = _lock_knowledge_document(connection, identifier)
+        if not doc:
+            return None
         now = _now()
         if action == "approve":
             summary = f"Duyệt và xuất bản bởi {reviewer}"
@@ -1716,10 +2009,10 @@ def restore_knowledge_version(
     version_number: int,
     actor: str,
 ) -> dict[str, Any] | None:
-    doc = get_knowledge_document(identifier)
-    if not doc:
-        return None
     with _connect() as connection:
+        doc = _lock_knowledge_document(connection, identifier)
+        if not doc:
+            return None
         v_row = connection.execute(
             """
             SELECT title, category, tags, content

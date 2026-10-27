@@ -1,3 +1,5 @@
+// Keep implementation names private; expose only the existing window API.
+(() => {
 async function loadAdminUsers() {
   try {
     const users = await api("/admin/users");
@@ -180,6 +182,29 @@ async function loadAdminUsers() {
         }
       });
       actions.append(roleSelect, saveRole, activeButton);
+      if (user.username !== state.user?.username) {
+        const deleteButton = node("button", "button button-quiet", "Xóa vĩnh viễn");
+        deleteButton.type = "button";
+        deleteButton.addEventListener("click", async () => {
+          const confirmation = window.prompt(`Xóa vĩnh viễn ${user.username}? Thông tin đăng nhập, hồ sơ và hội thoại riêng sẽ bị xóa. Ticket/bình luận vẫn giữ với danh tính ẩn danh; nội dung do người dùng viết vẫn còn. Nhập chính xác tên tài khoản để xác nhận:`);
+          if (confirmation !== user.username) return;
+          deleteButton.disabled = true;
+          try {
+            const response = await api(`/admin/users/${encodeURIComponent(user.username)}`, {
+              method: "DELETE", body: JSON.stringify({confirm_username: confirmation}),
+            });
+            await loadAdminUsers();
+            state.staff = await api("/staff");
+            await loadTickets();
+            alertUser(response.message);
+          } catch (error) {
+            alertUser(error.message);
+          } finally {
+            deleteButton.disabled = false;
+          }
+        });
+        actions.append(deleteButton);
+      }
       row.append(
         identity,
         profileDetails,
@@ -217,3 +242,4 @@ if (typeof window !== "undefined") {
   window.loadAdminUsers = loadAdminUsers;
   window.createAdminUser = createAdminUser;
 }
+})();

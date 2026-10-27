@@ -1,34 +1,24 @@
-# Network Printer Driver Installation via Standard TCP/IP Port
+# Hướng dẫn cài đặt driver máy in để bàn và máy photocopy qua mạng LAN
 
-**Từ khóa:** cài đặt driver máy in, thêm máy in, kết nối máy in mới, driver máy in, cài máy in văn phòng, add printer, driver print.
+**Từ khóa:** cài đặt driver máy in, thêm máy in, kết nối máy in qua mạng, máy in để bàn, máy in photocopy, Canon, HP, Ricoh, Toshiba, TCP/IP port, Print Management, Windows 11, driver máy in.
 
-## Symptoms
-- User receives new PC or moves to a new department and needs access to shared floor printer.
-- Windows auto-discovery fails to find network printer, or installs generic driver without duplex/color options.
-- Error 0x0000011b or 0x00000709 when connecting to a Windows shared printer.
+## Triệu chứng / Dấu hiệu nhận biết
+- Máy tính mới bàn giao hoặc vừa cài lại hệ điều hành Windows 11 chưa có sẵn máy in văn phòng.
+- In tài liệu xuất hiện các ký tự rác lạ mắt, chữ bị vỡ hoặc in sai khổ giấy do máy tính đang dùng driver mặc định Generic/Microsoft thay vì driver chuẩn của nhà sản xuất.
+- Khi bấm thêm máy in trong Windows hiển thị thông báo thiếu driver (Missing driver) hoặc yêu cầu quyền Quản trị viên (Administrator).
 
-## Checks
-1. Obtain the floor printer model (e.g., HP LaserJet Enterprise, Canon imageRUNNER, Ricoh Aficio) and designated IP address from IT floor directory.
-2. Verify target PC can ping the printer IP address.
-3. Verify appropriate PCL6 or PostScript driver installer is downloaded from corporate software repository (`\\fileserver\drivers`).
+## Các bước tự khắc phục nhanh (Self-service)
+1. **Tìm kiếm máy in tự động trong mạng nội bộ:**
+   - Đảm bảo máy tính đang kết nối cùng mạng Wi-Fi hoặc mạng dây LAN với máy in.
+   - Vào *Settings -> Bluetooth & devices -> Printers & scanners*, chọn nút *Add device*.
+   - Chờ Windows quét danh sách máy in trong mạng. Nếu thấy tên máy in văn phòng (ví dụ: Canon LBP, Ricoh Aficio), bấm nút *Add device* để hệ thống tự tải driver tương thích.
+2. **Thêm máy in bằng địa chỉ IP (Nếu biết địa chỉ IP):**
+   - Nếu quét tự động không thấy, bấm dòng chữ *Add manually*.
+   - Chọn *Add a printer using an IP address or hostname*, chọn giao diện *TCP/IP Device*.
+   - Nhập chính xác địa chỉ IP của máy in do IT niêm yết trên thân máy (ví dụ: `192.168.1.200`) rồi bấm Next.
+3. **In thử trang kiểm tra (Print Test Page):** Sau khi máy in đã được cài xong, vào *Printer properties* bấm nút *Print Test Page* để kiểm tra chất lượng bản in.
 
-## Resolution
-- Install printer directly using Standard TCP/IP port to bypass print server RPC restrictions:
-  1. Open Settings > Bluetooth & devices > Printers & scanners > click 'Add device' > 'The printer that I want isn\'t listed'.
-  2. Select 'Add a printer using an IP address or hostname' > click Next.
-  3. Device type: 'TCP/IP Device' > enter the printer IP address > uncheck 'Query the printer and automatically select driver'.
-  4. Click 'Have Disk...' and browse to downloaded corporate PCL6/Universal driver folder.
-  5. Enter a clear printer name (e.g., `Floor-2-HP-LaserJet-Color`).
-  6. Select 'Do not share this printer' > Print a test page to verify.
-
-## Escalation
-If users lack local Administrator rights to install print drivers, request IT Helpdesk deployment via Group Policy (GPO) or Intune.
-
-## Hướng dẫn nhanh (Tiếng Việt)
-1. Tra cứu địa chỉ IP của máy in tầng (thường dán nhãn trên thân máy in hoặc hỏi IT văn phòng).
-2. Vào Settings > Printers & scanners > chọn Add printer manually > 'Add a printer using an IP address or hostname'.
-3. Nhập IP máy in, chọn driver chuẩn PCL6 từ thư mục phần mềm công ty.
-4. Đặt tên máy in theo quy chuẩn (ví dụ: `MayIn-Tang3-Canon`) và in thử 1 trang test page để kiểm tra.
-
-## Source and scope
-- Microsoft Learn, [Add a printer by using an IP address in Windows](https://support.microsoft.com/en-us/windows/install-a-printer-in-windows-147863eb-e2ec-436e-b7a4-0b157705d042), accessed 2026-10-06.
+## Khi nào cần chuyển thẳng cho IT (Escalation)
+- Windows yêu cầu mật khẩu Quản trị viên (Admin credentials) để cho phép cài đặt driver vào hệ thống.
+- Các dòng máy in photocopy đa chức năng chuyên dụng (Ricoh, Toshiba, Xerox) yêu cầu bộ cài driver chuẩn PCL6/PostScript và mã xác thực hạch toán in ấn (User Code / Department Code).
+- Cần IT hỗ trợ triển khai kết nối máy in tự động thông qua chính sách Group Policy (GPO) hoặc Print Server của công ty.

@@ -1672,6 +1672,17 @@ button:disabled { cursor: wait; opacity: .65; }
   color: #7c2d12;
   line-height: 1.4;
 }
+.assistant-ticket-receipt {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #8ee0b7;
+  border-radius: 12px;
+  background: #effcf4;
+}
+.assistant-ticket-receipt p {
+  margin: 0;
+}
 .triage-prefilled-summary {
   background: #ffffff;
   border: 1px solid #fed7aa;

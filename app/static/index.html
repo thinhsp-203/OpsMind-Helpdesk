@@ -156,44 +156,6 @@
 
           <div class="content-grid">
             <div class="main-column">
-              <section id="createSection" class="panel create-panel hidden workspace-panel" data-view="submit">
-                <div class="section-heading">
-                  <div><span class="eyebrow">KHI CẦN IT CAN THIỆP</span><h2>Gửi yêu cầu có theo dõi</h2></div>
-                  <span class="step-mark">01</span>
-                </div>
-                <form id="ticketForm" class="ticket-form">
-                  <label class="field wide-field" for="ticketTitle">Tiêu đề sự cố <span>*</span>
-                    <input id="ticketTitle" name="title" minlength="5" maxlength="160" placeholder="Ví dụ: Không thể kết nối VPN từ sáng nay" required />
-                  </label>
-                  <label class="field" for="ticketCategory">Danh mục
-                    <select id="ticketCategory" name="category">
-                      <option value="network">Mạng & VPN</option>
-                      <option value="hardware">Phần cứng</option>
-                      <option value="software">Phần mềm</option>
-                      <option value="security">Tài khoản & bảo mật</option>
-                      <option value="general">Khác</option>
-                    </select>
-                  </label>
-                  <label class="field" for="ticketPriority">Mức ưu tiên
-                    <select id="ticketPriority" name="priority">
-                      <option value="low">P4 · Thấp · SLA 48 giờ</option>
-                      <option value="medium" selected>P3 · Thông thường · SLA 24 giờ</option>
-                      <option value="high">P2 · Cao · SLA 8 giờ</option>
-                      <option value="urgent">P1 · Khẩn cấp · SLA 2 giờ</option>
-                    </select>
-                  </label>
-                  <label class="field wide-field" for="ticketDescription">Mô tả chi tiết <span>*</span>
-                    <textarea id="ticketDescription" name="description" rows="4" minlength="10" maxlength="5000" placeholder="Mô tả điều đã xảy ra, thông báo lỗi và các bước bạn đã thử..." required></textarea>
-                    <small>Không nhập mật khẩu hoặc thông tin nhạy cảm.</small>
-                  </label>
-                  <div class="form-actions wide-field">
-                    <button id="draftFromRagBtn" class="button button-soft" type="button">✦ Hỏi hướng dẫn trước</button>
-                    <button class="button button-primary" type="submit">Gửi yêu cầu <span>→</span></button>
-                  </div>
-                  <p id="ticketMessage" class="form-message wide-field" role="status"></p>
-                </form>
-              </section>
-
               <section id="ticketPanel" class="panel ticket-panel workspace-panel" data-view="dashboard tickets">
                 <div class="section-heading ticket-heading">
                   <div><span id="ticketEyebrow" class="eyebrow">THEO DÕI</span><h2 id="ticketHeading">Yêu cầu của tôi</h2></div>
@@ -235,7 +197,7 @@
             </div>
 
             <aside class="side-column">
-              <section id="assistantPanel" class="panel assistant-panel workspace-panel" data-view="dashboard assistant submit">
+              <section id="assistantPanel" class="panel assistant-panel workspace-panel" data-view="dashboard assistant">
                 <div class="assistant-heading">
                   <div class="assistant-icon">✦</div>
                   <div class="assistant-title-group">

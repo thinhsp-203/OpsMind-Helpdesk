@@ -74,6 +74,7 @@ async function loadPublicConfig() {
     const response = await fetch("/config");
     if (!response.ok) throw new Error(`Không tải được cấu hình (${response.status}).`);
     const config = await response.json();
+    byId("demoDataBanner")?.classList.toggle("hidden", !config.demo_mode);
     const demoEl = byId("demoCredentials");
     if (demoEl) {
       if (config.demo_mode) {
@@ -243,19 +244,29 @@ function setSignedIn(user) {
 
 async function login(event) {
   event.preventDefault();
+  const form = event.currentTarget || byId("loginForm");
+  const button = form?.querySelector?.('button[type="submit"]');
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  form?.setAttribute?.("aria-busy", "true");
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeout = controller && typeof setTimeout === "function" ? setTimeout(() => controller.abort(), 45000) : null;
+  const slowNotice = typeof setTimeout === "function" ? setTimeout(() => setMessage("loginMessage", "Dịch vụ đang phản hồi chậm. Vui lòng chờ thêm...", false), 8000) : null;
   setMessage("loginMessage", "Đang xác thực...", false);
   try {
-    const result = await api("/auth/login", {
+    const loginOptions = {
       method: "POST",
       body: JSON.stringify({
         username: byId("username").value.trim(),
         password: byId("password").value,
       }),
-    });
+    };
+    if (controller) loginOptions.signal = controller.signal;
+    const result = await api("/auth/login", loginOptions);
     state.token = result.token;
     localStorage.setItem("helpdesk-token", state.token);
     try {
-      const me = await api("/auth/me");
+      const me = await api("/auth/me", controller ? { signal: controller.signal } : undefined);
       setSignedIn(me);
     } catch (error) {
       if (!state.token) throw error;
@@ -265,7 +276,12 @@ async function login(event) {
       openChangePasswordModal(true);
     }
   } catch (error) {
-    setMessage("loginMessage", error.message);
+    setMessage("loginMessage", error.name === "AbortError" ? "Kết nối quá lâu. Vui lòng thử đăng nhập lại." : error.message);
+  } finally {
+    if (timeout !== null) clearTimeout(timeout);
+    if (slowNotice !== null) clearTimeout(slowNotice);
+    if (button) button.disabled = false;
+    form?.removeAttribute?.("aria-busy");
   }
 }
 
@@ -781,6 +797,9 @@ function configureWorkspaceNavigation(role) {
 
 function setWorkspaceView(view) {
   state.activeView = view;
+  byId("workspaceSidebar")?.classList.remove("menu-open");
+  byId("workspaceMenuToggle")?.setAttribute("aria-expanded", "false");
+  document.querySelector(".page-heading")?.classList.toggle("hidden", view !== "dashboard");
   byId("workspaceView").dataset.view = view;
   byId("assistantContext").classList.toggle("hidden", view !== "assistant");
   const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
@@ -1992,6 +2011,19 @@ window.addEventListener("keydown", (event) => {
     closeEmergencyModal();
     byId("knowledgeEditorModal")?.classList.add("hidden");
     byId("knowledgeVersionsModal")?.classList.add("hidden");
+  }
+});
+
+byId("workspaceMenuToggle")?.addEventListener("click", () => {
+  const open = byId("workspaceSidebar").classList.toggle("menu-open");
+  byId("workspaceMenuToggle").setAttribute("aria-expanded", String(open));
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && byId("workspaceSidebar").classList.contains("menu-open")) {
+    byId("workspaceSidebar").classList.remove("menu-open");
+    byId("workspaceMenuToggle").setAttribute("aria-expanded", "false");
+    byId("workspaceMenuToggle").focus();
   }
 });
 

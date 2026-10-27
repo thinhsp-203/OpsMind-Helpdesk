@@ -87,9 +87,9 @@ async function loadKnowledge() {
 
       const actions = node("div", "knowledge-doc-actions");
 
-      const editBtn = node("button", "button button-soft", "Xem / Sửa");
+      const editBtn = node("button", "button button-soft", "Xem hướng dẫn");
       editBtn.type = "button";
-      editBtn.addEventListener("click", () => openKnowledgeEditor(doc.slug || doc.id));
+      editBtn.addEventListener("click", () => openKnowledgeReader(doc.slug || doc.id, editBtn));
       actions.append(editBtn);
 
       const versionsBtn = node("button", "button button-quiet", `Lịch sử (v${doc.version_count || 1})`);
@@ -217,6 +217,32 @@ function updateLivePreview() {
     return;
   }
   preview.replaceChildren(renderRunbook(content));
+}
+
+async function openKnowledgeReader(identifier, trigger) {
+  try {
+    const doc = await api(`/knowledge/${encodeURIComponent(identifier)}`);
+    const modal = byId("knowledgeReaderModal");
+    byId("knowledgeReaderTitle").textContent = doc.title;
+    byId("knowledgeReaderMeta").textContent = `${categoryLabels[doc.category] || doc.category} · ${statusLabels[doc.status] || doc.status}`;
+    byId("knowledgeReaderContent").replaceChildren(renderRunbook(doc.content));
+    const close = () => { modal.classList.add("hidden"); trigger?.focus(); };
+    byId("closeKnowledgeReader").onclick = close;
+    byId("editKnowledgeReader").classList.toggle("hidden", state.user.role === "user");
+    byId("editKnowledgeReader").onclick = () => { close(); openKnowledgeEditor(identifier); };
+    modal.onclick = (event) => { if (event.target === modal) close(); };
+    modal.onkeydown = (event) => {
+      if (event.key === "Escape") { event.stopPropagation(); close(); }
+      if (event.key === "Tab") {
+        const controls = [...modal.querySelectorAll("button:not(.hidden)")];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === byId("knowledgeReaderTitle"))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    modal.classList.remove("hidden");
+    byId("knowledgeReaderTitle").focus();
+  } catch (error) { alertUser(error.message); }
 }
 
 async function openKnowledgeEditor(identifier) {

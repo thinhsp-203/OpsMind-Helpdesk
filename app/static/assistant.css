@@ -68,3 +68,10 @@
   .assistant-info-card { padding: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .assistant-chat-scroll { scroll-behavior: auto; } }
+
+/* The assistant is the primary task surface: keep answers in the page flow. */
+#workspaceView[data-role][data-view="assistant"] .side-column { grid-column: 1 / -1; width: 100%; }
+#workspaceView[data-role][data-view="assistant"] #assistantContext { display: none !important; }
+#workspaceView[data-role][data-view="assistant"] #assistantPanel { height: auto; min-height: 0; position: static; }
+#workspaceView[data-role][data-view="assistant"] .assistant-chat-scroll { flex: none; min-height: 360px; overflow: visible; }
+#workspaceView[data-role][data-view="assistant"] .agent-integrations { display: none; }

@@ -164,6 +164,29 @@ function closeUserDropdown() {
   menu.classList.add("hidden");
 }
 
+function initializePasswordVisibilityToggles() {
+  document.querySelectorAll('input[type="password"]').forEach((input) => {
+    if (input.dataset.visibilityToggle === "true" || !input.parentNode) return;
+    const wrapper = node("span", "password-input-wrap");
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.append(input);
+    const toggle = node("button", "password-visibility-toggle", "👁");
+    toggle.type = "button";
+    toggle.setAttribute("aria-label", "Hiện mật khẩu");
+    toggle.setAttribute("aria-pressed", "false");
+    toggle.addEventListener("click", () => {
+      const isVisible = input.type === "text";
+      input.type = isVisible ? "password" : "text";
+      toggle.textContent = isVisible ? "👁" : "◉";
+      toggle.setAttribute("aria-label", isVisible ? "Hiện mật khẩu" : "Ẩn mật khẩu");
+      toggle.setAttribute("aria-pressed", String(!isVisible));
+      input.focus({ preventScroll: true });
+    });
+    input.dataset.visibilityToggle = "true";
+    wrapper.append(toggle);
+  });
+}
+
 function setSignedIn(user) {
   byId("ticketReceipt").classList.add("hidden");
   document.body.classList.add("signed-in");
@@ -432,6 +455,9 @@ function openUserProfileModal() {
   if (phoneInput) phoneInput.value = user.phone || "";
   const pwdConfirmInput = byId("profileCurrentPasswordInput");
   if (pwdConfirmInput) pwdConfirmInput.value = "";
+  const profileForm = byId("userProfileForm");
+  if (profileForm) profileForm.dataset.initialEmail = user.email || "";
+  syncProfileEmailConfirmation();
 
   const activity = user.activity || {};
   const statCreated = byId("profileStatCreated");
@@ -465,6 +491,18 @@ function openUserProfileModal() {
   setMessage("userProfileMessage", "");
   modal.classList.remove("hidden");
   byId("profileFullNameInput")?.focus();
+}
+
+function syncProfileEmailConfirmation() {
+  const profileForm = byId("userProfileForm");
+  const emailInput = byId("profileEmailInput");
+  const wrap = byId("profileCurrentPasswordWrap");
+  const passwordInput = byId("profileCurrentPasswordInput");
+  if (!profileForm || !emailInput || !wrap || !passwordInput) return;
+  const emailChanged = emailInput.value.trim() !== (profileForm.dataset.initialEmail || "").trim();
+  wrap.classList.toggle("hidden", !emailChanged);
+  passwordInput.required = emailChanged;
+  if (!emailChanged) passwordInput.value = "";
 }
 
 function closeUserProfileModal() {
@@ -801,7 +839,7 @@ function setWorkspaceView(view) {
   byId("workspaceMenuToggle")?.setAttribute("aria-expanded", "false");
   document.querySelector(".page-heading")?.classList.toggle("hidden", view !== "dashboard");
   byId("workspaceView").dataset.view = view;
-  byId("assistantContext").classList.toggle("hidden", view !== "assistant");
+  byId("assistantContext")?.classList.add("hidden");
   const activeButton = document.querySelector(`.workspace-nav-button[data-view="${view}"]`);
   byId("workspacePageLabel").textContent = window.helpdeskI18n.translate(activeButton?.dataset.label || "OpsMind");
 
@@ -1508,7 +1546,9 @@ function appendAssistantTicketReceipt(container, ticket, priorityLabel) {
   const done = node("button", "button button-success", "Xong, cảm ơn");
   done.type = "button";
   done.addEventListener("click", () => {
-    state.chatSessionId = null;
+    done.disabled = true;
+    done.textContent = "Đã ghi nhận";
+    receipt.append(node("p", "assistant-ticket-complete", "Cảm ơn bạn. Ticket đã được gửi cho IT; bạn có thể tiếp tục hỏi thêm trong phiên này."));
     byId("ragQuestion").focus({ preventScroll: true });
   });
   actions.append(viewTickets, done);
@@ -1924,10 +1964,10 @@ window.addEventListener("helpdesk-language-changed", () => {
   }
 });
 loadPublicConfig();
+initializePasswordVisibilityToggles();
 byId("loginForm").addEventListener("submit", login);
 byId("logoutBtn").addEventListener("click", logout);
 byId("changePasswordBtn").addEventListener("click", () => openChangePasswordModal(false));
-byId("deleteAccountBtn")?.addEventListener("click", deleteAccount);
 byId("profileDeleteAccountBtn")?.addEventListener("click", deleteAccount);
 byId("cancelChangePasswordBtn").addEventListener("click", () => {
   if (byId("changePasswordModal")?.dataset.forced === "true") logout();
@@ -1978,6 +2018,7 @@ byId("userBadge")?.addEventListener("click", openUserProfileModal);
 byId("closeUserProfileBtn")?.addEventListener("click", closeUserProfileModal);
 byId("cancelUserProfileBtn")?.addEventListener("click", closeUserProfileModal);
 byId("userProfileForm")?.addEventListener("submit", handleProfileUpdate);
+byId("profileEmailInput")?.addEventListener("input", syncProfileEmailConfirmation);
 byId("profileChangePasswordBtn")?.addEventListener("click", () => {
   closeUserProfileModal();
   openChangePasswordModal();

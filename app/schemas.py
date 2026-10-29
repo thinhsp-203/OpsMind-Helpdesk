@@ -144,6 +144,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 class TicketCreate(BaseModel):
+    request_key: str | None = Field(default=None, min_length=16, max_length=64, pattern=r"^[a-zA-Z0-9-]+$")
     title: str = Field(min_length=5, max_length=160)
     description: str = Field(min_length=10, max_length=5000)
     category: str = Field(default="general", min_length=2, max_length=50)
@@ -214,6 +215,10 @@ class CommentCreate(BaseModel):
 
 
 class RAGQuestion(BaseModel):
+    step_results: dict[str, Literal["not_attempted", "attempted_success", "attempted_failure"]] = Field(default_factory=dict, max_length=3)
+    expected_revision: int | None = Field(default=None, ge=0)
+    action: Literal["confirm_resolved", "still_failing", "confirm_switch", "continue_incident"] | None = None
+    fact_answers: dict[str, str] = Field(default_factory=dict, max_length=3)
     question: str = Field(min_length=3, max_length=2000)
     session_id: str | None = Field(default=None, min_length=1, max_length=64)
 

@@ -604,7 +604,8 @@ def test_rag_chat_history_and_feedback_are_scoped_to_the_user() -> None:
         f"/rag/sessions/{result['session_id']}", headers=requester
     ).json()
     assert [message["role"] for message in session["messages"]] == ["user", "assistant"]
-    assert session["messages"][1]["sources"][0]["source"] == "vpn_forticlient.md"
+    assert session["messages"][1]["sources"] == []
+    assert session["diagnostic"]["state"] == "IN_SCOPE_NO_SOURCE"
     feedback = client.post(
         "/rag/feedback",
         headers=requester,
@@ -805,7 +806,7 @@ def test_knowledge_changes_reach_an_independent_warm_reader(change: str, knowled
         else:
             updated = client.delete(f"/knowledge/{slug}", headers=admin_headers)
         assert updated.status_code == 200
-        parent = client.post("/rag/ask", headers=user_headers, json={"question": question}).json()
+        parent = generate_answer(question)  # Compare retrieval caches independently of procedural approval.
         remote = ask(question)
         assert remote["pid"] == warm["pid"]
         assert remote["matches"] == parent["matches"]
@@ -824,7 +825,7 @@ def test_warm_retrieval_cache_fails_closed_on_store_error(monkeypatch):
     headers = auth()
     question = {"question": "Tôi không kết nối được VPN FortiClient"}
     warm = client.post("/rag/ask", headers=headers, json=question)
-    assert warm.status_code == 200 and warm.json()["grounded"] is True
+    assert warm.status_code == 200 and warm.json()["grounded"] is False
     session_id = warm.json()["session_id"]
 
     def unavailable(*args, **kwargs):
@@ -838,7 +839,7 @@ def test_warm_retrieval_cache_fails_closed_on_store_error(monkeypatch):
         session = client.get(f"/rag/sessions/{session_id}", headers=headers).json()
         assert len(session["messages"]) == 2
     recovered = client.post("/rag/ask", headers=headers, json=question)
-    assert recovered.status_code == 200 and recovered.json()["grounded"] is True
+    assert recovered.status_code == 200 and recovered.json()["grounded"] is False
 
 
 def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
@@ -856,7 +857,7 @@ def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
     question = {"question": "Tôi không kết nối được VPN FortiClient"}
     before = client.post("/rag/ask", headers=user_headers, json=question)
     assert before.status_code == 200
-    assert before.json()["grounded"] is True
+    assert before.json()["grounded"] is False
     archived = client.put(
         f"/knowledge/{last_slug}", headers=admin_headers, json={"status": "archived"},
     )
@@ -883,9 +884,11 @@ def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
     assert published.status_code == 200
     restored = client.post("/rag/ask", headers=user_headers, json=question)
     assert restored.status_code == 200
-    assert restored.json()["grounded"] is True
-    assert [doc["source"] for doc in restored.json()["sources"]] == [last_slug]
-    assert "AUD05-DB-PUBLISHED" in restored.json()["matches"][0]["content"]
+    assert restored.json()["grounded"] is False
+    assert restored.json()["state"] == "IN_SCOPE_NO_SOURCE"
+    retrieved = generate_answer(question["question"])
+    assert [doc["source"] for doc in retrieved["sources"]] == [last_slug]
+    assert "AUD05-DB-PUBLISHED" in retrieved["matches"][0]["content"]
 
 
 def test_rag_database_failure_returns_503_and_recovers_without_cache_clear(monkeypatch):
@@ -906,7 +909,7 @@ def test_rag_database_failure_returns_503_and_recovers_without_cache_clear(monke
         assert client.get("/rag/sessions", headers=headers).json() == []
     recovered = client.post("/rag/ask", headers=headers, json=question)
     assert recovered.status_code == 200
-    assert recovered.json()["grounded"] is True
+    assert recovered.json()["grounded"] is False
 
 
 def test_rag_finds_vietnamese_printer_and_vpn_sources() -> None:
@@ -1513,3 +1516,379 @@ def test_html_escaping_in_email_dispatch(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "&amp;" in brevo_payload["htmlContent"]
     assert "&quot;" in brevo_payload["htmlContent"]
     assert "<br>" in brevo_payload["htmlContent"]
+
+
+def test_diagnostic_questions_and_session_context():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline dù đã bật nguồn'}).json()
+    assert first['state'] == 'CLARIFY'
+    assert len(first['questions']) <= 3
+    assert first['matches'] == []
+    second = client.post('/rag/ask', headers=headers, json={
+        'question': 'Tôi không biết loại kết nối', 'session_id': first['session_id'],
+    }).json()
+    assert second['state'] == 'HANDOFF_PREVIEW'
+    assert second['incident_topic'] == 'printer'
+    changed = client.post('/rag/ask', headers=headers, json={
+        'question': 'Cắm dây mạng không vào Internet', 'session_id': first['session_id'],
+    }).json()
+    assert changed['state'] == 'CLARIFY'
+    assert changed['pending_topic'] == 'network'
+
+
+def test_diagnostics_do_not_escalate_weather_or_claim_cable_failure():
+    headers = auth()
+    network = client.post('/rag/ask', headers=headers, json={
+        'question': 'Cắm dây mạng nhưng không có Internet',
+    }).json()
+    assert network['state'] == 'CLARIFY'
+    assert network['grounded'] is False
+    assert 'đứt dây' not in network['answer']
+    weather = client.post('/rag/ask', headers=headers, json={
+        'question': 'Thời tiết Hà Nội hôm nay thế nào?', 'session_id': network['session_id'],
+    }).json()
+    assert weather['state'] == 'OUT_OF_SCOPE'
+    assert weather['sources'] == []
+
+
+def test_diagnostic_session_cannot_be_read_by_another_user():
+    first = client.post('/rag/ask', headers=auth('admin'), json={'question': 'Máy in Offline'}).json()
+    other = auth('user')
+    response = client.post('/rag/ask', headers=other, json={
+        'question': 'Tôi không biết', 'session_id': first['session_id'],
+    })
+    assert response.status_code == 404
+
+
+def test_ticket_request_key_retries_return_same_ticket():
+    headers = auth()
+    payload = {'title': 'Máy in Offline demo', 'description': 'Chưa xác minh kết nối máy in',
+               'request_key': 'demo-request-00000001'}
+    first = client.post('/tickets', headers=headers, json=payload)
+    retry = client.post('/tickets', headers=headers, json=payload)
+    assert first.status_code == retry.status_code == 201
+    assert first.json()['ticket']['id'] == retry.json()['ticket']['id']
+    assert len(client.get('/tickets', headers=headers).json()) == 1
+
+
+def test_ticket_request_key_concurrent_and_scoped_to_account():
+    from concurrent.futures import ThreadPoolExecutor
+    headers = auth()
+    payload = {'title': 'Máy in Offline demo', 'description': 'Chưa xác minh kết nối máy in',
+               'request_key': 'demo-concurrent-00000001'}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: client.post('/tickets', headers=headers, json=payload), range(2)))
+    assert all(r.status_code == 201 for r in results)
+    assert results[0].json()['ticket']['id'] == results[1].json()['ticket']['id']
+    other = client.post('/tickets', headers=auth('admin'), json=payload)
+    assert other.status_code == 201
+    assert other.json()['ticket']['id'] != results[0].json()['ticket']['id']
+
+
+def test_negated_or_past_success_never_resolves_incident():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    for question in ('Tôi chưa in được, đừng nói đã in được', 'Trước đây đã in được nhưng giờ vẫn lỗi'):
+        result = client.post('/rag/ask', headers=headers, json={'question': question, 'session_id': first['session_id']}).json()
+        assert result['state'] != 'RESOLVED'
+        assert 'đã xác nhận chức năng' not in result['answer']
+
+
+def test_pending_topic_switch_does_not_contaminate_active_incident():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    switch = client.post('/rag/ask', headers=headers, json={'question': 'Outlook không đăng nhập được', 'session_id': first['session_id']}).json()
+    assert switch['pending_topic'] == 'other_it'
+    assert switch['incident_topic'] == 'printer'
+    followup = client.post('/rag/ask', headers=headers, json={'question': 'Tôi không biết', 'session_id': first['session_id']}).json()
+    assert followup['incident_topic'] == 'printer'
+    assert 'Outlook' not in followup['handoff']['description']
+
+
+def test_approved_printer_guide_requires_explicit_current_result(tmp_path, monkeypatch):
+    import json
+    from app import assistant_policy
+    catalogue = tmp_path / 'synthetic-approved.json'
+    catalogue.write_text(json.dumps({'runbooks': [{
+        'id': 'fixture-printer', 'topic': 'printer', 'version': 'test-1',
+        'status': 'approved', 'reviewer': 'synthetic test reviewer', 'reviewed_at': '2026-10-28',
+        'source': 'fixture://printer', 'source_version': '1', 'section': 'Observation',
+        'conditions': {'connection': 'usb', 'scope': 'single', 'panel': 'no_error'},
+        'steps': [{'id': 'observe', 'instruction': 'Quan sát hàng đợi thử nghiệm.',
+                   'expected': 'Ghi lại trạng thái.', 'stop': 'Dừng nếu cần thay đổi cấu hình.', 'roles': ['user']}],
+    }]}), encoding='utf8')
+    monkeypatch.setattr(assistant_policy, 'CATALOGUE', catalogue)
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    body = {'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'],
+            'expected_revision': first['revision'], 'fact_answers': {'connection': 'usb', 'scope': 'single', 'panel': 'no_error'}}
+    guide = client.post('/rag/ask', headers=headers, json=body).json()
+    assert guide['state'] == 'CHECK_RESULT'
+    assert guide['steps'][0]['id'] == 'observe'
+    assert guide['policy_sources'][0]['version'] == 'test-1'
+    still = client.post('/rag/ask', headers=headers, json={
+        'question': 'Trước đây đã in được nhưng vẫn lỗi', 'session_id': first['session_id'],
+        'expected_revision': guide['revision'], 'step_results': {'observe': 'attempted_failure'},
+    }).json()
+    assert still['state'] == 'CHECK_RESULT'
+    assert still['attempted_steps'] == [{'id': 'observe', 'result': 'attempted_failure'}]
+    assert still['suggested_only_steps'] == []
+    resolved = client.post('/rag/ask', headers=headers, json={
+        'question': 'Xác nhận chức năng hiện đã hoạt động', 'session_id': first['session_id'],
+        'action': 'confirm_resolved', 'expected_revision': still['revision'],
+    }).json()
+    assert resolved['state'] == 'RESOLVED'
+    assert resolved['handoff']['description'].count('đã hoạt động trở lại') == 1
+
+
+def test_unapproved_guide_and_invalid_fact_fail_closed():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Dây mạng không Internet'}).json()
+    invalid = client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện', 'session_id': first['session_id'], 'expected_revision': first['revision'], 'fact_answers': {'role': 'admin'},
+    })
+    assert invalid.status_code == 422
+    result = client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện', 'session_id': first['session_id'], 'expected_revision': first['revision'],
+        'fact_answers': {'link': 'connected', 'scope': 'single', 'internal': 'works'},
+    }).json()
+    assert result['state'] == 'HANDOFF_PREVIEW'
+    assert result['steps'] == []
+    assert result['facts']['internal']['source'] == 'user'
+    assert result['facts']['internal']['at']
+    assert 'Dữ kiện internal: works' in result['handoff']['description']
+    assert client.post('/rag/ask', headers=headers, json={
+        'question': 'Đã hoạt động', 'session_id': first['session_id'], 'action': 'confirm_resolved', 'expected_revision': result['revision'],
+    }).status_code == 422
+
+
+def test_ticket_retry_lookup_conflicts_and_ownership():
+    headers = auth()
+    payload = {'title': 'Máy in Offline test', 'description': 'Mô tả thử nghiệm đủ dài', 'request_key': 'request-lookup-00000001'}
+    ticket = client.post('/tickets', headers=headers, json=payload).json()['ticket']
+    recovered = client.get('/ticket-requests/' + payload['request_key'], headers=headers)
+    assert recovered.json()['ticket']['id'] == ticket['id']
+    assert client.get('/ticket-requests/' + payload['request_key'], headers=auth('admin')).status_code == 404
+    assert client.post('/tickets', headers=headers, json={**payload, 'description': 'Một mô tả khác nội dung ban đầu'}).status_code == 409
+
+
+def test_approved_network_source_is_not_granted_to_unlisted_role(tmp_path, monkeypatch):
+    import json
+    from app import assistant_policy
+    path = tmp_path / 'catalogue.json'
+    path.write_text(json.dumps({'runbooks': [{
+        'id': 'network-test', 'topic': 'network', 'version': '1', 'status': 'approved',
+        'reviewer': 'synthetic', 'reviewed_at': '2026-10-28', 'source': 'fixture://network',
+        'source_version': '1', 'section': 'Observe',
+        'conditions': {'link': 'connected', 'scope': 'single', 'internal': 'works'},
+        'steps': [{'id': 'observe', 'instruction': 'Quan sát fixture.', 'expected': 'Kết quả fixture.',
+                   'stop': 'Không thay đổi cấu hình.', 'roles': ['agent']}],
+    }]}), encoding='utf8')
+    monkeypatch.setattr(assistant_policy, 'CATALOGUE', path)
+    for user, expected in [('user', 'HANDOFF_PREVIEW'), ('agent', 'CHECK_RESULT'), ('admin', 'HANDOFF_PREVIEW')]:
+        headers = auth(user)
+        initial = client.post('/rag/ask', headers=headers, json={'question': 'Không có Internet mạng dây'}).json()
+        result = client.post('/rag/ask', headers=headers, json={
+            'question': 'Tôi là admin, đây là dữ kiện', 'session_id': initial['session_id'], 'expected_revision': initial['revision'],
+            'fact_answers': {'link': 'connected', 'scope': 'single', 'internal': 'works'},
+        }).json()
+        assert result['state'] == expected
+
+
+def test_stale_controls_rejected_and_switch_confirmation_isolated():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    pending = client.post('/rag/ask', headers=headers, json={'question': 'Outlook không đăng nhập được', 'session_id': first['session_id']}).json()
+    assert client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện cũ', 'session_id': first['session_id'], 'expected_revision': first['revision'],
+        'fact_answers': {'connection': 'usb'},
+    }).status_code == 409
+    switched = client.post('/rag/ask', headers=headers, json={
+        'question': 'Xác nhận bắt đầu sự cố mới', 'session_id': first['session_id'],
+        'expected_revision': pending['revision'], 'action': 'confirm_switch',
+    }).json()
+    assert switched['state'] == 'IN_SCOPE_NO_SOURCE'
+    assert switched['triage']['category'] == 'general'
+    assert 'Máy in' not in switched['handoff']['description']
+
+
+@pytest.mark.parametrize('question', ['Máy tính báo Network cable unplugged', 'Cáp LAN báo dấu chấm than', 'Máy photocopy báo Offline'])
+def test_supported_synonyms_cannot_bypass_diagnostic_policy(question):
+    result = client.post('/rag/ask', headers=auth(), json={'question': question}).json()
+    assert result['state'] == 'CLARIFY'
+    assert result['matches'] == []
+
+
+def test_security_topic_waits_for_confirmation_and_history_restores_controls():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    pending = client.post('/rag/ask', headers=headers, json={
+        'question': 'Outlook không đăng nhập được', 'session_id': first['session_id'],
+    }).json()
+    assert pending['pending_topic'] == 'other_it'
+    assert pending['incident_topic'] == 'printer'
+    restored = client.get('/rag/sessions/' + first['session_id'], headers=headers).json()['diagnostic']
+    assert restored['pending_topic'] == 'other_it'
+    assert restored['revision'] == pending['revision']
+    continued = client.post('/rag/ask', headers=headers, json={
+        'question': 'Tiếp tục sự cố hiện tại', 'action': 'continue_incident',
+        'session_id': first['session_id'], 'expected_revision': restored['revision'],
+    }).json()
+    assert continued['pending_topic'] is None
+    assert continued['questions']
+    history = client.get('/rag/sessions/' + first['session_id'], headers=headers).json()['diagnostic']
+    assert history['questions'] == continued['questions']
+    assert history['attempted_steps'] == []
+
+
+@pytest.mark.parametrize('question', ['Máy in nghi bị mã độc', 'Máy tính nhiễm virus không vào Internet', 'Máy in bị cháy bốc khói', 'Cáp LAN bị cháy'])
+def test_safety_signals_stop_new_and_active_guides(question):
+    from app import store
+    headers = auth()
+    initial = client.post('/rag/ask', headers=headers, json={'question': question}).json()
+    assert initial['state'] == 'HANDOFF_PREVIEW'
+    assert initial['safety_stop'] and not initial['steps']
+    # Seed an active guide to verify a danger report invalidates result controls.
+    context = {'topic': 'printer', 'initial_question': 'Máy in Offline', 'facts': {},
+               'state': 'CHECK_RESULT', 'steps': [{'id': 'observe'}], 'sources': [], 'revision': 1}
+    sid = store.save_chat_exchange('user', None, 'Máy in Offline', 'fixture', [], incident_context=context)
+    pending = client.post('/rag/ask', headers=headers, json={'question': question, 'session_id': sid}).json()
+    assert pending['safety_stop'] and pending['pending_topic'] in ('hazard', 'security')
+    assert not pending['steps']
+    for action in ('continue_incident', 'confirm_resolved'):
+        blocked = client.post('/rag/ask', headers=headers, json={'question': 'Tiếp tục', 'session_id': sid,
+            'action': action, 'expected_revision': pending['revision']}).json()
+        assert blocked['safety_stop'] and blocked['state'] == 'CLARIFY'
+        pending = blocked
+    switched = client.post('/rag/ask', headers=headers, json={'question': 'Xác nhận', 'session_id': sid,
+        'action': 'confirm_switch', 'expected_revision': pending['revision']}).json()
+    assert switched['state'] == 'HANDOFF_PREVIEW' and not switched['steps']
+    assert question in switched['handoff']['description']
+
+
+@pytest.mark.parametrize('question', ['Thiết bị văn phòng gặp trục trặc', 'Windows không in được, hàng đợi báo Offline'])
+def test_unrecognized_paraphrase_cannot_expose_legacy_runbook(monkeypatch, question):
+    from app.routers import rag
+    monkeypatch.setattr(rag, 'generate_answer', lambda _: {
+        'answer': 'Unapproved legacy procedure', 'sources': ['fixture'],
+        'matches': [{'source': 'custom_windows.md', 'title': 'Xử lý sự cố Windows', 'content': 'Restart Print Spooler'}], 'triage': {'category': 'hardware', 'priority': 'medium'},
+    })
+    result = client.post('/rag/ask', headers=auth(), json={'question': question}).json()
+    assert result['state'] == 'IN_SCOPE_NO_SOURCE'
+    assert result['matches'] == [] and result['steps'] == []
+    assert 'Unapproved' not in result['answer']
+
+
+def test_bug_regression_followup_details_survive_handoff_history_and_ticket():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    detail = '5 người phòng kế toán bị từ 9h, đang ngừng xuất hóa đơn'
+    follow = client.post('/rag/ask', headers=headers, json={
+        'question': detail, 'session_id': first['session_id'],
+    }).json()
+    ready = client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'],
+        'expected_revision': follow['revision'],
+        'fact_answers': {'connection': 'unknown', 'scope': 'multiple', 'panel': 'unknown'},
+    }).json()
+    assert ready['state'] == 'HANDOFF_PREVIEW'
+    assert detail in ready['handoff']['description']
+    assert 'người dùng cung cấp, chưa xác minh' in ready['handoff']['description']
+    history = client.get('/rag/sessions/' + first['session_id'], headers=headers).json()['diagnostic']
+    assert detail in history['handoff']['description']
+    ticket = client.post('/tickets', headers=headers, json={
+        'title': ready['handoff']['title'], 'description': ready['handoff']['description'],
+        'request_key': 'bug-followup-details-0001',
+    })
+    assert ticket.status_code == 201
+    assert detail in ticket.json()['ticket']['description']
+
+
+@pytest.mark.parametrize('action,terminal', [('still_failing', 'HANDOFF_PREVIEW'), ('confirm_resolved', 'RESOLVED'), (None, 'CHECK_RESULT')])
+def test_bug_regression_terminal_incident_does_not_repeat_guide(monkeypatch, action, terminal):
+    from app import assistant_policy
+    calls = []
+    step = {'id': 'observe', 'instruction': 'Quan sát fixture.', 'expected': 'Kết quả fixture.',
+            'stop': 'Không thay đổi cấu hình.', 'roles': ['user']}
+
+    def synthetic_approved(*args):
+        calls.append(args)
+        return [step], []
+
+    monkeypatch.setattr(assistant_policy, 'approved_steps', synthetic_approved)
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    guide = client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'], 'expected_revision': first['revision'],
+        'fact_answers': {'connection': 'usb', 'scope': 'single', 'panel': 'no_error'},
+    }).json()
+    assert guide['state'] == 'CHECK_RESULT'
+    ended = guide if action is None else client.post('/rag/ask', headers=headers, json={
+        'question': 'Kết quả hiện tại', 'session_id': first['session_id'], 'expected_revision': guide['revision'],
+        'action': action, 'step_results': {'observe': 'attempted_failure' if action == 'still_failing' else 'attempted_success'},
+    }).json()
+    assert ended['state'] == terminal
+    after = client.post('/rag/ask', headers=headers, json={'question': 'Cảm ơn', 'session_id': first['session_id']}).json()
+    assert after['state'] == terminal
+    assert after['attempted_steps'] == ended['attempted_steps']
+    assert len(calls) == 1
+    # A topic-switch prompt must suspend, then restore the same terminal state.
+    pending = client.post('/rag/ask', headers=headers, json={'question': 'Outlook bị lỗi', 'session_id': first['session_id']}).json()
+    restored = client.post('/rag/ask', headers=headers, json={
+        'question': 'Tiếp tục sự cố hiện tại', 'session_id': first['session_id'],
+        'action': 'continue_incident', 'expected_revision': pending['revision'],
+    }).json()
+    assert restored['state'] == terminal
+    assert len(calls) == 1
+
+
+
+def test_bug_regression_followup_reports_remain_separate_and_bounded():
+    from app import assistant_policy as policy
+    first = policy.diagnose('Máy in Offline')
+    detail = '5 người phòng kế toán bị từ 9h'
+    follow = policy.diagnose(detail, first['context'])
+    assert follow['facts'] == {}  # A user report is not a confirmed diagnostic observation.
+    assert follow['context']['notes'][0]['source'] == 'user'
+    assert follow['context']['notes'][0]['at']
+    pending = policy.diagnose('Outlook không gửi được thư', follow['context'])
+    switched = policy.diagnose('Xác nhận', pending['context'], action='confirm_switch')
+    assert detail not in switched['handoff']['description']
+    assert not switched['context'].get('notes')
+    long_context = follow['context']
+    for index in range(4):
+        long_context = policy.diagnose(f'Ghi chú {index}: ' + 'x' * 1900, long_context)['context']
+    preview = policy.handoff(long_context)['description']
+    assert len(preview) <= 5000 and 'Rút gọn' in preview
+    assert detail in str(long_context['notes'])
+    assert 'Ghi chú 3:' in preview
+
+
+@pytest.mark.parametrize('question', ['Máy in bốc khói', 'Máy in nghi nhiễm mã độc'])
+def test_bug_regression_safety_handoff_keeps_followup(question):
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': question}).json()
+    detail = '5 người phòng kế toán bị từ 9h'
+    after = client.post('/rag/ask', headers=headers, json={'question': detail, 'session_id': first['session_id']}).json()
+    assert after['state'] == 'HANDOFF_PREVIEW' and after['safety_stop']
+    assert not after['steps'] and detail in after['handoff']['description']
+
+
+def test_bug_regression_handoff_accepts_fact_correction_without_new_guide():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    ready = client.post('/rag/ask', headers=headers, json={
+        'question': 'Không biết', 'session_id': first['session_id'],
+    }).json()
+    assert ready['state'] == 'HANDOFF_PREVIEW'
+    corrected = client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'],
+        'expected_revision': ready['revision'], 'fact_answers': {'connection': 'usb'},
+    }).json()
+    assert corrected['state'] == 'HANDOFF_PREVIEW' and not corrected['steps']
+    assert corrected['facts']['connection']['value'] == 'usb'
+    assert 'Dữ kiện connection: usb' in corrected['handoff']['description']
+    assert client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'],
+        'expected_revision': corrected['revision'], 'fact_answers': {'connection': 'invented'},
+    }).status_code == 422

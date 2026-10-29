@@ -86,15 +86,30 @@ def create_new_ticket(
     background_tasks: BackgroundTasks,
 ) -> dict:
     user = current_user(request)
-    ticket = store.create_ticket(
-        title=payload.title.strip(),
-        description=payload.description.strip(),
-        category=payload.category.strip().lower(),
-        priority=payload.priority,
-        requester=user["username"],
-    )
+    try:
+        ticket = store.create_ticket(
+            title=payload.title.strip(),
+            description=payload.description.strip(),
+            category=payload.category.strip().lower(),
+            priority=payload.priority,
+            requester=user["username"],
+            request_key=payload.request_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     background_tasks.add_task(wake_notification_worker)
     return {"message": "Đã tạo ticket.", "ticket": ticket}
+
+
+@router.get("/ticket-requests/{request_key}")
+def find_ticket_request(request: Request, request_key: str) -> dict:
+    user = current_user(request)
+    if not 16 <= len(request_key) <= 64:
+        raise HTTPException(status_code=422, detail="Request key không hợp lệ.")
+    ticket = store.get_ticket_request(user["username"], request_key)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Chưa xác nhận được ticket cho yêu cầu này.")
+    return {"ticket": ticket}
 
 
 @router.get("/tickets/{ticket_id}")

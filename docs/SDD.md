@@ -55,10 +55,14 @@ sequenceDiagram
   K-->>R: Đoạn nội dung + tên file
   R-->>A: BM25, nguồn không trùng, gợi ý category/priority có lý do
   A->>DB: Lưu session, truy vấn, nguồn, câu trả lời
-  alt Có đoạn đủ liên quan
-    A-->>W: Hướng dẫn + nguồn + relevance
-  else Không đủ bằng chứng
-    A-->>W: Từ chối suy đoán, đề nghị tạo ticket
+  alt Bước trong catalogue approved phù hợp dữ kiện và quyền
+    A-->>W: Bước được phép + quan sát + điều kiện dừng + nguồn phiên bản
+  else Nhóm đã nhận diện nhưng không có bước approved phù hợp
+    A-->>W: HANDOFF_PREVIEW, không phát lại hướng dẫn
+  else Nhánh retrieval fallback có tài liệu nhưng chưa qua catalogue
+    A-->>W: IN_SCOPE_NO_SOURCE, không phát hướng dẫn retrieval
+  else Thiếu dữ kiện hoặc cần IT
+    A-->>W: Câu hỏi làm rõ hoặc preview bàn giao
   end
   opt Người dùng cần IT can thiệp
     U->>W: Gửi ticket
@@ -69,11 +73,12 @@ sequenceDiagram
   opt IT cần xử lý ticket
     Agent->>W: Tra cứu từ tiêu đề/mô tả ticket
     W->>A: POST /rag/ask
-    A-->>W: Trích đoạn + nguồn
-    Agent->>W: Chèn trích đoạn vào bản nháp bình luận
-    Agent->>W: Xác minh/chỉnh sửa rồi chủ động gửi
+    A-->>W: Cùng policy dữ kiện, catalogue và quyền bước
+    Note over Agent,W: API không trả trích đoạn retrieval để chèn khi chưa qua catalogue
   end
 ```
+
+Chi tiết policy hiện hành xem [ASSISTANT_DIAGNOSTICS.md](ASSISTANT_DIAGNOSTICS.md). Sơ đồ biểu diễn các nhánh logic; policy có thể trả câu hỏi/bàn giao trước khi gọi retriever. Catalogue thật hiện rỗng; chưa có hướng dẫn được chuyên gia phê duyệt.
 
 ### Nguồn tri thức và trạng thái xuất bản (AUD-05)
 

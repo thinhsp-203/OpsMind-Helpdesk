@@ -812,6 +812,8 @@ def generate_answer(question: str) -> dict[str, Any]:
             "matches": [],
             "grounded": False,
             "triage": triage,
+            "out_of_scope": True,
+            "state": "OUT_OF_SCOPE",
             "llm_generated": False,
         }
 

@@ -75,3 +75,8 @@
 #workspaceView[data-role][data-view="assistant"] #assistantPanel { height: auto; min-height: 0; position: static; }
 #workspaceView[data-role][data-view="assistant"] .assistant-chat-scroll { flex: none; min-height: 360px; overflow: visible; }
 #workspaceView[data-role][data-view="assistant"] .agent-integrations { display: none; }
+
+/* Diagnostic turns keep numbered questions readable. */
+.rag-answer { white-space: pre-line; }
+.assistant-ticket-preview { display: grid; gap: 0.75rem; }
+.assistant-ticket-preview textarea { width: 100%; min-height: 12rem; }

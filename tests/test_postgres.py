@@ -15,7 +15,7 @@ def setup_postgres_test(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(store, "DEMO_MODE", True)
 
 
-def test_postgres_builtin_seed_updates_existing_document_by_named_columns() -> None:
+def test_postgres_builtin_seed_preserves_existing_document() -> None:
     store.initialize_store()
     store.reset_store()
     with store._connect() as connection:
@@ -32,7 +32,8 @@ def test_postgres_builtin_seed_updates_existing_document_by_named_columns() -> N
         restored = connection.execute(
             "SELECT id, content FROM knowledge_documents WHERE id = ?", (original["id"],)
         ).fetchone()
-    assert dict(restored) == dict(original)
+    assert restored["id"] == original["id"]
+    assert restored["content"] == "Synthetic stale builtin content"
 
 
 def test_postgres_schema_is_idempotent_and_ticket_lifecycle_works() -> None:
@@ -456,7 +457,10 @@ def test_postgres_outbox_claim_is_exclusive_and_schema_idempotent(monkeypatch):
     assert sum(item is not None for item in claims) == 1
     item = next(item for item in claims if item)
     assert outbox.finish(item, 'accepted')
-    assert len(outbox.list_deliveries()) == 2
+    # Discord is retired; exactly one supported delivery exists per event.
+    deliveries = outbox.list_deliveries()
+    assert [(row['channel'], row['event_type'], row['status']) for row in deliveries] == [
+        ('telegram', 'created', 'accepted')]
 
 
 def test_postgres_escalation_outbox_is_atomic_and_single_under_concurrency(monkeypatch):
@@ -488,7 +492,8 @@ def test_postgres_escalation_outbox_is_atomic_and_single_under_concurrency(monke
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(lambda _: escalate(), range(2))) == ['conflict', 'ok']
-    assert len([row for row in outbox.list_deliveries() if row['event_type'] == 'escalated']) == 2
+    assert [(row['channel'], row['event_type']) for row in outbox.list_deliveries()
+            if row['event_type'] == 'escalated'] == [('telegram', 'escalated')]
 
 
 def test_postgres_manual_notification_retry_is_serialized(monkeypatch):

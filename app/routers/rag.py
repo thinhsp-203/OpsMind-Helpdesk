@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app import store
 from app.dependencies import current_user
-from app.rag import KnowledgeBaseUnavailableError, generate_answer
+from app.rag import KnowledgeBaseUnavailableError, contextualize_question, generate_answer
 from app.schemas import RAGFeedback, RAGQuestion
 
 logger = logging.getLogger(__name__)
@@ -16,10 +16,25 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 
 @router.post("/ask")
 def ask_rag(request: Request, payload: RAGQuestion) -> dict:
+    """Answer with published sources and optional bounded follow-up context.
+
+    `has_sources` (legacy alias `grounded`) describes retrieval only.
+    `answer_verification=not_verified` makes no semantic truth/faithfulness claim.
+    `context_used` is true only when a recent user description was incorporated.
+    """
     # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
     user = current_user(request)
+    messages = []
+    if payload.session_id:
+        session = store.get_chat_session(user["username"], payload.session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.")
+        messages = session["messages"]
+    question = payload.question.strip()
+    contextual_question = contextualize_question(question, messages)
     try:
-        result = generate_answer(payload.question.strip())
+        result = generate_answer(contextual_question)
+        result["context_used"] = contextual_question != question
     except KnowledgeBaseUnavailableError as exc:
         raise HTTPException(
             status_code=503,

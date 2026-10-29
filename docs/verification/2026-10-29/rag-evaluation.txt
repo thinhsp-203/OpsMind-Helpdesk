@@ -1,0 +1,50 @@
+====================================================================
+  OpsMind Helpdesk — RAG Retrieval Gate & Lexical Context Diagnostics
+====================================================================
+
+[rag_questions.csv] 30 cau (28 in-scope, 2 out-of-scope)
+  • SHA-256: 8e1bf0f6a4024e35... [MATCH (VERIFIED LF)]
+  --- Section 1: Retrieval CI Gate ---
+  • In-scope Hit@1: 23/28 (82.1%)
+  • In-scope Hit@3: 28/28 (100.0%)
+  • In-scope MRR@3: 0.911
+  • False-positive in-scope refusal: 0/28 (0.0%)
+  • Out-of-scope refusal: 2/2 (100.0%)
+  • Retrieval latency: median=19.20ms, p95=21.53ms
+  --- Section 2: Lexical Context Diagnostics (not answer quality) ---
+  • In-scope Complete-Phrase Context Hit@3: 21/28 (75.0%)
+  • In-scope Lexical Phrase Coverage: 47.0%
+  • Out-of-scope Refusal Justification: 2/2 (100.0%)
+  • Faithfulness / Answer Relevance: NOT MEASURED; human review required.
+  • Retrieval Misses: None (100% gate passed)
+  • Rubric Misses:
+    - Q09 (zero evidence matched for power/network; shared users; local IT escalation)
+    - Q13 (zero evidence matched for update service; device time; escalation)
+    - Q18 (zero evidence matched for middleware approved; driver source; escalate)
+    - Q20 (zero evidence matched for đường dẫn; quyền cần; quản lý phê duyệt)
+    - Q24 (zero evidence matched for dừng thao tác; không sửa database; đội ERP)
+    - Q27 (zero evidence matched for deny request; do not share OTP; contact Security)
+    - Q28 (zero evidence matched for không chia sẻ recovery code; verified identity)
+
+[rag_holdout.csv] 60 cau (30 in-scope, 30 out-of-scope)
+  • SHA-256: d272c6cc0540745d... [MATCH (VERIFIED LF)]
+  --- Section 1: Retrieval CI Gate ---
+  • In-scope Hit@1: 29/30 (96.7%)
+  • In-scope Hit@3: 29/30 (96.7%)
+  • In-scope MRR@3: 0.967
+  • False-positive in-scope refusal: 0/30 (0.0%)
+  • Pure OOS refusal: 15/15 (100.0%)
+  • Near-domain OOS refusal: 15/15 (100.0%)
+  • Retrieval latency: median=9.30ms, p95=19.47ms
+  --- Section 2: Lexical Context Diagnostics (not answer quality) ---
+  • In-scope Complete-Phrase Context Hit@3: 30/30 (100.0%)
+  • In-scope Lexical Phrase Coverage: 75.6%
+  • Out-of-scope Refusal Justification: 30/30 (100.0%)
+  • Faithfulness / Answer Relevance: NOT MEASURED; human review required.
+  • Retrieval Misses:
+    - H03 (expected certificate_signature.md, got ['vpn_forticlient.md', 'mfa_account.md', 'windows_license_activation.md'])
+  • Rubric Misses: None (lexical/refusal checks only)
+
+====================================================================
+Summary: Dev Hit@3=100.0%, Holdout Hit@1=96.7%, Holdout Hit@3=96.7%, Holdout MRR@3=0.967, Holdout Lexical Hit=100.0%, Holdout Lexical Coverage=75.6%, OOS Refusal Justification=100.0%
+====================================================================

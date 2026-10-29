@@ -10,8 +10,10 @@
 
 | Tệp dữ liệu | Phiên bản | Số câu | In-scope | Out-of-scope | Dung lượng | SHA-256 Checksum |
 |---|---|---:|---:|---:|---:|---|
-| `rag_questions.csv` | `1.0.0-draft` | 30 | 28 | 2 | 4,645 bytes | `9a0fc80667527170c7dad3476a26374a5183a7b8374795b6ec35d1482ae5ad4d` |
-| `rag_holdout.csv` | `1.0.0-frozen` | 60 | 30 | 30 | 10,524 bytes | `aaaf9673ed6d886ff5faa46f2a0bbcff92629cb024acd0cefb9e763706fad872` |
+| `rag_questions.csv` | `1.0.0-draft` | 30 | 28 | 2 | 4,614 bytes | `8e1bf0f6a4024e3515ef8f4a8077e3558bd29dcbff426bf3182a5d112781c994` |
+| `rag_holdout.csv` | `1.0.0-frozen` | 60 | 30 | 30 | 10,463 bytes | `d272c6cc0540745dc4b0d2590f1eb208d2968e7d55b0cfca2ebce1e4d53abbaf` |
+
+**Đính chính 29/10/2026:** mã băm cũ được tính trên CRLF (Windows). Bảng trên tính trên đúng byte UTF-8/LF đã lưu trong Git; `.gitattributes` cố định LF khi checkout. Không sửa câu hỏi, nhãn, thứ tự hay phiên bản nội dung. Đây là sửa metadata toàn vẹn, không phải tái đóng băng dữ liệu sau khi đánh giá.
 
 Mọi sự thay đổi về nội dung, thứ tự hoặc cấu trúc của các tệp trên sẽ làm thay đổi SHA-256 và lập tức kích hoạt lỗi trượt kiểm thử CI tại `tests/test_rag_dataset.py::test_evaluation_datasets_provenance_and_frozen_hash`.
 
@@ -49,16 +51,21 @@ Mỗi tệp CSV bao gồm 6 trường bắt buộc:
 Theo yêu cầu kiểm toán AUD-19, hệ thống phân tách rạch ròi hai tầng đo lường:
 
 ### Tầng 1: Retrieval CI Gate (scripts/evaluate_rag.py & pytest)
-- **Hit@1 Rate:** >= 60% (Holdout thực tế đạt 76.7%)
-- **Hit@3 Rate:** >= 85% (Holdout thực tế đạt 100%)
-- **MRR@3:** >= 0.70 (Holdout thực tế đạt 0.878)
-- **False-Positive Refusal Rate:** <= 5% (Holdout thực tế đạt 0.0%)
-- **Out-of-Scope Refusal Rate:** Pure OOS >= 90%, Near-domain OOS >= 80% (Holdout thực tế đạt 100%)
+- **Hit@1 Rate:** >= 60%
+- **Hit@3 Rate:** >= 85%
+- **MRR@3:** >= 0.70
+- **False-Positive Refusal Rate:** <= 5%
+- **Out-of-Scope Refusal Rate:** Pure OOS >= 90%, Near-domain OOS >= 80%
 
-### Tầng 2: Answer & Evidence Rubric (scripts/evaluate_rag.py & pytest)
-- **Evidence Hit@3:** >= 90% (Tỷ lệ câu in-scope trích xuất được ít nhất 1 cụm bằng chứng trong `required_evidence`; thực tế đạt 100%).
-- **Average Evidence Coverage:** >= 80% (Tỷ lệ bao phủ trung bình của các bằng chứng trong `required_evidence`; thực tế đạt 95.6%).
-- **Refusal Justification Rate:** >= 90% (Tỷ lệ câu out-of-scope đưa ra lời từ chối giải thích rõ ràng "ngoài phạm vi"; thực tế đạt 100%).
+Đây là ngưỡng hồi quy; kết quả đo phụ thuộc phiên bản mã và kho tri thức. Output chạy lại ngày 29/10/2026 lưu tại `docs/verification/2026-10-29/rag-evaluation.txt`, không thay số đo mới vào các bản ghi lịch sử.
+
+### Tầng 2: Chẩn đoán từ vựng trong ngữ cảnh (không phải Answer Rubric)
+- Chỉ tính khi toàn bộ cụm bằng chứng xuất hiện liên tiếp theo ranh giới từ trong **nội dung đoạn truy xuất**, không tính tiêu đề, không tính một từ trùng đơn lẻ.
+- Chuẩn hóa Unicode NFC, chữ hoa/thường và dấu câu; giữ nguyên dấu tiếng Việt. Bằng chứng rỗng không được tính điểm hoàn hảo.
+- `evidence_hit_rate` / `evidence_coverage_avg` là chỉ số từ vựng phục vụ chẩn đoán, **không phải Faithfulness/Answer Relevance**. Không dùng ngưỡng của bộ chấm một-từ cũ làm cổng chất lượng cho cách chấm mới.
+- Phép khớp cụm từ vẫn không hiểu phủ định, điều kiện, quyền thực hiện hoặc diễn đạt tương đương. Cần chấm câu trả lời riêng bởi người có chuyên môn trước khi công bố chất lượng ngữ nghĩa.
+- **Refusal Justification Rate:** >= 90%; chỉ kiểm tra lời từ chối có giải thích ngoài phạm vi, không chứng minh toàn bộ câu trả lời đúng.
+- Số 95,6% coverage và 100% evidence hit trong báo cáo cũ được tạo bằng cách chấm lỏng; không dùng làm kết quả hiện tại hay so sánh trước/sau. Kết quả mới và môi trường chạy lưu riêng.
 
 ---
 

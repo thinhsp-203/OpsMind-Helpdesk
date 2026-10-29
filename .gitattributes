@@ -1,0 +1,2 @@
+# Frozen evaluation hashes are calculated from UTF-8 CSV bytes with LF endings.
+data/evaluation/*.csv text eol=lf

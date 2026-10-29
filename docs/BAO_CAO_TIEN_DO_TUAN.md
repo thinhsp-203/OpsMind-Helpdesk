@@ -65,7 +65,7 @@ Nhóm phân định rõ ràng giữa **Phần làm (In-scope)** và **Phần kh�
    - **Tách nhỏ backend thành APIRouters:** Chuyển đổi tệp monolithic `main.py` (>1.500 dòng) thành các router chuyên biệt theo miền nghiệp vụ trong `app/routers/` (`auth.py`, `tickets.py`, `knowledge.py`, `rag.py`, `admin.py`, `analytics.py`), tách `schemas.py` và `dependencies.py`, giữ `main.py` dưới 180 dòng.
    - **Module hóa frontend:** Tách `app.js` (>2.600 dòng) thành các module JavaScript độc lập trong `app/static/modules/` (`markdown.js`, `notifications.js`, `admin.js`, `knowledge.js`), bảo toàn 100% anchor điểm neo kiểm thử.
    - **Chuyển Rate Limiting sang CSDL:** Chuyển bộ đếm tần suất và lockout từ RAM sang bảng `rate_limit_attempts` (hỗ trợ cả SQLite và PostgreSQL), bảo đảm duy trì lockout khi restart máy chủ.
-   - **Bổ sung script đo tải thực nghiệm:** Xây dựng `scripts/benchmark_load.py` kiểm chứng chỉ tiêu NFR-02 (đạt 35 – 597 RPS trên các endpoint trọng yếu).
+   - **Bổ sung script đo tải thực nghiệm:** Xây dựng `scripts/benchmark_load.py` kiểm chứng chỉ tiêu NFR-02 (số đo cũ 35 – 597 RPS chưa hợp lệ để xác nhận NFR-02; đính chính 29/10/2026: token benchmark cũ không đáp ứng xác thực hiện tại, cần chạy lại qua HTTP thật).
 4. **Chất lượng Phần mềm (Đạt chuẩn Rubric TC2.4, TC2.5, TC2.6):**
    - 100% test case tự động pass (82/82 pytest backend pass, 3/3 bộ test Node.js frontend pass, GitHub Actions CI pass 100%).
    - Chuẩn hóa song ngữ Anh - Việt cho toàn bộ thông báo xác thực và lỗi validation của hệ thống.

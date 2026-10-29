@@ -64,8 +64,8 @@ def test_runbook_security_guardrails_and_role_separation() -> None:
     assert "user@company.com.ost.old" in ost_text
 
 
-def test_builtin_knowledge_sync_on_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """AUD-18: Verify seed_builtin_knowledge updates existing builtin rows if file content changes."""
+def test_builtin_knowledge_is_not_overwritten_on_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """AUD-18: Packaged safety updates require explicit versioned review, not startup overwrite."""
     from app import store
     monkeypatch.setattr(store, "_database_url", "")
     monkeypatch.setattr(store, "_database_path", tmp_path / "test_sync.sqlite3")
@@ -76,15 +76,14 @@ def test_builtin_knowledge_sync_on_startup(tmp_path: Path, monkeypatch: pytest.M
     assert doc is not None
     assert "nslookup company.internal" in doc["content"]
 
-    # Mutate row to simulate old version
+    # Simulate DB content that differs from the packaged version
     with store._connect() as conn:
         conn.execute("UPDATE knowledge_documents SET content = 'OLD VERSION' WHERE slug = 'dns_dhcp_conflict.md'")
     assert store.get_knowledge_document("dns_dhcp_conflict.md")["content"] == "OLD VERSION"
 
-    # Re-running seed_builtin_knowledge updates builtin documents to match disk
+    # Startup must preserve the authoritative database content
     with store._connect() as conn:
         store.seed_builtin_knowledge(conn)
 
     updated_doc = store.get_knowledge_document("dns_dhcp_conflict.md")
-    assert updated_doc["content"] != "OLD VERSION"
-    assert "nslookup company.internal" in updated_doc["content"]
+    assert updated_doc["content"] == "OLD VERSION"

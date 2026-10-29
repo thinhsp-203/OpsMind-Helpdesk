@@ -43,6 +43,30 @@ def login(username='admin', password=None):
     return {'Authorization': 'Bearer ' + response.json()['token']}
 
 
+def test_builtin_reviewed_edit_survives_fresh_process(isolated_knowledge):
+    original = store.get_knowledge_document('wifi_network.md')
+    store.update_knowledge_document(original['id'], {
+        'content': '# Reviewed WiFi\nReviewed configuration from the publication database.',
+        'status': 'pending_review',
+    }, 'admin', change_summary='Restart regression')
+    before = store.get_knowledge_document(original['id'])
+    versions = store.list_knowledge_versions(original['id'])
+    script = """
+import json
+from app import store
+doc = store.get_knowledge_document('wifi_network.md')
+print(json.dumps({'document': doc, 'versions': store.list_knowledge_versions(doc['id'])}))
+"""
+    environment = {**os.environ, 'DATABASE_URL': '', 'DEMO_MODE': 'true',
+                   'HELPDESK_DB_PATH': str(store._database_path), 'PYTHONDONTWRITEBYTECODE': '1'}
+    output = subprocess.check_output(  # noqa: S603 -- fixed script, interpreter and isolated DB
+        [sys.executable, '-c', script], env=environment,
+        cwd=Path(__file__).resolve().parents[1], timeout=15,
+    )
+    restored = json.loads(output)
+    assert restored == {'document': before, 'versions': versions}
+
+
 def upload(headers, filename='aud11-import.md', title='AUD11 imported knowledge'):
     return client.post('/knowledge', headers=headers, data={'title': title},
                        files={'document': (filename, b'# AUD11\n\nSynthetic quasar runbook.', 'text/markdown')})

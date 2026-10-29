@@ -1,0 +1,36 @@
+Permanent account deletion is available only from the personal profile PASS
+✔ tests/test_account_deletion_placement.js (76.851792ms)
+Assignment controls: completed read-only; active assignment preserved: PASS
+✔ tests/test_assignment_policy.js (78.825625ms)
+Assistant keyboard: Enter, multiline, IME and duplicate submission guard PASS
+✔ tests/test_assistant_chat_ui.js (75.204625ms)
+Assistant ticket handoff stays in chat and uses one direct ticket API path PASS
+✔ tests/test_assistant_ticket_handoff.js (76.028167ms)
+Direct-assistant-only ticket creation UI PASS
+✔ tests/test_direct_assistant_only.js (78.168167ms)
+Emergency receipt, errors, duplicates and unsupported integration claims: PASS
+✔ tests/test_emergency.js (79.415084ms)
+Frontend boot passed: actual script order, login/session restore for 3 roles, markdown, KB editor and admin notifications.
+✔ tests/test_frontend_boot.js (206.206125ms)
+Assistant handoff description stays bounded and de-duplicates sources: PASS
+✔ tests/test_handoff.js (64.189333ms)
+✔ tests/test_i18n.js (68.036667ms)
+Logout: captured token, local clear, server confirmation, timeout, duplicate and stale response: PASS
+✔ tests/test_logout.js (59.448125ms)
+Password visibility controls are wired for password inputs PASS
+✔ tests/test_password_visibility.js (56.857542ms)
+Queue filters passed: ownership, active status, SLA and invalid dates.
+Queue loading passed: stale responses, reset and invalid date range.
+✔ tests/test_queue.js (65.661834ms)
+Runbook reader modal wiring PASS
+✔ tests/test_runbook_reader_ui.js (62.770417ms)
+AUD23 status controls send displayed expected_status and surface conflicts: PASS
+✔ tests/test_status_concurrency.js (41.802666ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 230.417625

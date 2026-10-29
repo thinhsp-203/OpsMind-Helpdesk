@@ -138,6 +138,11 @@ def _escape_like(text: str) -> str:
 
 
 def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection) -> None:
+    """Insert missing defaults; the publication database owns existing content.
+
+    Packaged updates must be reviewed and saved through the versioned KB workflow,
+    never silently applied during startup (including to pending or archived rows).
+    """
     knowledge_dir = Path(__file__).resolve().parent.parent / "data" / "knowledge"
     if not knowledge_dir.is_dir():
         return
@@ -157,15 +162,6 @@ def seed_builtin_knowledge(connection: sqlite3.Connection | _PostgresConnection)
             (path.name,),
         ).fetchone()
         if existing:
-            if existing["content"] != content:
-                connection.execute(
-                    """
-                    UPDATE knowledge_documents
-                    SET title = ?, category = ?, tags = ?, content = ?, updated_at = ?
-                    WHERE id = ? AND is_builtin = 1
-                    """,
-                    (title, category, tags, content, now, existing["id"]),
-                )
             continue
         connection.execute(
             """

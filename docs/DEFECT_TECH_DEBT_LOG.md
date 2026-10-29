@@ -1,5 +1,11 @@
 # Sổ lỗi và nợ kỹ thuật
 
+## Đính chính sau rà soát 29/10/2026
+
+Trạng thái local bên dưới phản ánh thời điểm kiểm thử trước commit; xem commit chứa mục này để đối chiếu bản sửa. Chưa xác minh triển khai cloud.
+
+Xem `docs/REVIEW_FIXES_2026-10-29.md` và output gốc: bảo toàn DB runbook khi restart; sửa benchmark xác thực và phân biệt success/error RPS; sửa SHA theo LF; giới hạn ngữ cảnh nối tiếp; làm rõ `grounded` chỉ mô tả truy xuất. Các mục AUD-19 lịch sử bên dưới dùng hash CRLF và bộ chấm evidence lỏng: không dùng coverage 95,6% cũ làm bằng chứng chất lượng câu trả lời. Số đo 35–597 RPS trước đây chưa xác nhận NFR do token benchmark và phạm vi TestClient. Bản sửa local đã kiểm thử; chưa commit/push/deploy và chưa đóng các hạng mục thực nghiệm độc lập, đánh giá người dùng hay xác minh cloud.
+
 **Trạng thái:** danh sách làm việc nội bộ cho prototype; các mục chưa liên kết issue tracker/PR. Không dùng tài liệu này thay cho lịch sử defect chính thức của nhóm.
 
 ## 1. Lỗi được phát hiện và xử lý trong đợt hoàn thiện

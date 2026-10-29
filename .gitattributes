@@ -1,0 +1,4 @@
+# Frozen benchmark hashes describe CRLF working-tree bytes on every platform.
+# Git keeps normalized LF blobs; explicit checkout rules preserve published hashes.
+/data/evaluation/rag_questions.csv text eol=crlf
+/data/evaluation/rag_holdout.csv text eol=crlf

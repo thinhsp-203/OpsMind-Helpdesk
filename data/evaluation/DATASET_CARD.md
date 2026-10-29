@@ -69,3 +69,9 @@ Theo yêu cầu kiểm toán AUD-19, hệ thống phân tách rạch ròi hai t�
 2. **Gán nhãn độc lập:** 02 kỹ sư CNTT độc lập gán nhãn `expected_source` và `required_evidence`.
 3. **Độ đồng thuận (Inter-Annotator Agreement):** Chỉ giữ các câu hỏi có chỉ số đồng thuận Cohen's Kappa >= 0.80.
 4. **Đóng băng trước khi chạy (Pre-evaluation Freeze):** Tập dữ liệu độc lập phải được băm SHA-256 và lưu trữ tách biệt; tuyệt đối không dùng để điều chỉnh từ điển hoặc prompt trước khi đo lường kết quả baseline.
+
+## Quy ước byte khi checkout (29/10/2026)
+
+Các SHA-256 công bố ở trên kiểm tra byte UTF-8 với xuống dòng CRLF. Git lưu blob chuẩn hóa LF; `.gitattributes` quy định `text eol=crlf` riêng cho hai CSV để checkout trên Windows/Linux có cùng byte với checksum công bố, độc lập `core.autocrlf`. Nội dung ô, thứ tự dòng và hash kỳ vọng không thay đổi. Không chuẩn hóa byte trong test trước khi hash: test vẫn phát hiện mọi thay đổi byte của file checkout.
+
+Đã xác minh checkout cách ly với `core.autocrlf=false`, `true`, `input`: cả hai hash đều khớp. Đây là kiểm thử cấu hình Git trên Linux, chưa phải chạy hệ điều hành Windows thật. Với working tree cũ chưa được Git làm mới, hãy giữ các chỉnh sửa cá nhân trước khi checkout lại dataset; clone mới áp dụng quy tắc ngay.

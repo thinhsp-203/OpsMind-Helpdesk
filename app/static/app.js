@@ -1775,7 +1775,9 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
   // Đối với IT Staff / Admin: Giữ nguyên công cụ chèn gợi ý phản hồi
   if (state.user && state.user.role !== "user") {
     container.append(
-      node("p", "handoff-note", "Đối chiếu nguồn trước khi dùng hướng dẫn để phản hồi ticket."),
+      node("p", "handoff-note", grounded
+        ? "Đối chiếu nguồn trước khi dùng hướng dẫn để phản hồi ticket."
+        : "Chưa có hướng dẫn được xác minh cho sự cố này. IT cần kiểm tra thêm trước khi phản hồi."),
     );
     if (grounded && options.ticketId) {
       const insertButton = node("button", "button button-soft", `Chèn trích đoạn vào phản hồi #${options.ticketId}`);

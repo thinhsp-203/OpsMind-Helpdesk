@@ -1930,3 +1930,20 @@ def test_new_session_keeps_prior_incident_reports_separate():
     assert report not in new['handoff']['description']
     old = client.get('/rag/sessions/' + first['session_id'], headers=headers).json()['diagnostic']
     assert report in old['handoff']['description']
+
+
+@pytest.mark.parametrize('username', ['user', 'admin'])
+def test_monitor_after_weather_does_not_inherit_rejected_runbook_triage(username):
+    headers = auth(username)
+    first = client.post('/rag/ask', headers=headers, json={'question': 'hôm nay thời tiết thật đẹp'}).json()
+    result = client.post('/rag/ask', headers=headers, json={
+        'question': 'Hiện màn hình phụ tôi đang bị sọc, yêu cầu khắc phục',
+        'session_id': first['session_id'],
+    }).json()
+    assert result['state'] == 'IN_SCOPE_NO_SOURCE'
+    assert result['matches'] == [] and result['sources'] == []
+    assert 'bitlocker' not in str(result).lower()
+    assert 'navi_category' not in result['triage']
+    assert result['triage']['category'] == 'general'
+    restored = client.get('/rag/sessions/' + result['session_id'], headers=headers).json()['diagnostic']
+    assert result['triage'] == restored['triage']

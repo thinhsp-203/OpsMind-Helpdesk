@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app import store
-from app.assistant_policy import diagnose, fold, snapshot
+from app.assistant_policy import diagnose, fold, snapshot, incident_triage
 from app.dependencies import current_user
 from app.rag import KnowledgeBaseUnavailableError, generate_answer, OUT_OF_SCOPE_PATTERNS
 from app.schemas import RAGFeedback, RAGQuestion
@@ -67,7 +67,7 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         result["revision"] = context["revision"]
         result["handoff_question"] = policy["handoff"]["description"]
         result.update(sources=[], matches=[], grounded=False, llm_generated=False)
-        result["triage"]["resolution_scope"] = "ESCALATE_IT" if policy["state"] in ("HANDOFF_PREVIEW", "IN_SCOPE_NO_SOURCE") else policy["state"]
+        result["triage"] = incident_triage(context)
     try:
         result["session_id"] = store.save_chat_exchange(
             user["username"],

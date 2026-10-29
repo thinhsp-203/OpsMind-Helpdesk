@@ -190,6 +190,15 @@ def snapshot(context):
     result.pop('context')
     result['revision'] = context.get('revision', 0)
     result['grounded'] = False
-    result['triage'] = {'category': {'printer': 'hardware', 'network': 'network'}.get(context['topic'], 'general'),
-                        'priority': 'medium', 'resolution_scope': 'ESCALATE_IT' if context['state'] in ('HANDOFF_PREVIEW', 'IN_SCOPE_NO_SOURCE') else context['state']}
+    result['triage'] = incident_triage(context)
     return result
+
+
+def incident_triage(context):
+    return {
+        'category': {'printer': 'hardware', 'network': 'network'}.get(context['topic'], 'general'),
+        'category_reason': 'Danh mục tạm thời theo phạm vi sự cố; cần IT xác minh.',
+        'priority': 'medium',
+        'priority_reason': 'Mức tạm thời; cần xác nhận tác động và độ khẩn cấp.',
+        'resolution_scope': 'ESCALATE_IT' if context['state'] in ('HANDOFF_PREVIEW', 'IN_SCOPE_NO_SOURCE') else context['state'],
+    }

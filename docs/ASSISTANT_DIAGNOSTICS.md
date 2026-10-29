@@ -82,3 +82,13 @@ Workflow CI chạy `node --test tests/*.js` để nhận cả test mới. Pytest
 Bốn ca API bổ sung kiểm đổi chủ đề lặp lại rồi reload/tiếp tục ở CHECK_RESULT, HANDOFF_PREVIEW, RESOLVED, cùng tách báo cáo giữa hai phiên mới: 4 passed/3.29s. Đây là mở rộng hồi quy cho hành vi hiện có, không phải phê duyệt chuyên môn hay nghiệm thu độc lập.
 
 Kiểm chứng bản retro cuối (29/10/2026): JUnit suite `local-180ec9d-with-retro-changes` xác nhận 381 test: **338 passed, 42 skipped, 1 failed, 0 errors**, 193.536s. Failure duy nhất là `tests.test_rag_dataset.test_evaluation_datasets_provenance_and_frozen_hash`, cùng mismatch LF/CRLF baseline. Không sửa CSV hoặc expected hash. JavaScript **15/15 passed**, ruff app/tests/scripts và diff check đạt; YAML workflow parse thành công. Full suite có coverage và JUnit; số lượng lấy từ XML hoàn chỉnh vì stdout log bị thiếu phần tổng kết. Review Standards/Spec không còn finding vật chất trong phạm vi retro. PostgreSQL runtime/browser E2E/catalogue chuyên gia/30 ca nghiệm thu độc lập vẫn chưa hoàn thành. CI GitHub chưa chạy trên nhánh backup; kết quả này thuộc môi trường local.
+
+## Lỗi phân loại màn hình sọc thành BitLocker — 29/10/2026
+
+Tái hiện đúng hai lượt trong ảnh: hỏi thời tiết, rồi “Hiện màn hình phụ tôi đang bị sọc, yêu cầu khắc phục”. Với user và admin, API trả IN_SCOPE_NO_SOURCE nhưng còn category_reason/navi_category/escalation_reason từ BitLocker. Nguyên nhân: nhánh policy xóa matches/sources và thay câu trả lời nhưng chỉ thay resolution_scope, giữ phần triage của retrieval đã bị từ chối.
+
+Bản vá tạo lại toàn bộ triage từ incident policy, dùng chung cho response và snapshot; nhãn general/medium là tạm thời, cần IT xác minh, không phải chẩn đoán màn hình. UI admin chỉ nhắc đối chiếu nguồn khi grounded; nếu chưa có hướng dẫn thì yêu cầu IT kiểm tra thêm. Không thêm quy trình sửa màn hình hoặc thay thuật toán retrieval trong bản vá này.
+
+Hai test API dùng dữ liệu KB fixture hiện có, không mock retrieval: trước sửa 2 failed/2.25s; sau sửa 2 passed/1.98s. Chưa xác minh UI thực tế trên Render hoặc triển khai bản vá lên Render.
+
+Hồi quy bản vá: toàn bộ API 99 passed, 0 failed/0 errors theo JUnit (65.720s); JavaScript 15/15 passed; ruff app/tests/scripts và diff check đạt. Không chạy lại full suite ngoài API trong lượt này.

@@ -1892,3 +1892,41 @@ def test_bug_regression_handoff_accepts_fact_correction_without_new_guide():
         'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'],
         'expected_revision': corrected['revision'], 'fact_answers': {'connection': 'invented'},
     }).status_code == 422
+
+
+@pytest.mark.parametrize('previous_state', ['CHECK_RESULT', 'HANDOFF_PREVIEW', 'RESOLVED'])
+def test_repeated_switch_prompts_restore_saved_state_after_reload(monkeypatch, previous_state):
+    from app import assistant_policy
+
+    def unexpected_guide_selection(*args):
+        pytest.fail('Resuming an incident must not select a new guide')
+
+    monkeypatch.setattr(assistant_policy, 'approved_steps', unexpected_guide_selection)
+    context = {'topic': 'printer', 'initial_question': 'Máy in Offline', 'facts': {},
+               'state': previous_state, 'steps': [{'id': 'observe'}], 'sources': [],
+               'step_results': {'observe': 'attempted_failure'}, 'revision': 1}
+    session_id = store.save_chat_exchange('user', None, 'Máy in Offline', 'fixture', [], incident_context=context)
+    headers = auth()
+    for question in ('Outlook bị lỗi', 'VPN không đăng nhập được'):
+        pending = client.post('/rag/ask', headers=headers, json={'question': question, 'session_id': session_id}).json()
+        assert pending['state'] == 'CLARIFY' and pending['pending_topic'] == 'other_it'
+    restored = client.get('/rag/sessions/' + session_id, headers=headers).json()['diagnostic']
+    continued = client.post('/rag/ask', headers=headers, json={
+        'question': 'Tiếp tục sự cố hiện tại', 'session_id': session_id,
+        'action': 'continue_incident', 'expected_revision': restored['revision'],
+    }).json()
+    assert continued['state'] == previous_state
+    assert continued['attempted_steps'] == [{'id': 'observe', 'result': 'attempted_failure'}]
+    assert continued['pending_topic'] is None
+
+
+def test_new_session_keeps_prior_incident_reports_separate():
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    report = '5 người kế toán bị từ 9h'
+    client.post('/rag/ask', headers=headers, json={'question': report, 'session_id': first['session_id']})
+    new = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    assert new['session_id'] != first['session_id']
+    assert report not in new['handoff']['description']
+    old = client.get('/rag/sessions/' + first['session_id'], headers=headers).json()['diagnostic']
+    assert report in old['handoff']['description']

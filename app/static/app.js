@@ -202,6 +202,7 @@ function setSignedIn(user) {
   byId("sidebarUsername").textContent = displayName;
   byId("sidebarRole").textContent = roleLabels[user.role] || user.role;
   state.user = user;
+  refreshServiceState();
   clearTicketFilters();
   byId("workspaceView").dataset.role = user.role;
   byId("loginView").classList.add("hidden");
@@ -2415,6 +2416,7 @@ window.addEventListener("storage", (event) => {
 });
 
 async function refreshServiceState() {
+  if (state.user?.role !== "admin") return;
   const label = byId("serviceStateLabel");
   const textEl = byId("serviceStateText");
   try {
@@ -2447,7 +2449,6 @@ async function refreshServiceState() {
   }
 }
 
-refreshServiceState();
 window.setInterval(refreshServiceState, 30000);
 
 

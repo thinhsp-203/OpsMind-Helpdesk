@@ -60,7 +60,7 @@ jobs:
         run: |
           node --check app/static/app.js
           node --check app/static/i18n.js
-          node --test tests/*.js
+          node --test tests/test_*.js
       - name: Run tests
         run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml --junitxml=pytest-results.xml -o junit_suite_name=python-${{ github.sha }}
       - name: Test PostgreSQL backend

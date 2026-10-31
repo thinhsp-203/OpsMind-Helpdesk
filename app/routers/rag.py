@@ -5,7 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app import store
-from app.assistant_policy import diagnose, fold, snapshot, incident_triage
+# Sửa lại thành:
+from app.assistant_policy import diagnose, snapshot, incident_triage
 from app.dependencies import current_user
 from app.rag import KnowledgeBaseUnavailableError, contextualize_question, generate_answer
 from app.schemas import RAGFeedback, RAGQuestion
@@ -25,7 +26,6 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     """
     # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
     user = current_user(request)
-    history = []
     if payload.session_id:
         session = store.get_chat_session(user["username"], payload.session_id)
         if session is None:
@@ -33,6 +33,9 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         messages = session["messages"]
     question = payload.question.strip()
     contextual_question = contextualize_question(question, messages)
+    # Thêm 2 dòng này để định nghĩa biến trước khi dùng
+    expected_revision = getattr(payload, "expected_revision", 0)
+    policy = None
     try:
         result = generate_answer(contextual_question)
         result["context_used"] = contextual_question != question

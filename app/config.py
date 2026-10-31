@@ -1,8 +1,5 @@
-import logging
 import os
 import secrets
-
-logger = logging.getLogger(__name__)
 
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in {"1", "true", "yes"}
 ALLOW_DEMO_CREDENTIALS = os.getenv("ALLOW_DEMO_CREDENTIALS", "false").lower() in {"1", "true", "yes"}
@@ -13,7 +10,9 @@ INSECURE_SECRET_KEYS = {
     "secretkey",
     "your-secret-key",
 }
-if not DEMO_MODE and SECRET_KEY:
+if not DEMO_MODE:
+    if not SECRET_KEY or not SECRET_KEY.strip():
+        raise RuntimeError("SECRET_KEY is required in production/non-demo environment.")
     if SECRET_KEY in INSECURE_SECRET_KEYS or len(SECRET_KEY) < 32:
         raise RuntimeError(
             "Insecure or short SECRET_KEY detected in production/non-demo environment (minimum 32 characters required). "
@@ -21,11 +20,6 @@ if not DEMO_MODE and SECRET_KEY:
         )
 if not SECRET_KEY:
     SECRET_KEY = secrets.token_urlsafe(48)
-    if not DEMO_MODE:
-        logger.warning(
-            "SECRET_KEY not set in environment. Auto-generated a secure ephemeral key for this session. "
-            "For persistent sessions across restarts, set SECRET_KEY in your environment variables."
-        )
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "60"))
 if TOKEN_EXPIRE_MINUTES < 1:

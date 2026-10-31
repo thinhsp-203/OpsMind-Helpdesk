@@ -36,9 +36,9 @@ docker compose up --build -d
 docker compose logs -f helpdesk
 ```
 
-Mở `http://127.0.0.1:8000`. Compose chạy PostgreSQL 16 cho ứng dụng và chỉ bind web/API vào loopback. Ba named volume tách biệt lưu PostgreSQL (`postgres-data`), tệp runtime/attachment (`helpdesk-runtime`) và runbook (`helpdesk-knowledge`). `docker compose down` giữ dữ liệu; không chạy `docker compose down -v` nếu muốn giữ các volume.
+Mở `http://127.0.0.1:8000`. Compose chạy PostgreSQL 16 cho ứng dụng và chỉ bind web/API vào loopback. Hai named volume lưu PostgreSQL (`postgres-data`) và tệp runtime/attachment (`helpdesk-runtime`); nội dung KB nằm trong database. `docker compose down` giữ dữ liệu; không chạy `docker compose down -v` nếu muốn giữ các volume.
 
-Compose mặc định bật demo mode và dùng mật khẩu PostgreSQL chỉ dành cho demo local. Đặt `POSTGRES_PASSWORD` mạnh và `SECRET_KEY` riêng trong môi trường trước khi chạy trên máy chia sẻ. Có thể đặt `DATABASE_URL` để ứng dụng kết nối PostgreSQL bên ngoài; giá trị URI cần URL-encode thông tin đăng nhập có ký tự đặc biệt. Compose vẫn khởi động service PostgreSQL cục bộ.
+Compose mặc định `DEMO_MODE=false`; mật khẩu PostgreSQL fallback chỉ dành cho demo local. Non-demo thiếu `SECRET_KEY` sẽ dừng khởi động. Trước lệnh `docker compose up`, cấu hình secret và bootstrap admin theo phần bên dưới; hoặc đặt tường minh `DEMO_MODE=true` khi chỉ dùng dữ liệu demo. Đặt `POSTGRES_PASSWORD` mạnh và `SECRET_KEY` riêng trong môi trường trước khi chạy trên máy chia sẻ. Có thể đặt `DATABASE_URL` để ứng dụng kết nối PostgreSQL bên ngoài; giá trị URI cần URL-encode thông tin đăng nhập có ký tự đặc biệt. Compose vẫn khởi động service PostgreSQL cục bộ.
 
 Đối với **database mới** ở chế độ non-demo, đặt `DEMO_MODE=false`, secret riêng, username Admin bootstrap và mật khẩu duy nhất ít nhất 12 ký tự:
 

@@ -44,6 +44,7 @@ server.run(sockets=[sock])
 
 
 @pytest.mark.parametrize('operation,target', [
+    ('health_database', 'app.store:check_database'),
     ('rag', 'app.routers.rag:generate_answer'),
     ('database', 'app.store:list_tickets'),
     ('password', 'app.store:verify_password'),
@@ -91,6 +92,7 @@ def test_health_responds_while_sync_work_is_blocked(tmp_path, operation, target)
                 })
                 assert ticket.status_code == 201
                 requests = {
+                    'health_database': ('GET', '/health', {}),
                     'rag': ('POST', '/rag/ask', {'json': {'question': 'VPN FortiClient'}}),
                     'database': ('GET', '/tickets', {}),
                     'password': ('POST', '/auth/login', {'json': {'username': 'admin', 'password': 'admin'}}),
@@ -120,7 +122,8 @@ def test_health_responds_while_sync_work_is_blocked(tmp_path, operation, target)
 
                         def health_probe():
                             start = time.monotonic()
-                            response = client.get(base + '/health', timeout=1.5)
+                            probe_path = '/config' if operation == 'health_database' else '/health'
+                            response = client.get(base + probe_path, timeout=1.5)
                             assert response.status_code == 200
                             return time.monotonic() - start
 

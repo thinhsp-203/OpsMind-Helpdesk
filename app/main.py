@@ -143,7 +143,7 @@ async def public_config() -> dict[str, bool]:
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["system"])
 async def health() -> dict[str, str]:
     try:
-        store.check_database()
+        await run_in_threadpool(store.check_database)
     except store.DatabaseError as exc:
         raise HTTPException(
             status_code=503, detail="Cơ sở dữ liệu hiện không sẵn sàng."

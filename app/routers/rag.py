@@ -19,18 +19,26 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     user = current_user(request)
     messages = []
+    existing_context = None
+
+    # 1. Lấy lịch sử hội thoại và context sự cố hiện tại từ session
     if payload.session_id:
         session = store.get_chat_session(user["username"], payload.session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.")
         messages = session["messages"]
+        existing_context = store.get_incident_context(user["username"], payload.session_id)
 
     question = payload.question.strip()
     contextual_question = contextualize_question(question, messages)
-    expected_revision = getattr(payload, "expected_revision", 0)
+    expected_revision = getattr(payload, "expected_revision", None)
 
-    # 1. Luôn chạy diagnose trước để kiểm tra chính sách sự cố / chẩn đoán
-    policy = diagnose(question)
+    # 2. Thực thi chẩn đoán theo chính sách (truyền kèm existing_context và payload)
+    policy = diagnose(
+        question,
+        context=existing_context,
+        payload=payload,
+    )
 
     try:
         result = generate_answer(contextual_question)
@@ -41,22 +49,25 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             detail="Kho tri thức tạm thời không khả dụng. Vui lòng thử lại sau.",
         ) from exc
 
-    # 2. Cập nhật kết quả theo policy chẩn đoán nếu có
+    # 3. Phân nhánh xử lý giữa Policy sự cố và tra cứu RAG thông thường
     if policy and not result.get("out_of_scope"):
         result.update({k: v for k, v in policy.items() if k != "context"})
         context = policy.get("context", {})
-        context["revision"] = (expected_revision or 0) + 1
-        result["revision"] = context["revision"]
-        if "handoff" in policy and "description" in policy["handoff"]:
+        if "revision" in context:
+            result["revision"] = context["revision"]
+        if "handoff" in policy and isinstance(policy["handoff"], dict) and "description" in policy["handoff"]:
             result["handoff_question"] = policy["handoff"]["description"]
-        result.update(sources=[], matches=[], grounded=False, llm_generated=False)
+        
+        # Chỉ xóa sources nếu chính sách yêu cầu ẩn RAG
+        if policy.get("override_rag", True):
+            result.update(sources=[], matches=[], grounded=False, llm_generated=False)
         result["triage"] = incident_triage(context)
     else:
-        context = None
+        context = existing_context
         if result.get("out_of_scope"):
             result.setdefault("triage", {})["resolution_scope"] = "OUT_OF_SCOPE"
 
-    # 3. Lưu lịch sử câu hỏi vào store
+    # 4. Lưu dữ liệu hội thoại vào store
     try:
         result["session_id"] = store.save_chat_exchange(
             user["username"],

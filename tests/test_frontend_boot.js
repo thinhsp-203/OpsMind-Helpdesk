@@ -7,6 +7,9 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'app/static/index.html'), 'utf8');
+assert.match(html, /<section id="adminNotificationsPanel"[^>]*>[\s\S]*?id="serviceStateLabel"[\s\S]*?<\/section>/,
+  'Service health belongs in admin notifications');
+assert.equal((html.match(/id="serviceStateLabel"/g) || []).length, 1);
 const scripts = [...html.matchAll(/<script\b[^>]*src="([^"]+)"[^>]*>/g)]
   .map(match => path.join(root, 'app', match[1].split('?')[0]));
 
@@ -116,6 +119,8 @@ async function boot(role, restore) {
   }
   // Drain the finite startup fetch chain (refreshWorkspace is not awaited by UI).
   for (let n = 0; n < 8; n++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.some(r => r.url === '/health'), role === 'admin',
+    'Only admin should poll service health');
   assert.equal(context.state.user?.role, role);
   assert.equal(fields.get('workspaceView').classList.contains('hidden'), false);
   assert(requests.some(r => r.url.startsWith('/tickets')));

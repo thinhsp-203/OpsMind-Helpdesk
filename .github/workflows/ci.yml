@@ -62,18 +62,22 @@ jobs:
           node --check app/static/i18n.js
           node --test tests/test_*.js
       - name: Run tests
-        run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml
+        run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml --junitxml=pytest-results.xml -o junit_suite_name=python-${{ github.sha }}
       - name: Test PostgreSQL backend
         env:
           DATABASE_URL: postgresql://helpdesk:test_password@127.0.0.1:5432/helpdesk_test
           DEMO_MODE: "true"
-        run: python -m pytest tests/test_postgres.py -q
+        run: python -m pytest tests/test_postgres.py -q --junitxml=pytest-postgres.xml -o junit_suite_name=postgres-${{ github.sha }}
       - name: Evaluate RAG retrieval baseline
         run: python -m scripts.evaluate_rag
       - name: Build Docker image
         run: docker build -t helpdesk-rag:${{ github.sha }} .
-      - name: Upload coverage report
+      - name: Upload test evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: coverage.xml
+          name: test-evidence-${{ github.sha }}
+          path: |
+            coverage.xml
+            pytest-results.xml
+            pytest-postgres.xml

@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app import store
+from app.assistant_policy import diagnose, fold, snapshot, incident_triage
 from app.dependencies import current_user
 from app.rag import KnowledgeBaseUnavailableError, contextualize_question, generate_answer
 from app.schemas import RAGFeedback, RAGQuestion
@@ -24,7 +25,7 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     """
     # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
     user = current_user(request)
-    messages = []
+    history = []
     if payload.session_id:
         session = store.get_chat_session(user["username"], payload.session_id)
         if session is None:
@@ -40,6 +41,23 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             status_code=503,
             detail="Kho tri thức tạm thời không khả dụng. Vui lòng thử lại sau.",
         ) from exc
+    # Retrieval is not approval: a paraphrase missed by topic detection must
+    # never expose legacy procedural text outside the reviewed catalogue.
+    if policy is None and result.get("matches") and not result.get("out_of_scope"):
+        policy = diagnose(payload.question.strip(), {
+            "topic": "other_it", "initial_question": payload.question.strip(),
+            "facts": {}, "state": "CLARIFY", "steps": [], "sources": [],
+        })
+    if result.get("out_of_scope"):
+        result["triage"]["resolution_scope"] = "OUT_OF_SCOPE"
+    if policy and not result.get("out_of_scope"):
+        result.update({k: v for k, v in policy.items() if k != "context"})
+        context = policy["context"]
+        context["revision"] = (expected_revision or 0) + 1
+        result["revision"] = context["revision"]
+        result["handoff_question"] = policy["handoff"]["description"]
+        result.update(sources=[], matches=[], grounded=False, llm_generated=False)
+        result["triage"] = incident_triage(context)
     try:
         result["session_id"] = store.save_chat_exchange(
             user["username"],
@@ -47,7 +65,11 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             payload.question.strip(),
             result["answer"],
             result["sources"],
+            incident_context=context,
+            expected_revision=expected_revision,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="Sự cố đã được cập nhật bởi yêu cầu khác.") from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.") from exc
     saved_session = store.get_chat_session(user["username"], result["session_id"])
@@ -67,6 +89,8 @@ def get_rag_session(request: Request, session_id: str) -> dict:
     session = store.get_chat_session(user["username"], session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.")
+    context = store.get_incident_context(user["username"], session_id)
+    session["diagnostic"] = snapshot(context) if context else None
     return session
 
 

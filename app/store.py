@@ -252,6 +252,12 @@ def initialize_store() -> None:
                 sla_deadline TEXT NOT NULL,
                 archived_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS ticket_requests (
+                requester TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+                request_key TEXT NOT NULL,
+                ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
+                PRIMARY KEY (requester, request_key)
+            );
             CREATE TABLE IF NOT EXISTS comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
@@ -284,6 +290,17 @@ def initialize_store() -> None:
                 user_id TEXT NOT NULL REFERENCES users(username),
                 created_at TEXT NOT NULL,
                 last_message_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS assistant_incidents (
+                session_id TEXT PRIMARY KEY REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                context TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ticket_request_payloads (
+                requester TEXT NOT NULL,
+                request_key TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                PRIMARY KEY (requester, request_key),
+                FOREIGN KEY (requester, request_key) REFERENCES ticket_requests(requester, request_key) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1122,11 +1139,33 @@ def _record_audit(
 
 
 def create_ticket(
-    title: str, description: str, category: str, priority: str, requester: str
+    title: str, description: str, category: str, priority: str, requester: str, request_key: str | None = None
 ) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     deadline = now + timedelta(hours=PRIORITY_HOURS[priority])
     with _connect() as connection:
+        if request_key:
+            claim = connection.execute(
+                "INSERT INTO ticket_requests (requester, request_key) VALUES (?, ?) ON CONFLICT (requester, request_key) DO NOTHING",
+                (requester, request_key),
+            )
+            serialized_payload = json.dumps([title, description, category, priority], ensure_ascii=False)
+            if claim.rowcount == 1:
+                connection.execute("INSERT INTO ticket_request_payloads (requester, request_key, payload) VALUES (?, ?, ?)",
+                                   (requester, request_key, serialized_payload))
+            stored_payload = connection.execute("SELECT payload FROM ticket_request_payloads WHERE requester = ? AND request_key = ?",
+                                                (requester, request_key)).fetchone()
+            if not stored_payload or stored_payload["payload"] != serialized_payload:
+                raise ValueError("Request key đã được dùng cho nội dung khác hoặc không có bản ghi payload.")
+            lookup_sql = ("SELECT ticket_id FROM ticket_requests WHERE requester = ? AND request_key = ? FOR UPDATE"
+                          if _database_url else "SELECT ticket_id FROM ticket_requests WHERE requester = ? AND request_key = ?")
+            existing = connection.execute(
+                lookup_sql,
+                (requester, request_key),
+            ).fetchone()
+            if existing and existing["ticket_id"]:
+                row = connection.execute("SELECT * FROM tickets WHERE id = ?", (existing["ticket_id"],)).fetchone()
+                return _ticket_dict(connection, row)
         insert_sql = """
             INSERT INTO tickets
                 (title, description, category, priority, requester, status, created_at, updated_at, sla_deadline)
@@ -1145,6 +1184,9 @@ def create_ticket(
                 insert_sql, parameters
             )
             ticket_id = int(cursor.lastrowid)
+        if request_key:
+            connection.execute("UPDATE ticket_requests SET ticket_id = ? WHERE requester = ? AND request_key = ?",
+                               (ticket_id, requester, request_key))
         _record_audit(connection, ticket_id, requester, "created", None, "new")
         row = connection.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
         from app.notification_outbox import enqueue
@@ -1450,6 +1492,8 @@ def save_chat_exchange(
     question: str,
     answer: str,
     sources: list[dict[str, str]],
+    incident_context: dict | None = None,
+    expected_revision: int | None = None,
 ) -> str:
     import json
     import uuid
@@ -1469,6 +1513,18 @@ def save_chat_exchange(
                 "INSERT INTO chat_sessions (id, user_id, created_at, last_message_at) VALUES (?, ?, ?, ?)",
                 (chat_id, username, timestamp, timestamp),
             )
+        if incident_context is not None:
+            previous = connection.execute("SELECT context FROM assistant_incidents WHERE session_id = ?", (chat_id,)).fetchone()
+            serialized = json.dumps(incident_context, ensure_ascii=False)
+            if previous:
+                if expected_revision is not None and json.loads(previous["context"]).get("revision", 0) != expected_revision:
+                    raise ValueError("Incident revision conflict")
+                updated = connection.execute("UPDATE assistant_incidents SET context = ? WHERE session_id = ? AND context = ?",
+                                             (serialized, chat_id, previous["context"]))
+                if updated.rowcount != 1:
+                    raise ValueError("Incident revision conflict")
+            else:
+                connection.execute("INSERT INTO assistant_incidents (session_id, context) VALUES (?, ?)", (chat_id, serialized))
         connection.executemany(
             "INSERT INTO chat_messages (session_id, role, content, sources, created_at) VALUES (?, ?, ?, ?, ?)",
             [
@@ -2064,3 +2120,21 @@ def get_document_category_from_db(slug_or_source: str) -> str | None:
 
 
 initialize_store()
+
+
+def get_incident_context(username: str, session_id: str) -> dict | None:
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT a.context FROM assistant_incidents a JOIN chat_sessions s ON s.id = a.session_id "
+            "WHERE s.id = ? AND s.user_id = ?", (session_id, username),
+        ).fetchone()
+    return json.loads(row["context"]) if row else None
+
+
+def get_ticket_request(username: str, request_key: str) -> dict | None:
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT t.* FROM tickets t JOIN ticket_requests r ON r.ticket_id = t.id "
+            "WHERE r.requester = ? AND r.request_key = ?", (username, request_key),
+        ).fetchone()
+        return _ticket_dict(connection, row) if row else None

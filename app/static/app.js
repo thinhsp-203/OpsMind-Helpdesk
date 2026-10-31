@@ -10,6 +10,9 @@ const state = {
   knowledgeCategory: "",
   knowledgeSearch: "",
   assistantTicketBusy: false,
+  focusedTicketId: null,
+  diagnosticTurn: 0,
+  incidentRevision: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -199,6 +202,7 @@ function setSignedIn(user) {
   byId("sidebarUsername").textContent = displayName;
   byId("sidebarRole").textContent = roleLabels[user.role] || user.role;
   state.user = user;
+  refreshServiceState();
   clearTicketFilters();
   byId("workspaceView").dataset.role = user.role;
   byId("loginView").classList.add("hidden");
@@ -360,6 +364,8 @@ function signOut() {
   state.user = null;
   state.tickets = [];
   state.chatSessionId = null;
+  state.incidentRevision = null;
+  state.diagnosticTurn += 1;
   localStorage.removeItem("helpdesk-token");
   if (byId("password")) byId("password").value = "";
   byId("workspaceView").classList.add("hidden");
@@ -892,6 +898,7 @@ function hasTicketFilters() {
 }
 
 function clearTicketFilters() {
+  state.focusedTicketId = null;
   ["ticketSearch", "statusFilter", "categoryFilter", "fromDateFilter", "toDateFilter", "queueFilter"]
     .forEach((id) => { byId(id).value = ""; });
 }
@@ -916,7 +923,9 @@ async function loadTickets() {
   if (toDate) params.set("to", toDate);
   byId("ticketList").replaceChildren(node("div", "empty-state", "Đang tải yêu cầu..."));
   try {
-    const loadedTickets = await api(`/tickets?${params.toString()}`);
+    const loadedTickets = state.focusedTicketId
+      ? [await api(`/tickets/${state.focusedTicketId}`)]
+      : await api(`/tickets?${params.toString()}`);
     if (requestId !== state.ticketRequestId || !state.user) return;
     state.tickets = loadedTickets;
     if (state.user.role === "user") {
@@ -1422,7 +1431,7 @@ function buildHandoffDescription(question, matches = []) {
   const sources = [...new Set(matches.map((match) => match.source).filter(Boolean))];
   if (!sources.length) return question;
   const heading = window.helpdeskI18n.translate("Tài liệu đã được gợi ý (chưa xác nhận đã thực hiện):");
-  const note = window.helpdeskI18n.translate("Vui lòng bổ sung các bước bạn đã thử và kết quả trước khi gửi.");
+  const note = window.helpdeskI18n.translate("Các bước đã thực hiện và kết quả: chưa được người gửi xác nhận.");
   return `${question}\n\n${heading}\n${sources.slice(0, 5).map((source) => `- ${String(source).slice(0, 180)}`).join("\n")}\n\n${note}`.slice(0, 5000);
 }
 
@@ -1437,6 +1446,7 @@ async function askKnowledge(event, options = {}) {
   setWorkspaceView("assistant");
   if (state.ragBusy) return;
   state.ragBusy = true;
+  const turnSequence = ++state.diagnosticTurn;
   const requestToken = state.token;
   byId("newChatBtn").disabled = true;
   const sendButton = byId("ragForm").querySelector('button[type="submit"]');
@@ -1457,14 +1467,19 @@ async function askKnowledge(event, options = {}) {
       method: "POST",
       body: JSON.stringify({
         question,
+        ...((options.action || options.factAnswers) ? { expected_revision: state.incidentRevision } : {}),
+        ...(options.action ? { action: options.action } : {}),
+        ...(options.factAnswers ? { fact_answers: options.factAnswers } : {}),
+        ...(options.stepResults ? { step_results: options.stepResults } : {}),
         ...(state.chatSessionId ? { session_id: state.chatSessionId } : {}),
       }),
     });
     if (state.token !== requestToken) return;
     state.chatSessionId = data.session_id;
+    state.incidentRevision = data.revision ?? null;
     byId("assistantGapSummary").textContent = data.grounded ? "Đã tìm thấy tài liệu cho câu hỏi vừa gửi. Nguồn tham khảo nằm trong hội thoại." : "Câu hỏi vừa gửi chưa có nguồn phù hợp. Chọn gửi IT để được hỗ trợ và đề nghị bổ sung hướng dẫn.";
     result.replaceChildren(node("div", "question-bubble", question), node("p", "rag-answer", data.answer));
-    result.append(node("p", `rag-evidence ${data.grounded ? "" : "rag-evidence-empty"}`,
+    if (!data.state) result.append(node("p", `rag-evidence ${data.grounded ? "" : "rag-evidence-empty"}`,
       data.grounded ? "Có tài liệu tham khảo — hãy đối chiếu trước khi thực hiện." : "Chưa tìm thấy nguồn phù hợp. Bạn có thể bổ sung thông tin hoặc chuyển cho IT."));
     if (data.sources.length) {
       const sourceCard = (match, source, index) => {
@@ -1484,7 +1499,12 @@ async function askKnowledge(event, options = {}) {
         result.append(moreSources);
       }
     }
-    addTicketHandoff(result, question, data.grounded, data.triage, {
+    renderDiagnosticControls(result, data);
+    addTicketHandoff(result, data.handoff_question || question, data.grounded, data.triage, {
+      turnSequence,
+      policyState: data.state,
+      pendingTopic: data.pending_topic,
+      handoff: data.handoff,
       ticketId: options.ticketId,
       matches: data.matches,
     });
@@ -1525,6 +1545,75 @@ async function askKnowledge(event, options = {}) {
   }
 }
 
+function renderDiagnosticControls(container, data) {
+  const turnSequence = state.diagnosticTurn;
+  const session = state.chatSessionId;
+  const isCurrent = () => turnSequence === state.diagnosticTurn && session === state.chatSessionId;
+  const stepFields = {};
+  const sendAction = (label, action) => {
+    const button = node("button", "button button-soft", label);
+    button.type = "button";
+    button.addEventListener("click", () => { if (isCurrent()) askKnowledge(null, { question: label, action, stepResults: Object.fromEntries(Object.entries(stepFields).map(([key, field]) => [key, field.value])) }); });
+    container.append(button);
+  };
+  if (data.pending_topic) {
+    sendAction("Xác nhận bắt đầu sự cố mới", "confirm_switch");
+    if (!data.safety_stop) sendAction("Tiếp tục sự cố hiện tại", "continue_incident");
+    return;
+  }
+  if (data.questions?.length) {
+    const form = node("form", "diagnostic-questions");
+    const fields = {};
+    const labels = { unknown: "Không biết / Không kiểm tra được", single: "Chỉ máy tôi", multiple: "Nhiều máy / nhiều người",
+      disconnected: "Mất liên kết", connected: "Đã kết nối", works: "Truy cập được", fails: "Không truy cập được",
+      usb: "USB", network: "Qua mạng", error: "Có lỗi trên bảng điều khiển", no_error: "Không có lỗi" };
+    data.questions.forEach((question) => {
+      const label = node("label", "", question.text);
+      const field = node("select", "");
+      field.required = true;
+      const empty = node("option", "", "Chọn kết quả quan sát");
+      empty.value = "";
+      field.append(empty);
+      question.options.forEach((value) => {
+        const option = node("option", "", labels[value] || value);
+        option.value = value;
+        field.append(option);
+      });
+      fields[question.key] = field;
+      label.append(field);
+      form.append(label);
+    });
+    const submit = node("button", "button", "Gửi dữ kiện kiểm tra");
+    submit.type = "submit";
+    form.append(submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!isCurrent()) return;
+      const factAnswers = Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value]));
+      if (Object.values(factAnswers).some((value) => !value)) return;
+      askKnowledge(null, { question: "Dữ kiện kiểm tra", factAnswers });
+    });
+    container.append(form);
+  }
+  if (data.state === "CHECK_RESULT") {
+    (data.steps || []).forEach((step) => {
+      const label = node("label", "", `Kết quả bước ${step.id}`);
+      const field = node("select", "");
+      [["not_attempted", "Chưa thực hiện"], ["attempted_success", "Đã thử, đúng dấu hiệu mong đợi"],
+        ["attempted_failure", "Đã thử, chưa đạt"]].forEach(([value, text]) => {
+        const option = node("option", "", text); option.value = value; field.append(option);
+      });
+      field.value = (data.attempted_steps || []).find((saved) => saved.id === step.id)?.result || "not_attempted";
+      stepFields[step.id] = field;
+      label.append(field); container.append(label);
+    });
+    sendAction("Xác nhận chức năng hiện đã hoạt động", "confirm_resolved");
+    sendAction("Vẫn lỗi / Không thực hiện được", "still_failing");
+  }
+  (data.policy_sources || []).forEach((source) => container.append(node("p", "muted",
+    `Nguồn: ${source.source} · phiên bản nguồn ${source.source_version} · runbook ${source.version} · mục ${source.section}`)));
+}
+
 function appendAssistantTicketReceipt(container, ticket, priorityLabel) {
   const receipt = node("div", "assistant-ticket-receipt");
   const ticketId = `HD-${String(ticket.id).padStart(4, "0")}`;
@@ -1542,7 +1631,12 @@ function appendAssistantTicketReceipt(container, ticket, priorityLabel) {
   const actions = node("div", "triage-action-buttons");
   const viewTickets = node("button", "button button-soft", "Ticket IT của tôi đến đâu?");
   viewTickets.type = "button";
-  viewTickets.addEventListener("click", () => setWorkspaceView("tickets"));
+  viewTickets.addEventListener("click", async () => {
+    clearTicketFilters();
+    state.focusedTicketId = ticket.id;
+    setWorkspaceView("tickets");
+    await loadTickets();
+  });
   const done = node("button", "button button-success", "Xong, cảm ơn");
   done.type = "button";
   done.addEventListener("click", () => {
@@ -1558,25 +1652,63 @@ function appendAssistantTicketReceipt(container, ticket, priorityLabel) {
 
 async function createAssistantTicket(actionContainer, submitButton, question, cleanTitle, triage, options, priorityLabel) {
   if (state.assistantTicketBusy || submitButton.disabled) return;
+  if (options.turnSequence !== undefined && options.turnSequence !== state.diagnosticTurn) return;
+  options.requestKey ||= crypto.randomUUID();
+  if (!submitButton.dataset.confirmed) {
+    const preview = node("div", "assistant-ticket-preview");
+    const titleInput = node("input", "");
+    titleInput.setAttribute("aria-label", "Tiêu đề bàn giao IT");
+    titleInput.maxLength = 160;
+    titleInput.value = options.handoff?.title || cleanTitle;
+    const description = node("textarea", "");
+    description.setAttribute("aria-label", "Thông tin bàn giao IT");
+    description.value = options.description || options.handoff?.description || buildHandoffDescription(question, options.matches);
+    const confirm = node("button", "button", "Xác nhận gửi ticket");
+    confirm.type = "button";
+    confirm.addEventListener("click", () => {
+      if (titleInput.value.trim().length < 5 || description.value.trim().length < 10) {
+        alertUser("Tiêu đề cần ít nhất 5 ký tự; mô tả cần ít nhất 10 ký tự.");
+        return;
+      }
+      confirm.dataset.confirmed = "true";
+      createAssistantTicket(actionContainer, confirm, question, titleInput.value.trim(), triage,
+        { ...options, description: description.value }, priorityLabel);
+    });
+    preview.append(node("strong", "", "Xem lại thông tin trước khi gửi"),
+      node("p", "muted", "Danh mục và ưu tiên đề xuất: " + (categoryLabels[triage.category] || triage.category) + " · " + priorityLabel),
+      node("p", "muted", "Không gửi mật khẩu, OTP hoặc dữ liệu riêng tư. Kiểm tra và che thông tin nhạy cảm trước khi xác nhận."),
+      titleInput, description, confirm);
+    actionContainer.replaceChildren(preview);
+    return;
+  }
   state.assistantTicketBusy = true;
   const requestToken = state.token;
   submitButton.disabled = true;
   submitButton.textContent = "Đang gửi yêu cầu cho IT...";
   const payload = {
+    request_key: options.requestKey,
     title: cleanTitle,
-    description: buildHandoffDescription(question, options.matches),
+    description: options.description || buildHandoffDescription(question, options.matches),
     category: triage.category || "general",
     priority: triage.priority || "medium",
   };
 
   try {
-    const created = await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
+    let created;
+    if (options.retry) {
+      try {
+        created = await api(`/ticket-requests/${options.requestKey}`);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+    }
+    if (!created) created = await api("/tickets", { method: "POST", body: JSON.stringify(payload) });
     const ticket = created?.ticket;
     if (!Number.isSafeInteger(ticket?.id) || ticket.id <= 0) {
       throw new Error("Chưa xác định được mã ticket từ phản hồi.");
     }
     // Do not render a success receipt into a chat that belongs to a signed-out user.
-    if (state.token !== requestToken) return;
+    if (state.token !== requestToken || (options.turnSequence !== undefined && options.turnSequence !== state.diagnosticTurn)) return;
     appendAssistantTicketReceipt(actionContainer, ticket, priorityLabel);
     try {
       await refreshWorkspace();
@@ -1593,13 +1725,22 @@ async function createAssistantTicket(actionContainer, submitButton, question, cl
     const viewTickets = node("button", "button button-soft", "Mở Ticket của tôi");
     viewTickets.type = "button";
     viewTickets.addEventListener("click", () => setWorkspaceView("tickets"));
-    actionContainer.replaceChildren(notice, viewTickets);
+    const retry = node("button", "button", "Kiểm tra kết quả và thử lại");
+    retry.type = "button";
+    retry.addEventListener("click", () => {
+      retry.dataset.confirmed = "true";
+      createAssistantTicket(actionContainer, retry, question, cleanTitle, triage,
+        { ...options, retry: true }, priorityLabel);
+    });
+    actionContainer.replaceChildren(notice, node("p", "muted", payload.title),
+      node("p", "muted", payload.description), retry, viewTickets);
   } finally {
     state.assistantTicketBusy = false;
   }
 }
 
 function addTicketHandoff(container, question, grounded, triage, options = {}) {
+  if (options.pendingTopic || ["OUT_OF_SCOPE", "CLARIFY", "RESOLVED", "CHECK_RESULT"].includes(options.policyState)) return;
   const isEscalate = triage.resolution_scope === "ESCALATE_IT";
   const naviCategory = triage.navi_category || categoryLabels[triage.category] || triage.category;
   const priorityLabel = triage.priority_label || priorityLabels[triage.priority] || triage.priority;
@@ -1635,7 +1776,9 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
   // Đối với IT Staff / Admin: Giữ nguyên công cụ chèn gợi ý phản hồi
   if (state.user && state.user.role !== "user") {
     container.append(
-      node("p", "handoff-note", "Đối chiếu nguồn trước khi dùng hướng dẫn để phản hồi ticket."),
+      node("p", "handoff-note", grounded
+        ? "Đối chiếu nguồn trước khi dùng hướng dẫn để phản hồi ticket."
+        : "Chưa có hướng dẫn được xác minh cho sự cố này. IT cần kiểm tra thêm trước khi phản hồi."),
     );
     if (grounded && options.ticketId) {
       const insertButton = node("button", "button button-soft", `Chèn trích đoạn vào phản hồi #${options.ticketId}`);
@@ -1680,6 +1823,8 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
         )
       );
       state.chatSessionId = null;
+  state.incidentRevision = null;
+  state.diagnosticTurn += 1;
       byId("ragQuestion").value = "";
     });
 
@@ -1899,6 +2044,8 @@ async function loadRagSessions() {
           const conversation = await api(`/rag/sessions/${encodeURIComponent(session.id)}`);
           if (state.token !== sessionToken || state.ragBusy) return;
           state.chatSessionId = session.id;
+          state.diagnosticTurn += 1;
+          state.incidentRevision = conversation.diagnostic?.revision ?? null;
           const result = byId("ragResult");
           result.classList.remove("hidden");
           result.replaceChildren();
@@ -1916,6 +2063,13 @@ async function loadRagSessions() {
             }
             result.append(bubble);
           });
+          if (conversation.diagnostic) {
+            const diagnostic = conversation.diagnostic;
+            renderDiagnosticControls(result, diagnostic);
+            addTicketHandoff(result, diagnostic.handoff.description, false, diagnostic.triage,
+              { policyState: diagnostic.state, pendingTopic: diagnostic.pending_topic,
+                handoff: diagnostic.handoff, matches: [], turnSequence: state.diagnosticTurn });
+          }
           byId("assistantPanel").scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (error) {
           alertUser(error.message);
@@ -2184,6 +2338,8 @@ byId("exportReportBtn").addEventListener("click", exportReport);
 byId("newChatBtn").addEventListener("click", () => {
   if (state.ragBusy) return;
   state.chatSessionId = null;
+  state.incidentRevision = null;
+  state.diagnosticTurn += 1;
   byId("ragQuestion").value = "";
   byId("ragResult").replaceChildren();
   byId("ragResult").classList.add("hidden");
@@ -2260,6 +2416,7 @@ window.addEventListener("storage", (event) => {
 });
 
 async function refreshServiceState() {
+  if (state.user?.role !== "admin") return;
   const label = byId("serviceStateLabel");
   const textEl = byId("serviceStateText");
   try {
@@ -2292,7 +2449,6 @@ async function refreshServiceState() {
   }
 }
 
-refreshServiceState();
 window.setInterval(refreshServiceState, 30000);
 
 

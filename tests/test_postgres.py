@@ -647,3 +647,21 @@ def test_postgres_email_enqueue_failure_rolls_back_account(monkeypatch):
         store.create_user('emailrollback',secrets.token_urlsafe(24),'user',email='user@example.invalid',
                           invitation_base_url='http://testserver')
     assert store.get_user_credentials('emailrollback') is None
+
+
+def test_postgres_request_key_and_incident_persistence():
+    from concurrent.futures import ThreadPoolExecutor
+    store.initialize_store()
+    store.reset_store()
+    args = ('Postgres request test', 'Synthetic request description', 'hardware', 'medium', 'user')
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: store.create_ticket(*args, request_key='pg-request-key-00001'), range(2)))
+    assert results[0]['id'] == results[1]['id']
+    assert store.get_ticket_request('user', 'pg-request-key-00001')['id'] == results[0]['id']
+    assert store.get_ticket_request('admin', 'pg-request-key-00001') is None
+    with pytest.raises(ValueError):
+        store.create_ticket('Other request title', *args[1:], request_key='pg-request-key-00001')
+    context = {'topic': 'printer', 'facts': {}}
+    session = store.save_chat_exchange('user', None, 'Máy in Offline', 'Cần dữ kiện', [], incident_context=context)
+    assert store.get_incident_context('user', session) == context
+    assert store.get_incident_context('admin', session) is None

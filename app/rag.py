@@ -836,6 +836,8 @@ def generate_answer(question: str) -> dict[str, Any]:
             "has_sources": False,
             "answer_verification": "not_verified",
             "triage": triage,
+            "out_of_scope": True,
+            "state": "OUT_OF_SCOPE",
             "llm_generated": False,
         }
 

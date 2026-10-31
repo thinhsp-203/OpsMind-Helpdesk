@@ -189,7 +189,8 @@ def current_user(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=401, detail="Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.")
 
     if user.get("force_password_change"):
-        allowed_paths = {"/auth/change-password", "/auth/me", "/auth/logout"}
+        allowed_paths = {prefix + path for prefix in ("", "/api")
+                         for path in ("/auth/change-password", "/auth/me", "/auth/logout")}
         if request.url.path not in allowed_paths:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

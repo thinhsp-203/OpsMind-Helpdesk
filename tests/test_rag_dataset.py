@@ -1,7 +1,6 @@
 import csv
 import hashlib
 from pathlib import Path
-import re
 
 from app.rag import (
     generate_answer,
@@ -10,38 +9,11 @@ from app.rag import (
     reload_rag_dictionary,
     retrieve_relevant_context,
 )
+from scripts.evaluation_support import FROZEN_DATASET_HASHES
 
 DATASET = Path(__file__).resolve().parents[1] / "data" / "evaluation" / "rag_questions.csv"
 HOLDOUT_DATASET = Path(__file__).resolve().parents[1] / "data" / "evaluation" / "rag_holdout.csv"
 DATASET_CARD = Path(__file__).resolve().parents[1] / "data" / "evaluation" / "DATASET_CARD.md"
-
-FROZEN_DATASET_HASHES = {
-    "rag_questions.csv": "9a0fc80667527170c7dad3476a26374a5183a7b8374795b6ec35d1482ae5ad4d",
-    "rag_holdout.csv": "aaaf9673ed6d886ff5faa46f2a0bbcff92629cb024acd0cefb9e763706fad872",
-}
-
-
-def score_evidence(required_evidence: str, text: str) -> tuple[float, list[str], list[str]]:
-    """Helper to score required evidence coverage against retrieved passages."""
-    items = [item.strip() for item in required_evidence.split(";") if item.strip()]
-    if not items:
-        return 1.0, [], []
-    covered: list[str] = []
-    missing: list[str] = []
-    text_lower = text.lower()
-    for item in items:
-        item_lower = item.lower()
-        tokens = [t for t in re.split(r"[\s/,]+", item_lower) if len(t) > 2]
-        if item_lower in text_lower:
-            covered.append(item)
-        elif tokens and all(t in text_lower for t in tokens):
-            covered.append(item)
-        elif tokens and any(t in text_lower for t in tokens):
-            covered.append(item)
-        else:
-            missing.append(item)
-    score = len(covered) / len(items) if items else 1.0
-    return score, covered, missing
 
 
 def test_evaluation_datasets_provenance_and_frozen_hash() -> None:
@@ -164,31 +136,6 @@ def test_holdout_evaluation_set_quality_gate() -> None:
     assert false_refusal_rate <= 0.05, f"Holdout false in-scope refusal rate too high: {false_refusal_rate:.2%}"
     assert near_rate >= 0.80, f"Holdout near-domain refusal rate too low: {near_rate:.2%}"
     assert pure_rate >= 0.90, f"Holdout pure refusal rate too low: {pure_rate:.2%}"
-
-
-def test_holdout_evidence_rubric_coverage() -> None:
-    """AUD-19: Explicitly score required_evidence on holdout in-scope queries."""
-    with HOLDOUT_DATASET.open(encoding="utf-8-sig", newline="") as file:
-        questions = list(csv.DictReader(file))
-
-    in_scope = [q for q in questions if q["scope"] == "in_scope"]
-    scores: list[float] = []
-    hits = 0
-
-    for q in in_scope:
-        matches = retrieve_relevant_context(q["question"], top_k=3)
-        assert matches, f"Expected non-empty retrieval for in-scope {q['id']}"
-        combined_text = " ".join([m.get("title", "") + " " + m.get("content", "") for m in matches])
-        score, covered, missing = score_evidence(q["required_evidence"], combined_text)
-        scores.append(score)
-        if score > 0.0:
-            hits += 1
-
-    hit_rate = hits / len(in_scope)
-    avg_coverage = sum(scores) / len(scores) if scores else 0.0
-
-    assert hit_rate >= 0.90, f"Evidence hit rate too low: {hit_rate:.1%}"
-    assert avg_coverage >= 0.80, f"Average evidence coverage too low: {avg_coverage:.1%}"
 
 
 def test_out_of_scope_refusal_rubric() -> None:

@@ -33,4 +33,10 @@
 - **Phân định phạm vi:** Tập 60 câu `rag_holdout.csv` là **Frozen Fixed Regression Benchmark Gate Set** nhằm bảo vệ hệ thống không thoái lui tri thức trên 30 runbook hiện có. Đây không phải tập blinded evaluation độc lập.
 - **Tách bạch chỉ số Retrieval Gate và Answer/Evidence Rubric:**
   - *Retrieval CI Gate:* Dev Hit@3 = 100.0%, Holdout Hit@1 = 76.7%, Holdout Hit@3 = 100.0%, Holdout MRR@3 = 0.878, Pure OOS Refusal = 100.0%, Near-domain OOS Refusal = 100.0%.
-  - *Answer & Evidence Rubric:* Holdout Evidence Hit@3 = 100.0% (30/30 câu in-scope trích xuất được bằng chứng), In-scope Average Evidence Coverage = 95.6%, Out-of-scope Refusal Justification = 100.0% (30/30 câu out-of-scope đưa ra giải thích từ chối rõ ràng).
+  - **Số liệu lịch sử, không còn dùng làm chất lượng câu trả lời (đính chính 29/10/2026):** Holdout Evidence Hit@3 = 100.0% (30/30 câu in-scope trích xuất được bằng chứng), In-scope Average Evidence Coverage = 95.6%, Out-of-scope Refusal Justification = 100.0% (30/30 câu out-of-scope đưa ra giải thích từ chối rõ ràng).
+
+## Đính chính công cụ đánh giá — 29/10/2026
+
+Các mã băm tại mục AUD-19 phía trên là metadata CRLF cũ; mã băm chuẩn UTF-8/LF hiện tại nằm trong `data/evaluation/DATASET_CARD.md` và `scripts/evaluation_support.py`. Nội dung CSV không thay đổi.
+
+Bộ chấm cũ chấp nhận một từ trùng trong cụm bằng chứng, kể cả trong tiêu đề. Bản sửa chỉ chấp nhận nguyên cụm trong nội dung và công bố là chẩn đoán từ vựng. Không dùng coverage cũ để khẳng định Faithfulness, so sánh cải thiện hay đặt ngưỡng chất lượng cho bộ chấm mới. Các ngưỡng truy xuất và từ chối vẫn được giữ nguyên. Xem `docs/REVIEW_FIXES_2026-10-29.md` cho kết quả chạy lại và giới hạn.

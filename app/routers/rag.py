@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app import store
 from app.assistant_policy import diagnose, fold, snapshot, incident_triage
 from app.dependencies import current_user
-from app.rag import KnowledgeBaseUnavailableError, generate_answer, OUT_OF_SCOPE_PATTERNS
+from app.rag import KnowledgeBaseUnavailableError, contextualize_question, generate_answer
 from app.schemas import RAGFeedback, RAGQuestion
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,12 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 
 @router.post("/ask")
 def ask_rag(request: Request, payload: RAGQuestion) -> dict:
+    """Answer with published sources and optional bounded follow-up context.
+
+    `has_sources` (legacy alias `grounded`) describes retrieval only.
+    `answer_verification=not_verified` makes no semantic truth/faithfulness claim.
+    `context_used` is true only when a recent user description was incorporated.
+    """
     # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
     user = current_user(request)
     history = []
@@ -24,28 +30,12 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         session = store.get_chat_session(user["username"], payload.session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.")
-        history = session["messages"]
-    context = store.get_incident_context(user["username"], payload.session_id) if payload.session_id else None
-    if context is None and history:
-        first_question = next((m["content"] for m in history if m["role"] == "user"), "")
-        seed = diagnose(first_question)
-        context = seed["context"] if seed else None
-    if payload.action or payload.fact_answers or payload.step_results:
-        if context is None or payload.expected_revision != context.get("revision", 0):
-            raise HTTPException(status_code=409, detail="Sự cố đã thay đổi. Tải lại lượt hiện tại trước khi xác nhận.")
-    expected_revision = context.get("revision", 0) if context else None
+        messages = session["messages"]
+    question = payload.question.strip()
+    contextual_question = contextualize_question(question, messages)
     try:
-        policy = diagnose(payload.question.strip(), context, action=payload.action,
-                          answers=payload.fact_answers, step_results=payload.step_results, role=user["role"])
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if policy is None and (payload.action or payload.fact_answers or payload.step_results):
-        raise HTTPException(status_code=422, detail="Không có sự cố đang hoạt động cho thao tác này.")
-    try:
-        if policy and not any(pattern in fold(payload.question) for pattern in OUT_OF_SCOPE_PATTERNS):
-            result = {"answer": "", "sources": [], "triage": {"category": {"printer": "hardware", "network": "network"}.get(policy["incident_topic"], "general"), "priority": "medium", "priority_reason": "Mức tạm thời; cần xác nhận tác động và độ khẩn cấp."}}
-        else:
-            result = generate_answer(payload.question.strip())
+        result = generate_answer(contextual_question)
+        result["context_used"] = contextual_question != question
     except KnowledgeBaseUnavailableError as exc:
         raise HTTPException(
             status_code=503,

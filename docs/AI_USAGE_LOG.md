@@ -1,5 +1,11 @@
 # Nhật ký sử dụng AI
 
+## Đợt rà soát và sửa lỗi 29/10/2026 — Codex
+
+Trạng thái trong đoạn dưới được ghi ở thời điểm kiểm thử trước commit. Bản sửa được lưu trong commit chứa mục nhật ký này; xác minh triển khai vẫn còn chờ.
+
+Codex hỗ trợ đọc mã, tái hiện lỗi trên DB tạm, sửa bảo toàn runbook khi restart, công cụ đánh giá/benchmark, ngữ cảnh nối tiếp có giới hạn và kiểm thử. Cập nhật metadata LF; không sửa câu hỏi/nhãn đóng băng. Ghi rõ có nguồn chưa phải kiểm chứng câu trả lời. Output chạy thật và giới hạn nằm trong `docs/REVIEW_FIXES_2026-10-29.md` và `docs/verification/2026-10-29/`. Chưa commit/push/deploy; nhóm cần đối chiếu diff trước khi nộp. Không tạo phản hồi khảo sát hay kết quả chuyên gia giả; chưa thực hiện blinded evaluation hoặc đánh giá LLM thật.
+
 Nhật ký ghi các phần có hỗ trợ AI và việc nhóm cần tự rà soát. Không dùng nội dung này thay cho lịch sử commit/PR hoặc xác nhận của giảng viên.
 
 | Giai đoạn | Yêu cầu đưa cho AI | Kết quả được hỗ trợ | Rà soát và điều chỉnh |

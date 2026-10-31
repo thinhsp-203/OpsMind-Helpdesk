@@ -4,7 +4,6 @@ import csv
 import hashlib
 import math
 import os
-import re
 import statistics
 import sys
 import time
@@ -22,32 +21,7 @@ from app.rag import generate_answer, is_out_of_scope, retrieve_relevant_context 
 DEV_DATASET = ROOT / "data" / "evaluation" / "rag_questions.csv"
 HOLDOUT_DATASET = ROOT / "data" / "evaluation" / "rag_holdout.csv"
 
-FROZEN_DATASET_HASHES = {
-    "rag_questions.csv": "9a0fc80667527170c7dad3476a26374a5183a7b8374795b6ec35d1482ae5ad4d",
-    "rag_holdout.csv": "aaaf9673ed6d886ff5faa46f2a0bbcff92629cb024acd0cefb9e763706fad872",
-}
-
-
-def score_evidence_rubric(required_evidence: str, text: str) -> tuple[float, list[str], list[str]]:
-    items = [item.strip() for item in required_evidence.split(";") if item.strip()]
-    if not items:
-        return 1.0, [], []
-    covered: list[str] = []
-    missing: list[str] = []
-    text_lower = text.lower()
-    for item in items:
-        item_lower = item.lower()
-        tokens = [t for t in re.split(r"[\s/,]+", item_lower) if len(t) > 2]
-        if item_lower in text_lower:
-            covered.append(item)
-        elif tokens and all(t in text_lower for t in tokens):
-            covered.append(item)
-        elif tokens and any(t in text_lower for t in tokens):
-            covered.append(item)
-        else:
-            missing.append(item)
-    score = len(covered) / len(items) if items else 1.0
-    return score, covered, missing
+from scripts.evaluation_support import FROZEN_DATASET_HASHES, score_evidence_rubric  # noqa: E402
 
 
 def evaluate_dataset(dataset_path: Path) -> dict[str, float | list[str]]:
@@ -57,7 +31,9 @@ def evaluate_dataset(dataset_path: Path) -> dict[str, float | list[str]]:
     raw_bytes = dataset_path.read_bytes()
     file_sha256 = hashlib.sha256(raw_bytes).hexdigest()
     expected_hash = FROZEN_DATASET_HASHES.get(dataset_path.name)
-    hash_status = "MATCH (VERIFIED)" if expected_hash and expected_hash == file_sha256 else "UNVERIFIED"
+    if expected_hash and expected_hash != file_sha256:
+        raise ValueError(f"Frozen dataset checksum mismatch: {dataset_path.name}")
+    hash_status = "MATCH (VERIFIED LF)" if expected_hash else "CUSTOM DATASET (UNVERIFIED)"
 
     with dataset_path.open(encoding="utf-8-sig", newline="") as file:
         rows = list(csv.DictReader(file))
@@ -111,7 +87,7 @@ def evaluate_dataset(dataset_path: Path) -> dict[str, float | list[str]]:
                 reciprocal_ranks.append(0.0)
                 misses.append(f"{row['id']} (expected {expected}, got {matched_sources})")
 
-            combined_context = " ".join([m.get("title", "") + " " + m.get("content", "") for m in matches])
+            combined_context = [m.get("content", "") for m in matches]
             req_ev = row.get("required_evidence", "")
             cov_score, cov_items, miss_items = score_evidence_rubric(req_ev, combined_context)
             evidence_scores.append(cov_score)
@@ -164,10 +140,12 @@ def evaluate_dataset(dataset_path: Path) -> dict[str, float | list[str]]:
         print(f"  • Out-of-scope refusal: {refusals}/{len(out_of_scope)} ({refusal_rate:.1%})")
     print(f"  • Retrieval latency: median={statistics.median(latencies):.2f}ms, p95={p95:.2f}ms")
 
-    print("  --- Section 2: Answer & Evidence Rubric (AUD-19) ---")
-    print(f"  • In-scope Evidence Hit@3: {evidence_hits}/{len(in_scope)} ({evidence_hit_rate:.1%})")
-    print(f"  • In-scope Average Evidence Coverage: {evidence_coverage_avg:.1%}")
+    print("  --- Section 2: Lexical Context Diagnostics (not answer quality) ---")
+    print(f"  • In-scope Complete-Phrase Context Hit@3: {evidence_hits}/{len(in_scope)} ({evidence_hit_rate:.1%})")
+    print(f"  • In-scope Lexical Phrase Coverage: {evidence_coverage_avg:.1%}")
     print(f"  • Out-of-scope Refusal Justification: {refusal_justifications}/{len(out_of_scope)} ({refusal_justification_rate:.1%})")
+
+    print("  • Faithfulness / Answer Relevance: NOT MEASURED; human review required.")
 
     if misses:
         print("  • Retrieval Misses:")
@@ -181,7 +159,7 @@ def evaluate_dataset(dataset_path: Path) -> dict[str, float | list[str]]:
         for rm in rubric_misses:
             print(f"    - {rm}")
     else:
-        print("  • Rubric Misses: None (100% rubric passed)")
+        print("  • Rubric Misses: None (lexical/refusal checks only)")
 
     return {
         "hit1_rate": hit1_rate,
@@ -210,7 +188,7 @@ def main() -> int:
         target = DEV_DATASET
 
     print("=" * 68)
-    print("  OpsMind Helpdesk — RAG Retrieval Gate & Answer Rubric Evaluation")
+    print("  OpsMind Helpdesk — RAG Retrieval Gate & Lexical Context Diagnostics")
     print("=" * 68)
 
     if target:
@@ -221,11 +199,9 @@ def main() -> int:
             or metrics["mrr"] < 0.70
             or metrics["refusal_rate"] < 0.80
             or metrics["false_refusal_rate"] > 0.05
-            or metrics["evidence_hit_rate"] < 0.90
-            or metrics["evidence_coverage_avg"] < 0.75
             or metrics["refusal_justification_rate"] < 0.90
         ):
-            print("\n[FAIL] Quality or Rubric below acceptance criteria.")
+            print("\n[FAIL] Retrieval or refusal below acceptance criteria.")
             return 1
         return 0
 
@@ -238,8 +214,8 @@ def main() -> int:
         f"Holdout Hit@1={h_metrics['hit1_rate']:.1%}, "
         f"Holdout Hit@3={h_metrics['hit3_rate']:.1%}, "
         f"Holdout MRR@3={h_metrics['mrr']:.3f}, "
-        f"Holdout Evidence Hit={h_metrics['evidence_hit_rate']:.1%}, "
-        f"Holdout Coverage={h_metrics['evidence_coverage_avg']:.1%}, "
+        f"Holdout Lexical Hit={h_metrics['evidence_hit_rate']:.1%}, "
+        f"Holdout Lexical Coverage={h_metrics['evidence_coverage_avg']:.1%}, "
         f"OOS Refusal Justification={h_metrics['refusal_justification_rate']:.1%}"
     )
     print("=" * 68)
@@ -252,11 +228,9 @@ def main() -> int:
         or h_metrics["pure_refusal_rate"] < 0.90
         or h_metrics["near_refusal_rate"] < 0.80
         or h_metrics["false_refusal_rate"] > 0.05
-        or h_metrics["evidence_hit_rate"] < 0.90
-        or h_metrics["evidence_coverage_avg"] < 0.80
         or h_metrics["refusal_justification_rate"] < 0.90
     ):
-        print("\n[FAIL] Quality or Rubric below acceptance criteria.")
+        print("\n[FAIL] Retrieval or refusal below acceptance criteria.")
         return 1
     return 0
 

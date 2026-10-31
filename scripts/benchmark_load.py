@@ -1,162 +1,158 @@
+"""HTTP load measurement; use only a dedicated test account and disposable data.
+
+The explicit --in-process mode is a local diagnostic, not deployment/NFR evidence.
+"""
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
+import platform
 import statistics
-import sys
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-os.environ.setdefault("DEMO_MODE", "true")
-os.environ.setdefault("SECRET_KEY", "benchmark-load-secret-key-at-least-32-chars-long")
-
-import jwt  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from app.config import ALGORITHM, SECRET_KEY  # noqa: E402
-from app.main import app  # noqa: E402
-from app.rag import build_retrieval_index  # noqa: E402
-from app import store  # noqa: E402
+import httpx
 
 
-def create_benchmark_token(username: str = "user", role: str = "user") -> str:
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": username,
-        "role": role,
-        "iat": now,
-        "exp": now + timedelta(hours=2),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+def login_benchmark(client: Any, username: str, password: str) -> dict[str, str]:
+    """Exercise real authentication, including session epoch and password changes."""
+    response = client.post('/auth/login', json={'username': username, 'password': password})
+    if response.status_code != 200:
+        raise RuntimeError(f'Benchmark login failed (HTTP {response.status_code}); no load was sent.')
+    headers = {'Authorization': 'Bearer ' + response.json()['token']}
+    # Reject accounts that must change their password before business requests.
+    if client.get('/knowledge', headers=headers).status_code != 200:
+        raise RuntimeError('Benchmark account cannot read knowledge; no load was sent.')
+    return headers
 
 
 def run_benchmark(
     endpoint: str,
-    method: str = "GET",
+    method: str = 'GET',
     payload: dict | None = None,
     total_requests: int = 150,
     concurrency: int = 10,
     headers: dict[str, str] | None = None,
-) -> dict[str, float | int]:
-    client = TestClient(app)
-    latencies: list[float] = []
-    success_count = 0
-    failure_count = 0
+    *,
+    client: Any,
+) -> dict[str, Any]:
+    if total_requests < 1 or concurrency < 1:
+        raise ValueError('requests and concurrency must be positive')
 
-    def single_request() -> tuple[bool, float]:
-        t0 = time.perf_counter()
+    def request() -> tuple[str, float]:
+        started = time.perf_counter()
         try:
-            if method == "POST":
-                res = client.post(endpoint, json=payload, headers=headers)
-            else:
-                res = client.get(endpoint, headers=headers)
-            duration = (time.perf_counter() - t0) * 1000.0
-            return (res.status_code in {200, 201}, duration)
-        except Exception:
-            duration = (time.perf_counter() - t0) * 1000.0
-            return (False, duration)
+            response = client.request(method, endpoint, json=payload, headers=headers)
+            status = str(response.status_code)
+        except httpx.RequestError:
+            status = 'transport_error'
+        return status, (time.perf_counter() - started) * 1000
 
-    start_time = time.perf_counter()
+    # Fail closed before measuring an endpoint that is inaccessible or broken.
+    preflight_status, _ = request()
+    if not preflight_status.startswith('2'):
+        raise RuntimeError(f'{endpoint}: preflight failed ({preflight_status}); result not measured.')
+
+    latencies: list[float] = []
+    successful_latencies: list[float] = []
+    statuses: Counter[str] = Counter()
+    started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = [executor.submit(single_request) for _ in range(total_requests)]
-        for fut in as_completed(futures):
-            ok, duration = fut.result()
-            latencies.append(duration)
-            if ok:
-                success_count += 1
-            else:
-                failure_count += 1
-
-    total_time = time.perf_counter() - start_time
-    rps = total_requests / total_time if total_time > 0 else 0.0
-
-    latencies.sort()
-    p50 = statistics.median(latencies) if latencies else 0.0
-    p90 = latencies[int(len(latencies) * 0.90)] if latencies else 0.0
-    p95 = latencies[int(len(latencies) * 0.95)] if latencies else 0.0
-    p99 = latencies[int(len(latencies) * 0.99)] if latencies else 0.0
-    mean_lat = statistics.mean(latencies) if latencies else 0.0
-
+        futures = [executor.submit(request) for _ in range(total_requests)]
+        for future in as_completed(futures):
+            status, latency = future.result()
+            statuses[status] += 1
+            latencies.append(latency)
+            if status.startswith('2'):
+                successful_latencies.append(latency)
+    elapsed = time.perf_counter() - started
+    ordered = sorted(latencies)
+    successful_latencies.sort()
+    success = len(successful_latencies)
     return {
-        "total_requests": total_requests,
-        "concurrency": concurrency,
-        "total_time_sec": round(total_time, 3),
-        "rps": round(rps, 1),
-        "success": success_count,
-        "failures": failure_count,
-        "mean_ms": round(mean_lat, 2),
-        "p50_ms": round(p50, 2),
-        "p90_ms": round(p90, 2),
-        "p95_ms": round(p95, 2),
-        "p99_ms": round(p99, 2),
+        'total_requests': total_requests, 'concurrency': concurrency,
+        'preflight_requests': 1, 'total_time_sec': round(elapsed, 6),
+        'success': success, 'failures': total_requests - success,
+        'error_rate': (total_requests - success) / total_requests,
+        'status_counts': dict(sorted(statuses.items())),
+        'attempt_rps': round(total_requests / elapsed, 2),
+        'success_rps': round(success / elapsed, 2),
+        'mean_ms': round(statistics.mean(latencies), 2),
+        'p50_ms': round(statistics.median(latencies), 2),
+        'p95_ms': round(ordered[math.ceil(0.95 * len(ordered)) - 1], 2),
+        'success_p95_ms': round(successful_latencies[math.ceil(0.95 * success) - 1], 2) if success else None,
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Benchmark OpsMind Helpdesk API throughput and latency.")
-    parser.add_argument("--requests", type=int, default=150, help="Total requests per test case (default: 150)")
-    parser.add_argument("--concurrency", type=int, default=10, help="Concurrency level (default: 10)")
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--base-url', default='http://127.0.0.1:8000')
+    parser.add_argument('--in-process', action='store_true', help='Explicit local TestClient diagnostic only')
+    parser.add_argument('--username', default='user', help='Dedicated benchmark account')
+    parser.add_argument('--requests', type=int, default=150)
+    parser.add_argument('--concurrency', type=int, default=10)
+    parser.add_argument('--output', type=Path, help='Save raw JSON results')
     args = parser.parse_args()
+    if args.requests < 1 or args.concurrency < 1:
+        parser.error('--requests and --concurrency must be positive')
+    password = os.getenv('OPSMIND_BENCHMARK_PASSWORD')
+    if not password:
+        parser.error('Set OPSMIND_BENCHMARK_PASSWORD for a dedicated test account.')
+    if args.in_process:
+        # Importing the app initializes its store: never do this in remote HTTP mode.
+        from fastapi.testclient import TestClient
+        from app.main import app
+        client = TestClient(app)
+    else:
+        client = httpx.Client(base_url=args.base_url, timeout=30.0,
+                              limits=httpx.Limits(max_connections=args.concurrency))
+    report: dict[str, Any] = {
+        'started_at_utc': datetime.now(timezone.utc).isoformat(),
+        'mode': 'in_process_diagnostic' if args.in_process else 'http',
+        'base_url': None if args.in_process else args.base_url,
+        'python': platform.python_version(), 'platform': platform.platform(),
+        'latency_scope': 'all measured responses; preflight and login excluded',
+        'results': [],
+    }
+    failed = False
+    with client:
+        try:
+            headers = login_benchmark(client, args.username, password)
+        except (RuntimeError, httpx.RequestError) as exc:
+            print(str(exc))
+            return 1
+        print(f"Mode: {report['mode']}. RAG calls create chat records; use disposable test data.")
+        print('| Endpoint | Success / Total | Error rate | Success RPS | p50 all (ms) | p95 all (ms) |')
+        print('|---|---:|---:|---:|---:|---:|')
+        for endpoint, method, payload in [
+            ('/health', 'GET', None), ('/config', 'GET', None),
+            ('/knowledge', 'GET', None),
+            ('/rag/ask', 'POST', {'question': 'Không kết nối được VPN FortiClient'}),
+        ]:
+            try:
+                result = run_benchmark(endpoint, method, payload, args.requests, args.concurrency,
+                                       headers, client=client)
+                failed |= bool(result['failures'])
+                print(f"| {endpoint} | {result['success']}/{result['total_requests']} | "
+                      f"{result['error_rate']:.1%} | {result['success_rps']} | "
+                      f"{result['p50_ms']} | {result['p95_ms']} |")
+                report['results'].append({'endpoint': endpoint, **result})
+            except RuntimeError as exc:
+                failed = True
+                report['results'].append({'endpoint': endpoint, 'error': str(exc)})
+                print(str(exc))
+    report['all_requests_succeeded'] = not failed
+    print('No NFR/deployment claim is inferred automatically; record server configuration separately.')
+    if args.output:
+        args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    return int(failed)
 
-    store.initialize_store()
-    build_retrieval_index()
 
-    auth_token = create_benchmark_token("user", "user")
-    auth_headers = {"Authorization": f"Bearer {auth_token}"}
-
-    test_cases = [
-        {"name": "Healthcheck", "endpoint": "/health", "method": "GET", "payload": None, "headers": None},
-        {"name": "Public Config", "endpoint": "/config", "method": "GET", "payload": None, "headers": None},
-        {
-            "name": "RAG BM25 Retrieval",
-            "endpoint": "/rag/ask",
-            "method": "POST",
-            "payload": {"question": "Làm sao kết nối VPN FortiClient khi báo lỗi sai mật khẩu?"},
-            "headers": auth_headers,
-        },
-        {"name": "Knowledge Runbooks", "endpoint": "/knowledge", "method": "GET", "payload": None, "headers": auth_headers},
-    ]
-
-    print("=" * 82)
-    print(" OpsMind Helpdesk — Performance & Load Benchmark (NFR-02 Verification)")
-    print(f" Requests per endpoint: {args.requests} | Concurrency: {args.concurrency}")
-    print("=" * 82)
-    print(f"{'Endpoint':<22} | {'Reqs':>6} | {'RPS':>8} | {'Mean(ms)':>9} | {'p50(ms)':>8} | {'p95(ms)':>8} | {'Status':>6}")
-    print("-" * 82)
-
-    results = []
-    for tc in test_cases:
-        res = run_benchmark(
-            endpoint=tc["endpoint"],
-            method=tc["method"],
-            payload=tc["payload"],
-            total_requests=args.requests,
-            concurrency=args.concurrency,
-            headers=tc["headers"],
-        )
-        results.append((tc["name"], res))
-        status_ok = "PASS" if res["failures"] == 0 else f"ERR({res['failures']})"
-        print(
-            f"{tc['name']:<22} | {res['total_requests']:>6} | {res['rps']:>8.1f} | "
-            f"{res['mean_ms']:>9.2f} | {res['p50_ms']:>8.2f} | {res['p95_ms']:>8.2f} | {status_ok:>6}"
-        )
-
-    print("-" * 82)
-    print("\nSummary for Graduation Thesis Appendix (Phụ lục Báo cáo Thực nghiệm):")
-    print("| Nghiệp vụ / Endpoint | Số request | Concurrency | Thông lượng (RPS) | Latency TB (ms) | p50 (ms) | p95 (ms) |")
-    print("|---|:---:|:---:|:---:|:---:|:---:|:---:|")
-    for name, res in results:
-        print(f"| {name} | {res['total_requests']} | {res['concurrency']} | **{res['rps']} req/s** | {res['mean_ms']} ms | {res['p50_ms']} ms | {res['p95_ms']} ms |")
-    print()
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    raise SystemExit(main())

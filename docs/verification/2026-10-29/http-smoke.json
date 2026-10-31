@@ -1,0 +1,87 @@
+{
+  "started_at_utc": "2026-10-29T09:12:36.127561+00:00",
+  "mode": "http",
+  "base_url": "http://127.0.0.1:64977",
+  "python": "3.12.14",
+  "platform": "macOS-26.7-arm64-arm-64bit",
+  "latency_scope": "all measured responses; preflight and login excluded",
+  "results": [
+    {
+      "endpoint": "/health",
+      "total_requests": 3,
+      "concurrency": 2,
+      "preflight_requests": 1,
+      "total_time_sec": 0.001961,
+      "success": 3,
+      "failures": 0,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 3
+      },
+      "attempt_rps": 1529.44,
+      "success_rps": 1529.44,
+      "mean_ms": 1.0,
+      "p50_ms": 0.99,
+      "p95_ms": 1.23,
+      "success_p95_ms": 1.23
+    },
+    {
+      "endpoint": "/config",
+      "total_requests": 3,
+      "concurrency": 2,
+      "preflight_requests": 1,
+      "total_time_sec": 0.002031,
+      "success": 3,
+      "failures": 0,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 3
+      },
+      "attempt_rps": 1477.29,
+      "success_rps": 1477.29,
+      "mean_ms": 0.94,
+      "p50_ms": 0.94,
+      "p95_ms": 0.96,
+      "success_p95_ms": 0.96
+    },
+    {
+      "endpoint": "/knowledge",
+      "total_requests": 3,
+      "concurrency": 2,
+      "preflight_requests": 1,
+      "total_time_sec": 0.006928,
+      "success": 3,
+      "failures": 0,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 3
+      },
+      "attempt_rps": 433.02,
+      "success_rps": 433.02,
+      "mean_ms": 3.45,
+      "p50_ms": 3.51,
+      "p95_ms": 3.71,
+      "success_p95_ms": 3.71
+    },
+    {
+      "endpoint": "/rag/ask",
+      "total_requests": 3,
+      "concurrency": 2,
+      "preflight_requests": 1,
+      "total_time_sec": 0.064649,
+      "success": 3,
+      "failures": 0,
+      "error_rate": 0.0,
+      "status_counts": {
+        "200": 3
+      },
+      "attempt_rps": 46.4,
+      "success_rps": 46.4,
+      "mean_ms": 35.8,
+      "p50_ms": 41.24,
+      "p95_ms": 43.16,
+      "success_p95_ms": 43.16
+    }
+  ],
+  "all_requests_succeeded": true
+}

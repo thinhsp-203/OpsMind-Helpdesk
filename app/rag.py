@@ -338,6 +338,28 @@ def _normalize_title(path: Path) -> str:
     return path.stem.replace("_", " ").replace("-", " ").title()
 
 
+def contextualize_question(question: str, messages: list[dict[str, Any]]) -> str:
+    """Resolve short follow-ups from bounded user text, never assistant claims.
+
+    This is a conservative rule, not unrestricted conversational memory. Explicit
+    new IT topics and out-of-scope requests must not inherit the previous topic.
+    """
+    folded = _fold_text(question)
+    followup = re.match(
+        r"^(?:van (?:khong|chua)|toi da (?:thu|lam)|da (?:thu|lam)|buoc (?:do|nay)|"
+        r"lam (?:roi|theo)|khong duoc|chua duoc|it still|still (?:not|doesn)|"
+        r"i (?:tried|did)|that (?:step|didn))\b", folded,
+    )
+    if (len(question) > 300 or not followup or not is_out_of_scope(question)
+            or any(pattern in folded for pattern in OUT_OF_SCOPE_PATTERNS)):
+        return question
+    for message in reversed(messages[-6:]):
+        previous = str(message.get("content", ""))
+        if message.get("role") == "user" and not is_out_of_scope(previous):
+            return f"Sự cố người dùng đã mô tả: {previous[:2000]}\nCập nhật hiện tại: {question}"
+    return question
+
+
 def _fold_text(text: str) -> str:
     folded = unicodedata.normalize("NFD", text.lower())
     folded = "".join(char for char in folded if unicodedata.category(char) != "Mn")
@@ -748,7 +770,7 @@ def synthesize_answer_with_llm(
 ) -> str | None:
     """Tổng hợp câu trả lời tự nhiên từ ngữ cảnh Runbook bằng LLM (nếu được kích hoạt).
 
-    Nguyên tắc an toàn (Zero-Hallucination & Fallback):
+    Giới hạn và fallback (prompt không bảo đảm loại bỏ hallucination):
     - Nếu ENABLE_LLM_GENERATION=false hoặc thiếu API key -> trả về None.
     - System prompt ràng buộc chặt chẽ: chỉ dùng dữ liệu từ các đoạn Runbook được trích xuất.
     - Timeout ngắn (mặc định 5s) và bọc try/except an toàn -> fallback về template tĩnh nếu lỗi.
@@ -811,6 +833,8 @@ def generate_answer(question: str) -> dict[str, Any]:
             "sources": [],
             "matches": [],
             "grounded": False,
+            "has_sources": False,
+            "answer_verification": "not_verified",
             "triage": triage,
             "out_of_scope": True,
             "state": "OUT_OF_SCOPE",
@@ -828,6 +852,8 @@ def generate_answer(question: str) -> dict[str, Any]:
             "sources": [],
             "matches": [],
             "grounded": False,
+            "has_sources": False,
+            "answer_verification": "not_verified",
             "triage": triage,
             "llm_generated": False,
         }
@@ -858,6 +884,9 @@ def generate_answer(question: str) -> dict[str, Any]:
         "sources": sources,
         "matches": matches,
         "grounded": True,
+        # Compatibility field: grounded means retrieved sources, not verified claims.
+        "has_sources": True,
+        "answer_verification": "not_verified",
         "triage": triage,
         "llm_generated": llm_generated,
     }

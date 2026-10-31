@@ -17,13 +17,6 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 
 @router.post("/ask")
 def ask_rag(request: Request, payload: RAGQuestion) -> dict:
-    """Answer with published sources and optional bounded follow-up context.
-
-    `has_sources` (legacy alias `grounded`) describes retrieval only.
-    `answer_verification=not_verified` makes no semantic truth/faithfulness claim.
-    `context_used` is true only when a recent user description was incorporated.
-    """
-    # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
     user = current_user(request)
     messages = []
     if payload.session_id:
@@ -35,8 +28,9 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     question = payload.question.strip()
     contextual_question = contextualize_question(question, messages)
     expected_revision = getattr(payload, "expected_revision", 0)
-    policy = None
-    context = None
+
+    # 1. Luôn chạy diagnose trước để kiểm tra chính sách sự cố / chẩn đoán
+    policy = diagnose(question)
 
     try:
         result = generate_answer(contextual_question)
@@ -47,17 +41,7 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             detail="Kho tri thức tạm thời không khả dụng. Vui lòng thử lại sau.",
         ) from exc
 
-    # Retrieval is not approval: a paraphrase missed by topic detection must
-    # never expose legacy procedural text outside the reviewed catalogue.
-    if policy is None and result.get("matches") and not result.get("out_of_scope"):
-        policy = diagnose(question, {
-            "topic": "other_it", "initial_question": question,
-            "facts": {}, "state": "CLARIFY", "steps": [], "sources": [],
-        })
-
-    if result.get("out_of_scope"):
-        result.setdefault("triage", {})["resolution_scope"] = "OUT_OF_SCOPE"
-
+    # 2. Cập nhật kết quả theo policy chẩn đoán nếu có
     if policy and not result.get("out_of_scope"):
         result.update({k: v for k, v in policy.items() if k != "context"})
         context = policy.get("context", {})
@@ -67,7 +51,12 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             result["handoff_question"] = policy["handoff"]["description"]
         result.update(sources=[], matches=[], grounded=False, llm_generated=False)
         result["triage"] = incident_triage(context)
+    else:
+        context = None
+        if result.get("out_of_scope"):
+            result.setdefault("triage", {})["resolution_scope"] = "OUT_OF_SCOPE"
 
+    # 3. Lưu lịch sử câu hỏi vào store
     try:
         result["session_id"] = store.save_chat_exchange(
             user["username"],

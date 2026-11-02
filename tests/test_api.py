@@ -1551,6 +1551,77 @@ def test_diagnostics_do_not_escalate_weather_or_claim_cable_failure():
     assert weather['sources'] == []
 
 
+@pytest.fixture
+def empty_diagnostic_catalogue(tmp_path, monkeypatch):
+    from app import assistant_policy
+    catalogue = tmp_path / 'empty-catalogue.json'
+    catalogue.write_text('{"runbooks": []}', encoding='utf-8')
+    monkeypatch.setattr(assistant_policy, 'CATALOGUE', catalogue)
+
+
+@pytest.mark.parametrize(('question', 'expected_state'), [
+    ('Máy in Offline không in được tài liệu', 'CLARIFY'),
+    ('Máy in Offline không in được tài liệu dự báo thời tiết', 'CLARIFY'),
+    ('Cáp mạng không vào Internet', 'CLARIFY'),
+    ('Cáp mạng không vào Internet để xem dự báo thời tiết', 'CLARIFY'),
+    ('Windows không in được tài liệu Word dự báo thời tiết, hàng đợi báo Offline',
+     'IN_SCOPE_NO_SOURCE'),
+])
+def test_incidental_oos_phrase_keeps_diagnostic_gate(
+    empty_diagnostic_catalogue, question, expected_state,
+):
+    response = client.post('/rag/ask', headers=auth(), json={'question': question})
+    assert response.status_code == 200
+    result = response.json()
+    assert result.get('state') == expected_state
+    assert result['out_of_scope'] is False
+    assert result['sources'] == result['matches'] == result['steps'] == []
+    assert result['has_sources'] is False
+    if expected_state == 'CLARIFY':
+        assert len(result['questions']) == 3
+
+
+def test_incidental_oos_phrase_preserves_followup_and_revision(empty_diagnostic_catalogue):
+    headers = auth()
+    first = client.post('/rag/ask', headers=headers, json={'question': 'Máy in Offline'}).json()
+    detail = 'Máy in Offline không in được tài liệu dự báo thời tiết'
+    followup = client.post('/rag/ask', headers=headers, json={
+        'question': detail, 'session_id': first['session_id'],
+    }).json()
+    assert followup.get('state') == 'CLARIFY'
+    assert followup['revision'] == first['revision'] + 1
+    assert followup['matches'] == []
+    assert detail in followup['handoff']['description']
+    # A short structured reply has no IT keywords but still belongs to the incident.
+    result = client.post('/rag/ask', headers=headers, json={
+        'question': 'Dữ kiện kiểm tra', 'session_id': first['session_id'],
+        'expected_revision': followup['revision'],
+        'fact_answers': {'connection': 'usb', 'scope': 'single', 'panel': 'no_error'},
+    }).json()
+    assert result['state'] == 'HANDOFF_PREVIEW'
+    assert result['steps'] == result['matches'] == []
+
+
+def test_pure_oos_phrase_has_no_retrieval_content(empty_diagnostic_catalogue):
+    result = client.post('/rag/ask', headers=auth(), json={
+        'question': 'Dự báo thời tiết hôm nay',
+    }).json()
+    assert result['state'] == result['triage']['resolution_scope'] == 'OUT_OF_SCOPE'
+    assert result['out_of_scope'] is True
+    assert result['sources'] == result['matches'] == []
+
+
+@pytest.mark.parametrize('question', [
+    'Máy in bị cháy khi in tài liệu dự báo thời tiết',
+    'Máy tính nhiễm virus khi xem dự báo thời tiết',
+])
+def test_incidental_oos_phrase_preserves_safety_stop(empty_diagnostic_catalogue, question):
+    result = client.post('/rag/ask', headers=auth(), json={'question': question}).json()
+    assert result.get('state') == 'HANDOFF_PREVIEW'
+    assert result['safety_stop'] is True
+    assert result['steps'] == result['sources'] == result['matches'] == []
+
+
 def test_diagnostic_session_cannot_be_read_by_another_user():
     first = client.post('/rag/ask', headers=auth('admin'), json={'question': 'Máy in Offline'}).json()
     other = auth('user')

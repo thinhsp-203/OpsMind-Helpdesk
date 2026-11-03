@@ -1422,11 +1422,17 @@ def add_attachment(
     uploaded_by: str,
 ) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT status FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT status FROM tickets WHERE id = ? AND archived_at IS NULL"  # noqa: S608 -- fixed dialect suffix
+            + (" FOR UPDATE" if _database_url else ""),
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] == "closed":
+            raise ValueError("Ticket đã đóng, không thể thêm tệp.")
         timestamp = _now()
         connection.execute(
             "INSERT INTO ticket_attachments "
@@ -1873,7 +1879,8 @@ def create_knowledge_document(
             slug = f"{base_slug}.md"
             counter = 1
             while connection.execute("SELECT 1 FROM knowledge_documents WHERE slug = ?", (slug,)).fetchone():
-                slug = f"{base_slug}_{counter}.md"
+                suffix = f"_{counter}"
+                slug = f"{base_slug[:64 - len(suffix)]}{suffix}.md"
                 counter += 1
 
         reviewer = author if status == "published" else None

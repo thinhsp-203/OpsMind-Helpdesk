@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge", tags=["rag"])
 
+# Older releases appended a numeric collision suffix after the full 64-char stem.
+# Keep those stored sources manageable without renaming documents or history.
+KNOWLEDGE_SOURCE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}(?:_[1-9][0-9]{0,19})?\.md")
+
 
 @router.get("")
 def knowledge_documents(
@@ -182,7 +186,7 @@ def delete_knowledge_document(request: Request, source: str) -> dict[str, str]:
     user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
+    if not KNOWLEDGE_SOURCE_PATTERN.fullmatch(source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
     try:
         doc = store.get_knowledge_document(source)
@@ -206,7 +210,7 @@ def reindex_knowledge_document(request: Request, source: str) -> dict[str, str]:
     user = current_user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Admin mới được quản lý tài liệu tri thức.")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}\.md", source):
+    if not KNOWLEDGE_SOURCE_PATTERN.fullmatch(source):
         raise HTTPException(status_code=422, detail="Tên nguồn tài liệu không hợp lệ.")
     doc = store.get_knowledge_document(source)
     if not doc:

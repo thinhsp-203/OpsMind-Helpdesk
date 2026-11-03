@@ -286,8 +286,12 @@ def upload_ticket_attachment(
             len(content),
             user["username"],
         )
-    except (OSError, *store.DatabaseError) as exc:
+    except (LookupError, ValueError, OSError, *store.DatabaseError) as exc:
         target.unlink(missing_ok=True)
+        if isinstance(exc, LookupError):
+            raise HTTPException(status_code=404, detail="Không tìm thấy ticket.") from exc
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=500, detail="Không thể lưu tệp đính kèm.") from exc
     return attachment
 

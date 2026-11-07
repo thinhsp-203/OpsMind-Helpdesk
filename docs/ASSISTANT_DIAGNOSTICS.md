@@ -92,3 +92,38 @@ Bản vá tạo lại toàn bộ triage từ incident policy, dùng chung cho re
 Hai test API dùng dữ liệu KB fixture hiện có, không mock retrieval: trước sửa 2 failed/2.25s; sau sửa 2 passed/1.98s. Chưa xác minh UI thực tế trên Render hoặc triển khai bản vá lên Render.
 
 Hồi quy bản vá: toàn bộ API 99 passed, 0 failed/0 errors theo JUnit (65.720s); JavaScript 15/15 passed; ruff app/tests/scripts và diff check đạt. Không chạy lại full suite ngoài API trong lượt này.
+
+## Issue #12 — giữ policy khi câu hỏi CNTT chứa từ khóa ngoài phạm vi — 02/11/2026
+
+Câu “Máy in Offline không in được tài liệu dự báo thời tiết” bị router đánh dấu OUT_OF_SCOPE theo substring, trong khi retrieval vẫn coi là yêu cầu CNTT. Router bỏ policy sau khi truy xuất nên còn câu trả lời/trích đoạn cũ, mất câu hỏi chẩn đoán. Cùng lỗi xảy ra với mạng, lượt tiếp nối và dấu hiệu cháy/virus có kèm từ khóa thời tiết.
+
+Bản vá dùng `is_out_of_scope()` chung với retrieval để xác nhận cụm ngoài phạm vi có thực sự loại yêu cầu CNTT hay không. Vẫn yêu cầu có cụm ngoài phạm vi rõ ràng trước khi bỏ ngữ cảnh, để câu trả lời ngắn và dữ kiện có cấu trúc tiếp tục thuộc sự cố đang xử lý. Không thay catalogue, quyền theo vai trò hoặc thuật toán truy xuất.
+
+Chín ca hồi quy API dùng SQLite và catalogue rỗng: trước sửa 6 failed/3 passed; sau sửa 9 passed. Ca tái hiện ba câu hỏi ban đầu cũng đạt sau sửa: câu máy in thường và câu máy in kèm thời tiết trả CLARIFY với ba câu hỏi, không sources/matches; câu thuần thời tiết vẫn OUT_OF_SCOPE. Đây là bằng chứng local với dependency khóa theo repository, không xác nhận triển khai Render, duyệt chuyên môn runbook hoặc nghiệm thu độc lập.
+
+Hồi quy toàn bộ trên Windows/Python 3.11.17: **373 passed, 43 skipped, 0 failures/errors**, coverage **89%**, 367.78s. Skip gồm 41 ca PostgreSQL chưa có DATABASE_URL test, một ca cần Docker CLI và một ca cần quyền symlink. JavaScript **15/15**, ruff, compileall, kiểm tra cú pháp JS và diff check đạt. Retrieval giữ Hit@3 28/28 ở dev, 29/30 ở tập hồi quy đóng băng; H03 vẫn sai. Các số retrieval không đo faithfulness hoặc chất lượng câu trả lời. Chưa push/deploy hoặc chạy browser E2E trong lượt sửa này.
+
+### Tái lập bằng chứng Issue #12
+
+Chạy từ root repository bằng Python của venv sạch đã cài `requirements.txt` với `--require-hashes`. Lần kiểm chứng dùng Python 3.11.17 trên Windows, SQLite scratch và catalogue rỗng trong fixture. Các lệnh tương đương dưới đây tái lập nhóm kiểm thử đã ghi; đây không phải số liệu của một lượt chạy mới. Biến `HELPDESK_DB_PATH` trỏ tới DB mới dành riêng cho kiểm thử, không dùng DB thật.
+
+```powershell
+$env:DATABASE_URL = ''
+$env:DEMO_MODE = 'true'
+$env:ENABLE_LLM_GENERATION = 'false'
+$env:EMAIL_PROVIDER = 'console'
+$env:SMTP_ENABLED = 'false'
+$env:HELPDESK_DB_PATH = Join-Path (Get-Location) 'data/issue12-scratch.sqlite3'
+
+python -m pytest tests/test_api.py -k 'incidental_oos_phrase or pure_oos_phrase' -q --tb=short
+python -m pytest --cov=app --cov-report=term-missing --cov-report=xml --junitxml=pytest-results.xml -q --tb=short
+python -m ruff check app tests scripts
+python -m compileall -q app tests scripts
+node --check app/static/app.js
+node --check app/static/i18n.js
+node --test tests/test_*.js
+python -m scripts.evaluate_rag
+git diff --check
+```
+
+Nhóm test mới trên commit gốc `67a525e` (chỉ thêm test, chưa sửa router) cho 6 failed/3 passed; cùng lệnh sau bản sửa `1052aa0` cho 9 passed. Full suite đã xuất JUnit và coverage XML; bộ số trên lấy từ log/XML hoàn chỉnh. Bản chạy local dùng thư mục pytest riêng qua `--basetemp` và lưu log ở ngoài checkout; tên thư mục scratch không quyết định hành vi. Không commit DB, log hoặc XML phát sinh vào repository. Các backend và công cụ khác có thể làm thay đổi số skip; phải ghi lại lý do của từng lượt thay vì tái sử dụng số liệu trên.

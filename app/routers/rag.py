@@ -11,6 +11,7 @@ from app.rag import (
     KnowledgeBaseUnavailableError,
     contextualize_question,
     generate_answer,
+    is_out_of_scope,
     OUT_OF_SCOPE_PATTERNS,
 )
 from app.schemas import RAGFeedback, RAGQuestion
@@ -76,7 +77,12 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         )
 
     contextual_question = contextualize_question(question, messages)
-    is_explicit_oos = any(pattern in fold(question) for pattern in OUT_OF_SCOPE_PATTERNS)
+    # Incidental OOS phrases must respect the same strong IT terms as retrieval.
+    # Require an explicit phrase so short incident replies keep their context.
+    is_explicit_oos = (
+        any(pattern in fold(question) for pattern in OUT_OF_SCOPE_PATTERNS)
+        and is_out_of_scope(question)
+    )
 
     try:
         if policy and policy.get("incident_topic") != "other_it" and not is_explicit_oos:

@@ -439,6 +439,7 @@ if (typeof window !== "undefined") {
   window.openKnowledgeEditor = openKnowledgeEditor;
   window.saveKnowledgeDocument = saveKnowledgeDocument;
   window.openKnowledgeVersions = openKnowledgeVersions;
+  window.openKnowledgeReader = openKnowledgeReader;
   window.openKnowledgeEditorForTicket = openKnowledgeEditorForTicket;
 }
 })();

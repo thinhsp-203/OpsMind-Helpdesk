@@ -1499,6 +1499,8 @@ async function askKnowledge(event, options = {}) {
         result.append(moreSources);
       }
     }
+    const references = Array.isArray(data.kb_references) ? data.kb_references : [];
+    if (references.length) result.append(renderKbReferences(references));
     renderDiagnosticControls(result, data);
     addTicketHandoff(result, data.handoff_question || question, data.grounded, data.triage, {
       turnSequence,
@@ -1507,6 +1509,7 @@ async function askKnowledge(event, options = {}) {
       handoff: data.handoff,
       ticketId: options.ticketId,
       matches: data.matches,
+      references,
     });
     const feedback = node("div", "rag-feedback");
     feedback.append(node("span", "muted", "Hướng dẫn này có hữu ích không?"));
@@ -1799,6 +1802,25 @@ function addTicketHandoff(container, question, grounded, triage, options = {}) {
         commentInput.focus({ preventScroll: true });
       });
       container.append(insertButton);
+    }
+    const references = options.references || [];
+    if (!grounded && references.length && options.ticketId) {
+      const referenceButton = node("button", "button button-soft", `Chèn tham chiếu runbook vào phản hồi #${options.ticketId}`);
+      referenceButton.type = "button";
+      referenceButton.addEventListener("click", () => {
+        const card = document.querySelector(`[data-ticket-id="${options.ticketId}"]`);
+        const commentInput = card?.querySelector('.comment-form input[name="comment"]');
+        if (!commentInput) {
+          showRagResult("Không tìm thấy ô phản hồi của ticket. Hãy tải lại hàng đợi rồi thử lại.");
+          return;
+        }
+        const lines = references.map((ref) => `- ${ref.title} (${ref.source})`).join("\n");
+        commentInput.value = `Runbook đã xuất bản có thể liên quan (cần IT kiểm tra trước khi gửi):\n${lines}`;
+        setWorkspaceView("tickets");
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        commentInput.focus({ preventScroll: true });
+      });
+      container.append(referenceButton);
     }
     return;
   }
@@ -2454,6 +2476,28 @@ window.setInterval(refreshServiceState, 30000);
 
 // Safe markdown parser method is modularized in /static/modules/markdown.js
 const renderRunbook = (text) => (window.renderRunbook ? window.renderRunbook(text) : document.createElement("div"));
+
+// Published runbooks offered as reading material, distinct from approved steps.
+function renderKbReferences(references) {
+  const box = node("div", "rag-references");
+  box.append(
+    node("strong", "", "Tài liệu tham khảo từ Knowledge Base"),
+    node("p", "muted", "Runbook đã xuất bản, có thể liên quan. Đây không phải bước chẩn đoán đã được phê duyệt; hãy gửi IT nếu chưa khắc phục được."),
+  );
+  const list = node("ul", "rag-reference-list");
+  references.forEach((ref) => {
+    const item = document.createElement("li");
+    const button = node("button", "button button-quiet", `${ref.title} · ${ref.source}`);
+    button.type = "button";
+    button.addEventListener("click", () => {
+      if (window.openKnowledgeReader) window.openKnowledgeReader(ref.source, button);
+    });
+    item.append(button);
+    list.append(item);
+  });
+  box.append(list);
+  return box;
+}
 
 let assistantContextRequest = 0;
 async function loadAssistantTickets() {

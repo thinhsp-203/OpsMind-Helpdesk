@@ -121,7 +121,8 @@ Hệ thống hỗ trợ hoàn hảo **Neon Serverless Postgres** ([neon.tech](ht
 - **Tìm kiếm ngữ cảnh BM25:** Chỉ mục toàn văn trên tài liệu Markdown có hỗ trợ tiếng Việt, chuẩn hóa từ khóa và trích dẫn nguồn tham chiếu minh bạch.
 - **Gợi ý phân loại tự động (Auto-Triage):**
   - Tự động đề xuất Danh mục (Category) và Mức độ ưu tiên (Priority) dựa trên tài liệu liên quan nhất và mức độ ảnh hưởng nghiệp vụ.
-  - IT Support có thể chèn trích đoạn hướng dẫn từ RAG trực tiếp vào ô phản hồi của ticket chỉ với một nút bấm.
+  - IT Support có thể chèn tham chiếu runbook đã xuất bản (tiêu đề và mã tài liệu) vào ô phản hồi của ticket, rồi kiểm tra trước khi gửi.
+- **Tài liệu tham khảo trong trợ lý:** Khi chưa có quy trình chẩn đoán được duyệt, trợ lý gợi ý runbook đã xuất bản có độ phủ truy vấn đủ cao để người dùng tự đọc; IT có thể chèn tham chiếu runbook vào phản hồi ticket.
 - **Chuyển tiếp thành Ticket không cần gõ lại:** Khi hướng dẫn tự phục vụ chưa giải quyết được vấn đề, người dùng có thể bấm chuyển trực tiếp câu hỏi và ngữ cảnh đã tra cứu thành yêu cầu IT.
 - **Lịch sử tra cứu & Đánh giá chất lượng:** Lưu vết lịch sử theo từng tài khoản, hỗ trợ phản hồi độ hữu ích 👍 / 👎 để phát hiện khoảng trống tri thức.
 
@@ -146,7 +147,7 @@ Hệ thống hỗ trợ hoàn hảo **Neon Serverless Postgres** ([neon.tech](ht
 Hệ thống được kiểm thử tự động toàn diện qua cả tầng Backend API (Python) và Frontend Client (Node.js):
 
 ```powershell
-# Chạy toàn bộ test suite backend (50+ tests)
+# Chạy toàn bộ test suite backend (khoảng 380 tests)
 py -m pytest
 
 # Kiểm tra độ bao phủ mã nguồn (Coverage)
@@ -159,6 +160,9 @@ node tests/test_i18n.js
 
 # Đánh giá độ chính xác của bộ RAG Baseline
 py -m scripts.evaluate_rag
+
+# Ablation các bước tiền xử lý + quét ngưỡng tài liệu tham khảo
+py -m scripts.ablation_rag
 ```
 
 ---

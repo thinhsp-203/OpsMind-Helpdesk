@@ -41,6 +41,7 @@ node tests/test_frontend_boot.js
 py -m compileall -q app tests scripts
 py -m pytest --cov=app --cov-report=term-missing --cov-report=xml
 py -m scripts.evaluate_rag
+py -m scripts.ablation_rag
 ```
 
 Docker image được build trong GitHub Actions. Nếu thay đổi Dockerfile/Compose, kiểm tra build bằng Docker khi có môi trường hỗ trợ; nêu rõ nếu không chạy được.

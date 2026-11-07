@@ -48,7 +48,7 @@ step_results nhận từng step ID hiện hành với not_attempted/attempted_su
 
 Dấu hiệu mã độc/lộ mật khẩu hoặc cháy/khói được ưu tiên trước nhóm máy in/mạng. Khi xuất hiện giữa một sự cố, UI ẩn bước cũ và không cho tiếp tục/xác nhận hết lỗi trước khi xác nhận sự cố mới để bàn giao. Context cũ không trộn vào ticket mới. Nhận diện bằng từ/cụm từ vẫn có giới hạn ngôn ngữ; không phải bộ phân loại an toàn đã được nghiệm thu.
 
-Mọi câu trả lời retrieval có tài liệu nhưng chưa qua catalogue được trả IN_SCOPE_NO_SOURCE, không phát hướng dẫn legacy. Điều này áp dụng cả các nhóm ngoài hai quy trình đang triển khai; chức năng truy xuất/KB vẫn được kiểm thử riêng. Kết quả từng bước được hydrate khi phục hồi controls.
+Mọi câu trả lời retrieval có tài liệu nhưng chưa qua catalogue được trả IN_SCOPE_NO_SOURCE, không phát hướng dẫn legacy. Điều này áp dụng cả các nhóm ngoài hai quy trình đang triển khai; chức năng truy xuất/KB vẫn được kiểm thử riêng. Từ 07/11/2026, runbook đã xuất bản có độ phủ truy vấn ≥ 0,5 được trả trong `kb_references` như liên kết tham khảo, tách khỏi `sources`/`matches`/`steps`; các ca "màn hình phụ bị sọc", "sạc không vào pin" và "bàn phím liệt phím" được kiểm thử là không có tham khảo. Kết quả từng bước được hydrate khi phục hồi controls.
 
 ## Kết quả kiểm chứng cuối — 28/10/2026
 

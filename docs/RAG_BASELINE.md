@@ -2,7 +2,7 @@
 
 **Ngày chạy:** 05/10/2026\
 **Công cụ:** `py -m scripts.evaluate_rag`\
-**Mã nguồn:** BM25 baseline trong `app/rag.py`; 9 tài liệu Markdown hiện có; title-term boost, kết quả top-k chỉ giữ một đoạn tốt nhất cho mỗi tài liệu để tránh lặp nguồn\
+**Mã nguồn:** BM25 baseline trong `app/rag.py`; 9 tài liệu Markdown tại thời điểm chạy này (hiện có 30); title-term boost, kết quả top-k chỉ giữ một đoạn tốt nhất cho mỗi tài liệu để tránh lặp nguồn\
 **Tập câu hỏi:** `data/evaluation/rag_questions.csv` (30 câu do nhóm/AI hỗ trợ soạn; cần người hướng dẫn/chuyên gia rà soát độc lập).
 
 ## Kết quả lần chạy local
@@ -40,3 +40,39 @@
 Các mã băm tại mục AUD-19 phía trên là metadata CRLF cũ; mã băm chuẩn UTF-8/LF hiện tại nằm trong `data/evaluation/DATASET_CARD.md` và `scripts/evaluation_support.py`. Nội dung CSV không thay đổi.
 
 Bộ chấm cũ chấp nhận một từ trùng trong cụm bằng chứng, kể cả trong tiêu đề. Bản sửa chỉ chấp nhận nguyên cụm trong nội dung và công bố là chẩn đoán từ vựng. Không dùng coverage cũ để khẳng định Faithfulness, so sánh cải thiện hay đặt ngưỡng chất lượng cho bộ chấm mới. Các ngưỡng truy xuất và từ chối vẫn được giữ nguyên. Xem `docs/REVIEW_FIXES_2026-10-29.md` cho kết quả chạy lại và giới hạn.
+
+## Ablation tiền xử lý và ngưỡng tài liệu tham khảo — 07/11/2026
+
+**Lệnh:** `py -m scripts.ablation_rag`\
+**Môi trường:** macOS 26 (arm64), Python 3.11.18, SQLite tạm; 30 runbook đã xuất bản, 115 đoạn.\
+**Kiểm tra trước khi in số:** cấu hình E tái tạo đúng thứ hạng của `app/rag.py` trên toàn bộ câu in-scope.
+
+Mỗi cấu hình thêm một bước vào cấu hình trước, cùng công thức BM25 (k1 = 1,2; b = 0,75). Cổng ngoài phạm vi bị tắt để mọi cấu hình xếp hạng cùng một tập câu in-scope. Tập "holdout không dấu" là chính các câu holdout được bỏ dấu tự động; nhãn giữ nguyên, không tạo dữ liệu mới.
+
+| Cấu hình | Dev (n=28) Hit@1 / Hit@3 / MRR@3 | Holdout (n=30) | Holdout không dấu (n=30) |
+|---|---|---|---|
+| A. BM25 thô (giữ dấu) | 78,6% / 92,9% / 0,851 | 96,7% / 100% / 0,983 | 73,3% / 93,3% / 0,833 |
+| B. A + bỏ dấu | 78,6% / 92,9% / 0,851 | 96,7% / 100% / 0,983 | 96,7% / 100% / 0,983 |
+| C. B + từ dừng | 82,1% / 92,9% / 0,875 | 100% / 100% / 1,000 | 100% / 100% / 1,000 |
+| D. C + đồng nghĩa & từ ghép | 82,1% / 100% / 0,905 | 96,7% / 96,7% / 0,967 | 96,7% / 96,7% / 0,967 |
+| E. D + trọng số tiêu đề (hệ thống) | 82,1% / 100% / 0,911 | 96,7% / 96,7% / 0,967 | 96,7% / 96,7% / 0,967 |
+
+Diễn giải:
+
+- Bỏ dấu không thay đổi kết quả khi câu hỏi gõ có dấu, nhưng nâng Hit@1 từ 73,3% lên 96,7% khi người dùng gõ không dấu.
+- Từ đồng nghĩa và từ ghép giúp tập dev (Hit@3 92,9% → 100%) nhưng làm holdout giảm một câu (H03). Từ điển đã được tinh chỉnh trên chính các tập này, nên mức tăng ở C–E là cận trên lạc quan, không phải khả năng tổng quát hóa.
+- BM25 thô đã đạt Hit@3 100% trên holdout: tập này quá dễ để phân biệt các cấu hình. Cần một tập câu hỏi mới do người khác soạn, chưa dùng để chỉnh từ điển.
+
+### Ngưỡng độ phủ cho tài liệu tham khảo trong chat
+
+Trợ lý chỉ gợi ý runbook đã xuất bản (trường `kb_references`) khi độ phủ truy vấn ≥ 0,5. Độ phủ là tỷ lệ trọng số IDF của các từ trong câu hỏi xuất hiện trong runbook. Điểm BM25 thô không tách được kết quả đúng/sai: "màn hình phụ bị sọc" xếp BitLocker đứng đầu với điểm 11,4, nhưng độ phủ chỉ 0,37. Quy tắc đóng an toàn: nếu kết quả đứng đầu không đạt ngưỡng thì không hiện tham khảo nào, kể cả khi kết quả xếp dưới đạt. Ví dụ "Quên mã BitLocker recovery key": BitLocker đứng đầu với độ phủ 0,48, nên AD lockout và Wi-Fi (xếp dưới) cũng không được hiện; câu hỏi chuyển sang bàn giao IT.
+
+| Ngưỡng | Hiện | Đúng | Precision | Recall |
+|---:|---:|---:|---:|---:|
+| 0,0 | 58 | 52 | 89,7% | 100% |
+| 0,4 | 54 | 50 | 92,6% | 96,2% |
+| **0,5** | **51** | **49** | **96,1%** | **94,2%** |
+| 0,6 | 49 | 48 | 98,0% | 92,3% |
+| 0,7 | 44 | 43 | 97,7% | 82,7% |
+
+Đo trên top-1 của 58 câu in-scope (dev + holdout). Ngưỡng được chọn trên chính tập này, nên precision thực tế với câu hỏi mới có thể thấp hơn. Bảng chỉ đo việc runbook có đúng chủ đề hay không, không đo hướng dẫn có giải quyết được sự cố.

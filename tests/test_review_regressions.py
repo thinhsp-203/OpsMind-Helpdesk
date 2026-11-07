@@ -78,9 +78,9 @@ def test_session_followup_and_owner_are_checked_before_generation(isolated_store
     captured = []
     real_generate = generate_answer
 
-    def capture(question):
+    def capture(question, **kwargs):
         captured.append(question)
-        return real_generate(question)
+        return real_generate(question, **kwargs)
 
     monkeypatch.setattr('app.routers.rag.generate_answer', capture)
     response = client.post('/rag/ask', headers=headers,

@@ -1,5 +1,6 @@
-"""Real API regressions for runbook identifiers and attachment lifecycle races."""
+"""Real API regressions for account deletion, runbook identifiers and attachment races."""
 from concurrent.futures import ThreadPoolExecutor
+import json
 import os
 import threading
 
@@ -36,6 +37,92 @@ def _auth(client, role):
     response = client.post('/auth/login', json={'username': role, 'password': role})
     assert response.status_code == 200
     return {'Authorization': 'Bearer ' + response.json()['token']}
+
+
+@pytest.mark.parametrize('actor', ['admin', 'self'])
+def test_account_deletion_cleans_credentials_and_preserves_history(audit_api, monkeypatch, actor):
+    from app import config, email_outbox
+
+    client, _ = audit_api
+    monkeypatch.setattr(config, 'DEMO_MODE', True)
+    monkeypatch.setattr(config, 'EMAIL_PROVIDER', 'console')
+    monkeypatch.setattr(config, 'PUBLIC_BASE_URL', '')
+    username = 'delete-regression'
+    store.create_user(username, 'SyntheticPassword123!', 'user', email='delete@example.invalid')
+    login = client.post('/auth/login', json={'username': username, 'password': 'SyntheticPassword123!'})
+    assert login.status_code == 200
+    user_headers = {'Authorization': 'Bearer ' + login.json()['token']}
+    ticket = store.create_ticket('Synthetic account deletion', 'Preserve this history.', 'hardware', 'medium', username)
+    store.add_comment(ticket['id'], username, 'Synthetic comment')
+    store.save_chat_exchange(username, None, 'Synthetic question', 'Synthetic answer', [])
+    job = email_outbox.request_password_email(username, 'reset', 'https://helpdesk.example.invalid')
+    assert job is not None
+    with store._connect() as connection:
+        connection.execute('INSERT INTO rate_limit_attempts (key, attempt_time) VALUES (?, ?)',
+                           ('login:' + username, 1.0))
+        assert connection.execute('SELECT id FROM email_deliveries WHERE username = ?', (username,)).fetchone()
+
+    if actor == 'admin':
+        response = client.request('DELETE', f'/admin/users/{username}', headers=_auth(client, 'admin'),
+                                  json={'confirm_username': username})
+    else:
+        response = client.delete('/auth/me', headers=user_headers)
+    assert response.status_code == 200, response.text
+    assert store.get_user_credentials(username) is None
+    assert client.get('/auth/me', headers=user_headers).status_code == 401
+    preserved = store.get_ticket(ticket['id'])
+    assert preserved['requester'] == store.ANONYMIZED_USER
+    assert preserved['comments'][0]['author'] == store.ANONYMIZED_USER
+    with store._connect() as connection:
+        for query in ('SELECT COUNT(*) AS n FROM email_deliveries WHERE username = ?',
+                      'SELECT COUNT(*) AS n FROM password_reset_tokens WHERE username = ?',
+                      'SELECT COUNT(*) AS n FROM chat_sessions WHERE user_id = ?'):
+            assert connection.execute(query, (username,)).fetchone()['n'] == 0
+        assert connection.execute('SELECT COUNT(*) AS n FROM rate_limit_attempts WHERE key = ?',
+                                  ('login:' + username,)).fetchone()['n'] == 0
+        payloads = connection.execute('SELECT payload FROM notification_outbox WHERE ticket_id = ?',
+                                     (ticket['id'],)).fetchall()
+        assert payloads
+        assert all(json.loads(row['payload'])['requester'] == store.ANONYMIZED_USER for row in payloads)
+
+
+def test_admin_deletion_of_missing_account_returns_404(audit_api):
+    client, _ = audit_api
+    response = client.request('DELETE', '/admin/users/missing-account', headers=_auth(client, 'admin'),
+                              json={'confirm_username': 'missing-account'})
+    assert response.status_code == 404
+
+
+def test_account_deletion_rolls_back_if_snapshot_anonymization_fails(audit_api):
+    client, _ = audit_api
+    store.create_user('delete-rollback', 'SyntheticPassword123!', 'user')
+    ticket = store.create_ticket('Synthetic rollback', 'Preserve the owner on failure.', 'hardware', 'medium',
+                                 'delete-rollback')
+    with store._connect() as connection:
+        connection.execute('UPDATE notification_outbox SET payload = ? WHERE ticket_id = ?',
+                           ('invalid-json', ticket['id']))
+    response = client.request('DELETE', '/admin/users/delete-rollback', headers=_auth(client, 'admin'),
+                              json={'confirm_username': 'delete-rollback'})
+    assert response.status_code == 409
+    assert store.get_user_credentials('delete-rollback') is not None
+    assert store.get_ticket(ticket['id'])['requester'] == 'delete-rollback'
+
+
+def test_account_deletion_preserves_authorization_and_last_admin_guards(audit_api):
+    client, _ = audit_api
+    store.create_user('protected-target', 'SyntheticPassword123!', 'user')
+    for role in ('user', 'agent'):
+        response = client.request('DELETE', '/admin/users/protected-target', headers=_auth(client, role),
+                                  json={'confirm_username': 'protected-target'})
+        assert response.status_code == 403
+    admin = _auth(client, 'admin')
+    assert client.request('DELETE', '/admin/users/admin', headers=admin,
+                          json={'confirm_username': 'admin'}).status_code == 409
+    assert client.delete('/auth/me', headers=admin).status_code == 400
+    assert client.request('DELETE', '/admin/users/protected-target', headers=admin,
+                          json={'confirm_username': 'wrong-target'}).status_code == 422
+    assert store.get_user_credentials('admin') is not None
+    assert store.get_user_credentials('protected-target') is not None
 
 
 def test_long_duplicate_runbooks_remain_manageable(audit_api):

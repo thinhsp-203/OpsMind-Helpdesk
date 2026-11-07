@@ -1001,25 +1001,19 @@ def delete_user_and_anonymize(username: str) -> bool:
         connection.execute("DELETE FROM chat_sessions WHERE user_id = ?", (username,))
 
         # Snapshots must not keep the deleted requester's identifier or be sent later.
-        try:
-            rows = connection.execute("SELECT id, payload FROM notification_outbox").fetchall()
-            for row in rows:
-                payload = json.loads(row["payload"])
-                if payload.get("requester") == username:
-                    payload["requester"] = anonymous
-                    connection.execute(
-                        "UPDATE notification_outbox SET payload = ? WHERE id = ?",
-                        (json.dumps(payload, ensure_ascii=False), row["id"]),
-                    )
-        except Exception as exc:
-            logger.warning("Could not anonymize notification outbox payload: %s", exc)
+        rows = connection.execute("SELECT id, payload FROM notification_outbox").fetchall()
+        for row in rows:
+            payload = json.loads(row["payload"])
+            if payload.get("requester") == username:
+                payload["requester"] = anonymous
+                connection.execute(
+                    "UPDATE notification_outbox SET payload = ? WHERE id = ?",
+                    (json.dumps(payload, ensure_ascii=False), row["id"]),
+                )
 
         # Revoke tokens and jobs
         connection.execute("DELETE FROM password_reset_tokens WHERE username = ?", (username,))
-        try:
-            connection.execute("DELETE FROM email_outbox WHERE username = ?", (username,))
-        except Exception as exc:
-            logger.warning("Could not delete email outbox records: %s", exc)
+        connection.execute("DELETE FROM email_deliveries WHERE username = ?", (username,))
 
         # Clear rate limiting
         connection.execute("DELETE FROM rate_limit_attempts WHERE key LIKE ?", (f"%:{username}",))

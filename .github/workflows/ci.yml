@@ -67,7 +67,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://helpdesk:test_password@127.0.0.1:5432/helpdesk_test
           DEMO_MODE: "true"
-        run: python -m pytest tests/test_postgres.py -q --junitxml=pytest-postgres.xml -o junit_suite_name=postgres-${{ github.sha }}
+        run: python -m pytest tests/test_postgres.py tests/test_system_audit_regressions.py -q --junitxml=pytest-postgres.xml -o junit_suite_name=postgres-${{ github.sha }}
       - name: Evaluate RAG retrieval baseline
         run: python -m scripts.evaluate_rag
       - name: Build Docker image

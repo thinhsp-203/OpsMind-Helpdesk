@@ -272,6 +272,10 @@ def load_rag_dictionary(dict_file: Path | None = None) -> tuple[
 ) = load_rag_dictionary()
 
 MIN_RELEVANCE = 0.12
+# Precision-first gate for showing a published runbook as a chat reference.
+# Coverage = share of the query's IDF weight whose terms appear in the runbook.
+# Chosen from dev+holdout in-scope questions; see docs/RAG_BASELINE.md.
+KB_REFERENCE_MIN_COVERAGE = 0.5
 
 
 def reload_rag_dictionary(dict_file: Path | None = None) -> None:
@@ -366,9 +370,23 @@ def _fold_text(text: str) -> str:
     return folded.replace("đ", "d")
 
 
+_compound_cache: tuple[object, list[tuple[tuple[str, ...], str]]] = (None, [])
+
+
+def _sorted_compounds() -> list[tuple[tuple[str, ...], str]]:
+    """Longest compounds first; re-sorted only when the dictionary is reloaded."""
+    global _compound_cache
+    if _compound_cache[0] is not COMPOUNDS:
+        _compound_cache = (
+            COMPOUNDS,
+            sorted(COMPOUNDS.items(), key=lambda item: len(item[0]), reverse=True),
+        )
+    return _compound_cache[1]
+
+
 def _tokens(text: str) -> list[str]:
     words = TOKEN_RE.findall(_fold_text(text))
-    sorted_compounds = sorted(COMPOUNDS.items(), key=lambda item: len(item[0]), reverse=True)
+    sorted_compounds = _sorted_compounds()
     normalized = []
     index = 0
     while index < len(words):
@@ -522,10 +540,37 @@ def _cached_retrieval_index(
     return passages
 
 
-def build_retrieval_index() -> list[dict[str, Any]]:
+@lru_cache(maxsize=1)
+def _cached_corpus_stats(snapshot: tuple[tuple[str, str, str, str, str], ...]) -> dict[str, Any]:
+    """BM25 statistics that depend only on the corpus, computed once per snapshot."""
+    passages = _cached_retrieval_index(snapshot)
+    document_frequency: Counter[str] = Counter()
+    source_terms: dict[str, set[str]] = {}
+    term_counts: list[Counter[str]] = []
+    title_terms: dict[str, set[str]] = {}
+    for passage in passages:
+        terms = Counter(passage["tokens"])
+        term_counts.append(terms)
+        document_frequency.update(terms.keys())
+        source_terms.setdefault(passage["source"], set()).update(terms)
+        if passage["title"] not in title_terms:
+            title_terms[passage["title"]] = set(_tokens(passage["title"]))
+    total = len(passages)
+    average_length = (sum(len(p["tokens"]) for p in passages) / total) if total else 1.0
+    return {
+        "total": total,
+        "average_length": average_length or 1.0,
+        "document_frequency": document_frequency,
+        "term_counts": term_counts,
+        "title_terms": title_terms,
+        "source_terms": source_terms,
+    }
+
+
+def _snapshot() -> tuple[tuple[str, str, str, str, str], ...]:
     # Read publication state on every lookup, including when a local index is warm.
     # Immutable content keys let workers observe commits without shared cache invalidation.
-    snapshot = tuple(
+    return tuple(
         (
             document["title"], document["source"],
             document.get("category", CATEGORY_BY_SOURCE.get(document["source"], "general")),
@@ -533,11 +578,15 @@ def build_retrieval_index() -> list[dict[str, Any]]:
         )
         for document in load_knowledge_base()
     )
-    return _cached_retrieval_index(snapshot)
+
+
+def build_retrieval_index() -> list[dict[str, Any]]:
+    return _cached_retrieval_index(_snapshot())
 
 
 def clear_retrieval_cache() -> None:
     _cached_retrieval_index.cache_clear()
+    _cached_corpus_stats.cache_clear()
 
 
 # Preserve existing internal invalidation hooks; DB documents themselves are never cached.
@@ -548,30 +597,33 @@ build_retrieval_index.cache_clear = clear_retrieval_cache
 def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]]:
     if is_out_of_scope(query):
         return []
-    passages = build_retrieval_index()
-    query_terms = set(_tokens(query))
+    snapshot = _snapshot()
+    passages = _cached_retrieval_index(snapshot)
+    # Sorted so float sums are identical across processes (set order is hash-seeded).
+    query_terms = sorted(set(_tokens(query)))
     if not passages or not query_terms:
         return []
 
-    document_frequency: Counter[str] = Counter()
-    for passage in passages:
-        document_frequency.update(set(passage["tokens"]))
-    average_length = sum(len(passage["tokens"]) for passage in passages) / len(passages) or 1
-    total = len(passages)
+    stats = _cached_corpus_stats(snapshot)
+    document_frequency = stats["document_frequency"]
+    average_length = stats["average_length"]
+    total = stats["total"]
+    idf = {
+        term: math.log(1 + (total - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5))
+        for term in query_terms
+    }
+    query_weight = sum(idf.values()) or 1.0
     ranked: list[dict[str, Any]] = []
 
-    for passage in passages:
-        frequencies = Counter(passage["tokens"])
-        title_terms = set(_tokens(passage["title"]))
+    for passage, frequencies in zip(passages, stats["term_counts"]):
+        title_terms = stats["title_terms"][passage["title"]]
         length = len(passage["tokens"])
         score = 0.0
         for term in query_terms:
             frequency = frequencies[term] + (2 if term in title_terms else 0)
             if not frequency:
                 continue
-            inverse_frequency = math.log(
-                1 + (total - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5)
-            )
+            inverse_frequency = idf[term]
             score += inverse_frequency * (
                 frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * length / average_length))
             )
@@ -587,6 +639,7 @@ def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]
         )
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
+    source_terms = stats["source_terms"]
     unique_sources: list[dict[str, Any]] = []
     seen_sources: set[str] = set()
     for match in ranked:
@@ -595,10 +648,41 @@ def retrieve_relevant_context(query: str, top_k: int = 3) -> list[dict[str, Any]
         if match["source"] in seen_sources:
             continue
         seen_sources.add(match["source"])
+        document_terms = source_terms.get(match["source"], set())
+        covered = [term for term in query_terms if term in document_terms]
+        match["coverage"] = sum(idf[term] for term in covered) / query_weight
         unique_sources.append(match)
         if len(unique_sources) == top_k:
             break
     return unique_sources
+
+
+def kb_references(
+    matches: list[dict[str, Any]],
+    min_coverage: float = KB_REFERENCE_MIN_COVERAGE,
+) -> list[dict[str, Any]]:
+    """Published runbooks safe enough to *point to*, never to quote as approved steps.
+
+    BM25 score alone does not separate right from wrong matches (a monitor
+    question can score high on BitLocker through "màn hình"), so the gate uses
+    query coverage instead. Matches without a coverage value are never shown.
+    Fails closed: if the best-ranked match does not pass, nothing is shown, so a
+    weaker lower-ranked document never stands in for the best one.
+    """
+    references = []
+    for rank, match in enumerate(matches):
+        coverage = match.get("coverage")
+        if not isinstance(coverage, (int, float)) or coverage < min_coverage:
+            if rank == 0:
+                return []
+            continue
+        references.append({
+            "title": match["title"],
+            "source": match["source"],
+            "score": round(float(match.get("score", 0.0)), 3),
+            "coverage": round(float(coverage), 3),
+        })
+    return references
 
 
 NAVI_CATEGORY_MAP: dict[str, str] = {
@@ -821,7 +905,12 @@ def synthesize_answer_with_llm(
     return None
 
 
-def generate_answer(question: str) -> dict[str, Any]:
+def generate_answer(question: str, *, use_llm: bool = True) -> dict[str, Any]:
+    """Retrieve published passages; `use_llm=False` skips the optional LLM call.
+
+    Callers that will not display the generated prose must pass `use_llm=False`
+    so no paid, slow request is made only to be discarded.
+    """
     if is_out_of_scope(question):
         triage = suggest_ticket_triage(question, [])
         return {
@@ -867,7 +956,7 @@ def generate_answer(question: str) -> dict[str, Any]:
         for match in matches
     ]
 
-    llm_synthesized = synthesize_answer_with_llm(question, matches)
+    llm_synthesized = synthesize_answer_with_llm(question, matches) if use_llm else None
     if llm_synthesized:
         answer = llm_synthesized
         llm_generated = True

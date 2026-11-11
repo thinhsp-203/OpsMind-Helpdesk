@@ -25,7 +25,7 @@ Mọi sự thay đổi về nội dung, thứ tự hoặc cấu trúc của các
 - Tập 60 câu hỏi `rag_holdout.csv` được phân định rõ ràng là **Frozen Fixed Regression Benchmark Gate Set** (Tập kiểm thử hồi quy cố định đã đóng băng).
 - **Mục đích:** Bảo vệ hệ thống RAG không bị suy thoái (non-regression) đối với các kịch bản sự cố CNTT đã được định nghĩa trong 30 Runbook doanh nghiệp (Active Directory, BitLocker, FortiClient VPN, Outlook, Print Spooler, Network DHCP, BSOD, Disk 100%, v.v.).
 - **Giới hạn quan trọng:** Như được ghi nhận minh bạch trong `docs/AI_USAGE_LOG.md` (mục 8), từ điển RAG (`rag_dictionary.json`), từ dừng và trọng số tiêu đề đã từng được tinh chỉnh để giải quyết sự cạnh tranh BM25 giữa các tài liệu tương tự nhằm đạt Hit@3 tối đa trên tập này. Do đó:
-  - Kết quả Hit@3 = 100% trên `rag_holdout.csv` chứng minh **độ tin cậy hồi quy (regression reliability)** của hệ thống tri thức hiện có.
+  - Kết quả Hit@3 cao trên `rag_holdout.csv` (100% lúc khóa dữ liệu; 96,7% khi chạy lại ngày 07/11/2026 sau khi kho tăng lên 30 runbook) chứng minh **độ tin cậy hồi quy (regression reliability)** của hệ thống tri thức hiện có.
   - Kết quả này **KHÔNG đại diện cho độ tổng quát hóa độc lập (independent generalization)** trên các câu hỏi hoàn toàn mới ngoài phân phối (out-of-distribution) chưa từng thấy.
 
 ---

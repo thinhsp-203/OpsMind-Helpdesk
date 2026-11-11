@@ -872,6 +872,7 @@ def test_rag_does_not_resurrect_files_after_last_document_is_archived() -> None:
     assert after.json()["grounded"] is False
     assert after.json()["matches"] == []
     assert after.json()["sources"] == []
+    assert after.json()["kb_references"] == []
     assert after.json()["llm_generated"] is False
     assert load_knowledge_base() == []
     assert build_retrieval_index() == []
@@ -1769,7 +1770,7 @@ def test_safety_signals_stop_new_and_active_guides(question):
 @pytest.mark.parametrize('question', ['Thiết bị văn phòng gặp trục trặc', 'Windows không in được, hàng đợi báo Offline'])
 def test_unrecognized_paraphrase_cannot_expose_legacy_runbook(monkeypatch, question):
     from app.routers import rag
-    monkeypatch.setattr(rag, 'generate_answer', lambda _: {
+    monkeypatch.setattr(rag, 'generate_answer', lambda *_, **__: {
         'answer': 'Unapproved legacy procedure', 'sources': ['fixture'],
         'matches': [{'source': 'custom_windows.md', 'title': 'Xử lý sự cố Windows', 'content': 'Restart Print Spooler'}], 'triage': {'category': 'hardware', 'priority': 'medium'},
     })
@@ -1947,3 +1948,77 @@ def test_monitor_after_weather_does_not_inherit_rejected_runbook_triage(username
     assert result['triage']['category'] == 'general'
     restored = client.get('/rag/sessions/' + result['session_id'], headers=headers).json()['diagnostic']
     assert result['triage'] == restored['triage']
+
+
+def test_in_scope_question_offers_published_runbook_as_reference_not_steps():
+    result = client.post('/rag/ask', headers=auth(), json={
+        'question': 'Tôi không kết nối được VPN FortiClient',
+    }).json()
+    assert result['state'] == 'IN_SCOPE_NO_SOURCE'
+    # Approved-step channels stay empty; references are a separate, link-only field.
+    assert result['sources'] == [] and result['matches'] == [] and result['steps'] == []
+    assert result['grounded'] is False
+    assert [ref['source'] for ref in result['kb_references']][:1] == ['vpn_forticlient.md']
+    assert all(set(ref) == {'title', 'source', 'score', 'coverage'} for ref in result['kb_references'])
+    assert all(ref['coverage'] >= 0.5 for ref in result['kb_references'])
+
+
+@pytest.mark.parametrize('question', [
+    'Hiện màn hình phụ tôi đang bị sọc, yêu cầu khắc phục',
+    'Laptop sạc không vào pin',
+    'Bàn phím laptop bị liệt vài phím',
+])
+def test_low_coverage_lexical_matches_are_not_offered_as_references(question):
+    # BM25 ranks BitLocker/certificate/AD runbooks first here, but they do not
+    # cover the user's problem; the coverage gate must hide them.
+    result = client.post('/rag/ask', headers=auth(), json={'question': question}).json()
+    assert result['kb_references'] == []
+
+
+def test_out_of_scope_question_has_no_references():
+    result = client.post('/rag/ask', headers=auth(), json={'question': 'Thời tiết hôm nay thế nào?'}).json()
+    assert result['kb_references'] == []
+
+
+def test_kb_references_require_coverage_value():
+    from app.rag import kb_references
+    assert kb_references([{'title': 'X', 'source': 'x.md', 'score': 9.0}]) == []
+    assert kb_references([{'title': 'X', 'source': 'x.md', 'score': 9.0, 'coverage': 0.49}]) == []
+    assert kb_references([{'title': 'X', 'source': 'x.md', 'score': 9.0, 'coverage': 0.8}]) == [
+        {'title': 'X', 'source': 'x.md', 'score': 9.0, 'coverage': 0.8},
+    ]
+    # Fail closed: a low-coverage top match hides weaker lower-ranked documents too.
+    assert kb_references([
+        {'title': 'Best', 'source': 'best.md', 'score': 9.0, 'coverage': 0.4},
+        {'title': 'Weaker', 'source': 'weaker.md', 'score': 5.0, 'coverage': 0.9},
+    ]) == []
+    # A passing top match keeps later passing ones and drops failing ones.
+    assert [ref['source'] for ref in kb_references([
+        {'title': 'A', 'source': 'a.md', 'score': 9.0, 'coverage': 1.0},
+        {'title': 'B', 'source': 'b.md', 'score': 5.0, 'coverage': 0.3},
+        {'title': 'C', 'source': 'c.md', 'score': 4.0, 'coverage': 0.6},
+    ])] == ['a.md', 'c.md']
+
+
+def test_best_match_below_gate_hides_weaker_runbooks():
+    # BitLocker ranks first but covers only ~0.48; AD lockout/Wi-Fi must not stand in.
+    result = client.post('/rag/ask', headers=auth(), json={'question': 'Quên mã BitLocker recovery key'}).json()
+    assert result['kb_references'] == []
+
+
+def test_chat_does_not_call_llm_whose_answer_would_be_discarded(monkeypatch):
+    from app import rag
+    calls = []
+    monkeypatch.setattr(rag, 'synthesize_answer_with_llm', lambda *args: calls.append(args) or 'LLM')
+    result = client.post('/rag/ask', headers=auth(), json={
+        'question': 'Tôi không kết nối được VPN FortiClient',
+    }).json()
+    assert calls == []
+    assert result['llm_generated'] is False
+
+
+def test_retrieval_reports_query_coverage():
+    matches = retrieve_relevant_context('Tôi không kết nối được VPN FortiClient')
+    assert matches[0]['source'] == 'vpn_forticlient.md'
+    assert matches[0]['coverage'] == pytest.approx(1.0)
+    assert all(0.0 <= match['coverage'] <= 1.0 for match in matches)

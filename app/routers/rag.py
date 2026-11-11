@@ -11,6 +11,7 @@ from app.rag import (
     KnowledgeBaseUnavailableError,
     contextualize_question,
     generate_answer,
+    kb_references,
     OUT_OF_SCOPE_PATTERNS,
 )
 from app.schemas import RAGFeedback, RAGQuestion
@@ -97,7 +98,9 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
                 },
             }
         else:
-            result = generate_answer(contextual_question)
+            # With matches, the policy below always replaces the answer text, so an
+            # LLM call here would be paid for and discarded.
+            result = generate_answer(contextual_question, use_llm=False)
             result["context_used"] = contextual_question != question
     except KnowledgeBaseUnavailableError as exc:
         raise HTTPException(
@@ -128,6 +131,13 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         result.setdefault("triage", {})["resolution_scope"] = "OUT_OF_SCOPE"
         result["out_of_scope"] = True
 
+    # Published runbooks may be offered as references (links), separate from
+    # approved diagnostic steps. Only high-coverage matches qualify.
+    references = (
+        kb_references(result.get("matches") or [])
+        if policy and policy.get("state") == "IN_SCOPE_NO_SOURCE" else []
+    )
+
     if policy:
         result.update({k: v for k, v in policy.items() if k != "context"})
         context = policy["context"]
@@ -143,6 +153,8 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             out_of_scope=False,
         )
         result["triage"] = incident_triage(context)
+    # Not persisted in chat history: references are a hint for the current turn.
+    result["kb_references"] = references
 
     try:
         result["session_id"] = store.save_chat_exchange(

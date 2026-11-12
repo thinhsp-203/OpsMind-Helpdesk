@@ -1763,3 +1763,16 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
 }
 @media(max-width:760px) { .knowledge-header-actions { display:flex; flex-wrap:wrap; gap:8px; width:100%; } .knowledge-header-actions .button { flex:1 1 140px; } }
 .agent-integrations button { min-height:44px; white-space:normal; }
+
+/* Responsive: the employee two-column grid and service tiles must collapse on narrow screens. */
+@media (max-width: 1100px) {
+  .service-catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  #workspaceView[data-role="user"]:is([data-view="dashboard"],[data-view="assistant"],[data-view="submit"]) .content-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .service-catalog-grid { grid-template-columns: minmax(0, 1fr); }
+  .service-tile { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 10px; }
+  .service-tile small { flex-basis: 100%; }
+}

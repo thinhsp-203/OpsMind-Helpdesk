@@ -80,3 +80,22 @@
 .rag-answer { white-space: pre-line; }
 .assistant-ticket-preview { display: grid; gap: 0.75rem; }
 .assistant-ticket-preview textarea { width: 100%; min-height: 12rem; }
+
+/* Diagnostic facts: one readable question per row, full-width selects. */
+.diagnostic-questions { display: grid; gap: 12px; margin: 12px 0 4px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.diagnostic-field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.diagnostic-field-label { line-height: 1.45; }
+.diagnostic-select { width: 100%; min-height: 42px; padding: 9px 36px 9px 12px; border: 1px solid #dbe3ef; border-radius: 10px; color: var(--ink); font-size: 14px; font-weight: 400;
+  background: #fbfcfe url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%237a879d' stroke-width='1.6' d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 12px center;
+  appearance: none; -webkit-appearance: none; cursor: pointer; }
+.diagnostic-select:hover { border-color: #b9c7e6; }
+.diagnostic-select:focus { outline: none; border-color: var(--blue); background-color: #fff; box-shadow: 0 0 0 3px #315de71f; }
+.diagnostic-submit { justify-self: start; min-height: 42px; margin-top: 4px; }
+.diagnostic-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.diagnostic-actions .button { min-height: 40px; }
+.diagnostic-source { margin: 8px 0 0; font-size: 11px; }
+@media (max-width: 600px) {
+  .diagnostic-questions { padding: 12px; }
+  .diagnostic-submit, .diagnostic-actions .button { width: 100%; justify-self: stretch; }
+  .diagnostic-select { font-size: 16px; }
+}

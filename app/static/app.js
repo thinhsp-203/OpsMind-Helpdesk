@@ -1550,14 +1550,24 @@ function renderDiagnosticControls(container, data) {
   const session = state.chatSessionId;
   const isCurrent = () => turnSequence === state.diagnosticTurn && session === state.chatSessionId;
   const stepFields = {};
-  const sendAction = (label, action) => {
-    const button = node("button", "button button-soft", label);
+  let actionRow = null;
+  const sendAction = (label, action, variant = "button-soft") => {
+    if (!actionRow) {
+      actionRow = node("div", "diagnostic-actions");
+      container.append(actionRow);
+    }
+    const button = node("button", `button ${variant}`, label);
     button.type = "button";
     button.addEventListener("click", () => { if (isCurrent()) askKnowledge(null, { question: label, action, stepResults: Object.fromEntries(Object.entries(stepFields).map(([key, field]) => [key, field.value])) }); });
-    container.append(button);
+    actionRow.append(button);
+  };
+  const diagnosticField = (text, field) => {
+    const label = node("label", "diagnostic-field");
+    label.append(node("span", "diagnostic-field-label", text), field);
+    return label;
   };
   if (data.pending_topic) {
-    sendAction("Xác nhận bắt đầu sự cố mới", "confirm_switch");
+    sendAction("Xác nhận bắt đầu sự cố mới", "confirm_switch", "button-primary");
     if (!data.safety_stop) sendAction("Tiếp tục sự cố hiện tại", "continue_incident");
     return;
   }
@@ -1568,8 +1578,7 @@ function renderDiagnosticControls(container, data) {
       disconnected: "Mất liên kết", connected: "Đã kết nối", works: "Truy cập được", fails: "Không truy cập được",
       usb: "USB", network: "Qua mạng", error: "Có lỗi trên bảng điều khiển", no_error: "Không có lỗi" };
     data.questions.forEach((question) => {
-      const label = node("label", "", question.text);
-      const field = node("select", "");
+      const field = node("select", "diagnostic-select");
       field.required = true;
       const empty = node("option", "", "Chọn kết quả quan sát");
       empty.value = "";
@@ -1580,10 +1589,9 @@ function renderDiagnosticControls(container, data) {
         field.append(option);
       });
       fields[question.key] = field;
-      label.append(field);
-      form.append(label);
+      form.append(diagnosticField(question.text, field));
     });
-    const submit = node("button", "button", "Gửi dữ kiện kiểm tra");
+    const submit = node("button", "button button-primary diagnostic-submit", "Gửi dữ kiện kiểm tra");
     submit.type = "submit";
     form.append(submit);
     form.addEventListener("submit", (event) => {
@@ -1596,21 +1604,22 @@ function renderDiagnosticControls(container, data) {
     container.append(form);
   }
   if (data.state === "CHECK_RESULT") {
+    const stepList = node("div", "diagnostic-questions");
+    if (data.steps?.length) container.append(stepList);
     (data.steps || []).forEach((step) => {
-      const label = node("label", "", `Kết quả bước ${step.id}`);
-      const field = node("select", "");
+      const field = node("select", "diagnostic-select");
       [["not_attempted", "Chưa thực hiện"], ["attempted_success", "Đã thử, đúng dấu hiệu mong đợi"],
         ["attempted_failure", "Đã thử, chưa đạt"]].forEach(([value, text]) => {
         const option = node("option", "", text); option.value = value; field.append(option);
       });
       field.value = (data.attempted_steps || []).find((saved) => saved.id === step.id)?.result || "not_attempted";
       stepFields[step.id] = field;
-      label.append(field); container.append(label);
+      stepList.append(diagnosticField(`Kết quả bước ${step.id}`, field));
     });
-    sendAction("Xác nhận chức năng hiện đã hoạt động", "confirm_resolved");
+    sendAction("Xác nhận chức năng hiện đã hoạt động", "confirm_resolved", "button-primary");
     sendAction("Vẫn lỗi / Không thực hiện được", "still_failing");
   }
-  (data.policy_sources || []).forEach((source) => container.append(node("p", "muted",
+  (data.policy_sources || []).forEach((source) => container.append(node("p", "muted diagnostic-source",
     `Nguồn: ${source.source} · phiên bản nguồn ${source.source_version} · runbook ${source.version} · mục ${source.section}`)));
 }
 

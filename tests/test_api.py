@@ -944,9 +944,7 @@ def test_rag_refuses_questions_without_relevant_knowledge() -> None:
     response = generate_answer("Hãy cho biết dự báo thời tiết ngày mai tại Hà Nội")
     assert response["grounded"] is False
     assert response["sources"] == []
-    assert response["triage"]["category"] == "general"
-    assert response["triage"]["priority"] == "medium"
-    assert response["triage"]["requires_confirmation"] is True
+    assert response["triage"] == {"category": "general", "resolution_scope": "OUT_OF_SCOPE"}
     assert retrieve_relevant_context("unrelated astronomy question") == []
 
 
@@ -1609,6 +1607,24 @@ def test_pure_oos_phrase_has_no_retrieval_content(empty_diagnostic_catalogue):
     assert result['state'] == result['triage']['resolution_scope'] == 'OUT_OF_SCOPE'
     assert result['out_of_scope'] is True
     assert result['sources'] == result['matches'] == []
+    # No IT escalation controls or incident priority for a non-IT request (R06/D10).
+    assert result['triage'] == {'category': 'general', 'resolution_scope': 'OUT_OF_SCOPE'}
+    assert not result.get('handoff') and not result.get('questions')
+
+
+@pytest.mark.parametrize(('question', 'expected_oos'), [
+    ('Máy in Offline không in được tài liệu', False),
+    ('Máy in Offline không in được tài liệu dự báo thời tiết', False),
+    ('Dự báo thời tiết hôm nay', True),
+])
+def test_router_and_retrieval_scope_decisions_agree(
+    empty_diagnostic_catalogue, question, expected_oos,
+):
+    from app.rag import is_out_of_scope
+    result = client.post('/rag/ask', headers=auth(), json={'question': question}).json()
+    assert is_out_of_scope(question) is expected_oos
+    assert result['out_of_scope'] is expected_oos
+    assert (result['state'] == 'OUT_OF_SCOPE') is expected_oos
 
 
 @pytest.mark.parametrize('question', [

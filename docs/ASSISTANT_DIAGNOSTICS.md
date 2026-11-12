@@ -126,4 +126,19 @@ python -m scripts.evaluate_rag
 git diff --check
 ```
 
-Nhóm test mới trên commit gốc `67a525e` (chỉ thêm test, chưa sửa router) cho 6 failed/3 passed; cùng lệnh sau bản sửa `1052aa0` cho 9 passed. Full suite đã xuất JUnit và coverage XML; bộ số trên lấy từ log/XML hoàn chỉnh. Bản chạy local dùng thư mục pytest riêng qua `--basetemp` và lưu log ở ngoài checkout; tên thư mục scratch không quyết định hành vi. Không commit DB, log hoặc XML phát sinh vào repository. Các backend và công cụ khác có thể làm thay đổi số skip; phải ghi lại lý do của từng lượt thay vì tái sử dụng số liệu trên.
+Nhóm test mới trên commit gốc `67a525e` (chỉ thêm test, chưa sửa router) cho 6 failed/3 passed; cùng lệnh sau bản sửa `1052aa0` cho 9 passed.
+
+### Bổ sung theo góp ý review: kiểm thử trên cây tích hợp và đối chiếu tiêu chí — 12/11/2026
+
+Cây kiểm thử là nhánh PR sau khi gộp `main` `d610a71` (`main` là tổ tiên trực tiếp của head; không còn commit nào của `main` chưa tích hợp). Khi đối chiếu tiêu chí 3 của Issue #12, phát hiện câu thuần thời tiết vẫn trả `triage.priority`, `priority_label`, `requires_confirmation` và `escalation_reason` “cần kỹ thuật viên IT tiếp nhận”, trái R06/D10 của [đặc tả](ASSISTANT_SPEC_V1.md). Giao diện không hiện nút chuyển IT cho OUT_OF_SCOPE, nhưng hợp đồng API vẫn chứa tín hiệu phân luồng IT. Bản sửa chỉ giữ `category: general` và `resolution_scope: OUT_OF_SCOPE` cho phản hồi ngoài phạm vi; thêm test khẳng định router và retrieval thống nhất trên ba câu của Issue.
+
+Lệnh nhóm hồi quy: `python -m pytest tests/test_api.py -k 'incidental_oos or pure_oos_phrase or scope_decisions_agree' -q`. Trên mã ứng dụng của `main` `d610a71` với test mới: **8 failed/4 passed**; sau sửa: **12 passed**. Full suite trên cây tích hợp (macOS, Python 3.11.18, venv sạch cài `--require-hashes`, SQLite tạm, LLM tắt): **389 passed, 52 skipped**, coverage **90%**; ruff, compileall và `scripts.evaluate_rag` đạt (dev Hit@3 100%, holdout Hit@1/Hit@3 96,7%, MRR@3 0,967; H03 vẫn sai). Skip gồm ca PostgreSQL không có `DATABASE_URL` test và ca cần Docker; lượt local này không có Node nên kiểm tra JavaScript dựa vào CI.
+
+| Tiêu chí Issue #12 | Bằng chứng | Kết quả |
+| --- | --- | --- |
+| Máy in kèm từ thời tiết giữ CLARIFY, tối đa 3 câu hỏi | `test_incidental_oos_phrase_keeps_diagnostic_gate` | Đạt |
+| Catalogue rỗng không lộ sources/matches lúc hỏi làm rõ | cùng test, fixture `empty_diagnostic_catalogue` | Đạt |
+| Câu thuần thời tiết OUT_OF_SCOPE, không nội dung truy xuất hoặc điều khiển leo thang IT | `test_pure_oos_phrase_has_no_retrieval_content`, `test_rag_refuses_questions_without_relevant_knowledge` | Đạt sau bổ sung lượt này |
+| Router và retrieval thống nhất | `test_router_and_retrieval_scope_decisions_agree` | Đạt |
+| Hồi quy API: fail trước, pass sau | 8 failed/4 passed → 12 passed | Đạt |
+| Approval, vai trò, revision, safety stop không hồi quy | full suite 389 passed | Đạt local; cần CI xác nhận trên head mới | Full suite đã xuất JUnit và coverage XML; bộ số trên lấy từ log/XML hoàn chỉnh. Bản chạy local dùng thư mục pytest riêng qua `--basetemp` và lưu log ở ngoài checkout; tên thư mục scratch không quyết định hành vi. Không commit DB, log hoặc XML phát sinh vào repository. Các backend và công cụ khác có thể làm thay đổi số skip; phải ghi lại lý do của từng lượt thay vì tái sử dụng số liệu trên.

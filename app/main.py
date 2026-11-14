@@ -99,6 +99,7 @@ async def lifespan(app: FastAPI):
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
+        await run_in_threadpool(store.close_database_pool)
 
 
 app = FastAPI(

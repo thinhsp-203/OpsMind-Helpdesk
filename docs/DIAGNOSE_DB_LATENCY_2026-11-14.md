@@ -103,6 +103,28 @@ khắc phục độ trễ Render sau khi review, triển khai bản sửa và đ
 endpoint/API; RAG cần đủ mẫu theo NFR. Các lượt GET production trước sửa vẫn
 là baseline, không phải kết quả sau sửa.
 
+## Sửa phát hiện P2 sau review — 16/11/2026
+
+Test đổi cấu hình trước đây nối cố định `?application_name=pool-second` vào
+`DATABASE_URL`. Với URI đã có query `sslmode=disable`, test kết nối đầu thành
+công nhưng URL sau bị parser từ chối; pool chờ 10 giây rồi test thất bại.
+Với conninfo dạng `key=value`, chuỗi nối lại trở thành một phần giá trị
+`application_name`, làm assertion tên ứng dụng thất bại.
+
+Ca gốc trên PostgreSQL local: **1 failed**. Trước khi sửa dòng ghép cấu hình,
+mở rộng test bằng hai cấu hình ban đầu (nguyên bản và có application_name
+`pool-first`) cho **1 passed / 1 failed**, nên CI dùng URI không query cũng bắt
+được hồi quy. Sửa bằng `psycopg.conninfo.make_conninfo()` để giữ các tham số hợp
+lệ và thay riêng `application_name`; test vẫn kiểm PID backend đổi và giá trị
+mới là `pool-second`. Không đổi mã runtime, dependency, cấu hình Render hoặc
+dữ liệu production.
+
+Sau sửa: bộ pool **8/8 passed** với URI không query; bộ PostgreSQL đầy đủ
+**71/71 passed** với URI có `sslmode=disable&connect_timeout=2`. Log/JUnit trước
+và sau lưu tại workspace `outputs/PERF_URL_FIX_2026-11-16`. Các số full suite và
+coverage ngày 14/11 ở trên là bằng chứng của `7acbede`, không được ghi thành
+một lượt full suite mới của bản sửa test ngày 16/11.
+
 Tham khảo chính thức:
 
 - [Psycopg: connection pools](https://www.psycopg.org/psycopg3/docs/advanced/pool.html)

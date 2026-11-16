@@ -69,3 +69,17 @@ Chi tiết nguồn, kết quả đo và giới hạn ở `DIAGNOSE_DB_LATENCY_20
 Không dùng kết quả local để tuyên bố đã sửa độ trễ Render hoặc đạt NFR p95.
 Mục này chỉ ghi prompt trực tiếp của lượt chẩn đoán; không thay thế việc tập
 hợp đầy đủ lịch sử prompt các phiên và các thành viên còn thiếu.
+
+## Sửa P2 trong test đổi URL — 16/11/2026
+
+Prompt trực tiếp đầy đủ của người dùng:
+
+```text
+[$diagnosing-bugs](<C:\Users\Nhu Y\.agents\skills\diagnosing-bugs\SKILL.md>)
+```
+
+Ngữ cảnh: code review `7acbede` phát hiện test ghép sai URL đã có query. AI tái
+hiện trên DB local, mở rộng test trước sửa, dùng API `make_conninfo()` của
+Psycopg và kiểm lại URL có/không query. Chỉ sửa test và tài liệu; không thay
+mã runtime, dependency hay triển khai. Bằng chứng ở `outputs/PERF_URL_FIX_2026-11-16`
+trong workspace; không tuyên bố đã hoàn tất nhật ký AI toàn bộ dự án.

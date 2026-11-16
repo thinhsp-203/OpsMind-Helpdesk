@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
+from psycopg.conninfo import make_conninfo
 
 from app import store
 
@@ -69,13 +70,21 @@ def test_closed_connection_is_replaced_without_replaying_statements():
     assert old_pid != new_pid
 
 
-def test_database_url_change_does_not_reuse_previous_pool(monkeypatch):
+@pytest.mark.parametrize('existing_application_name', [None, 'pool-first'])
+def test_database_url_change_does_not_reuse_previous_pool(monkeypatch, existing_application_name):
+    original_url = os.environ['DATABASE_URL']
+    if existing_application_name is not None:
+        original_url = make_conninfo(original_url, application_name=existing_application_name)
+    monkeypatch.setattr(store, '_database_url', original_url)
     with store._connect() as connection:
-        first_pid = connection.execute('SELECT pg_backend_pid() AS pid').fetchone()['pid']
-    monkeypatch.setattr(store, '_database_url', os.environ['DATABASE_URL'] + '?application_name=pool-second')
+        initial = connection.execute("SELECT pg_backend_pid() AS pid, current_setting('application_name') AS name").fetchone()
+    if existing_application_name is not None:
+        assert initial['name'] == existing_application_name
+    updated_url = make_conninfo(original_url, application_name='pool-second')
+    monkeypatch.setattr(store, '_database_url', updated_url)
     with store._connect() as connection:
         row = connection.execute("SELECT pg_backend_pid() AS pid, current_setting('application_name') AS name").fetchone()
-    assert row['pid'] != first_pid
+    assert row['pid'] != initial['pid']
     assert row['name'] == 'pool-second'
 
 

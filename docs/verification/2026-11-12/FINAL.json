@@ -1,0 +1,36 @@
+{
+  "finishedAt": "2026-11-12T11:15:46.244Z",
+  "timezone": "Asia/Saigon",
+  "deployment": "LIVE",
+  "commit": "a128aa71883531930b403fef92edf171908e7caa",
+  "applicationChecksPassed": 45,
+  "applicationCheckFailures": [],
+  "harnessFalsePositives": [
+    {
+      "at": "2026-11-12T11:01:17.776Z",
+      "name": "deployed-javascript-matches-reviewed-source",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ '704fe01762b1c2928dda172e4c8acb51dd2e13c4e58a1720eb33f8679f532f01'\n- 'd5ef4e84428045153629fdbf97eca5957cd01227ab3ecf4be86ce239199435b7'\n",
+      "ms": 426
+    }
+  ],
+  "rawCaseRows": 46,
+  "httpRecords": 176,
+  "http5xx": [],
+  "manualLogin401": 2,
+  "accountsCreated": 4,
+  "accountsDeleted": 4,
+  "leftoverTestAccounts": [],
+  "retainedTickets": [
+    6,
+    7
+  ],
+  "sensitiveTokenPatternHits": 0,
+  "notes": [
+    "No account credentials or authorization headers are recorded.",
+    "Ticket #6 is closed; ticket #7 is new from actual UI handoff; both retained for audit with requester anonymized.",
+    "One original raw-file hash failure was caused by Windows CRLF; Git blob and canonical SHA-256 match. Original log preserved.",
+    "UI and API checks are distinct; ticket lifecycle was exercised over real HTTP while user handoff was entirely browser UI.",
+    "No production restart/persistence-after-redeploy, independent RAG evaluation, expert runbook approval, or external notification receipt is proven by this run."
+  ]
+}

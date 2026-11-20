@@ -1,0 +1,56 @@
+{
+  "commit": "a128aa71883531930b403fef92edf171908e7caa",
+  "results": [
+    {
+      "name": "public-login-layout-1280",
+      "status": "PASS",
+      "detail": {
+        "width": 1280,
+        "passwordMasked": true,
+        "demoCredentialsVisible": false,
+        "layout": {
+          "client": 1280,
+          "scroll": 1280
+        }
+      },
+      "ms": 2008
+    },
+    {
+      "name": "public-login-layout-375",
+      "status": "PASS",
+      "detail": {
+        "width": 375,
+        "passwordMasked": true,
+        "demoCredentialsVisible": false,
+        "layout": {
+          "client": 375,
+          "scroll": 375
+        }
+      },
+      "ms": 884
+    },
+    {
+      "name": "deployed-javascript-matches-reviewed-source",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ '704fe01762b1c2928dda172e4c8acb51dd2e13c4e58a1720eb33f8679f532f01'\n- 'd5ef4e84428045153629fdbf97eca5957cd01227ab3ecf4be86ce239199435b7'\n",
+      "ms": 426
+    },
+    {
+      "name": "unauthenticated-rag-write-rejected",
+      "status": "PASS",
+      "detail": {
+        "expected": 401,
+        "actual": 401
+      },
+      "ms": 270
+    },
+    {
+      "name": "public-ui-no-javascript-errors",
+      "status": "PASS",
+      "detail": {
+        "errors": 0
+      },
+      "ms": 1
+    }
+  ]
+}

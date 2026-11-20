@@ -1,0 +1,201 @@
+{
+  "format_version": 1,
+  "curated_on": "2026-11-20",
+  "execution_date": "2026-11-12",
+  "app_sha": "a128aa71883531930b403fef92edf171908e7caa",
+  "description": "Curated copy of historical evidence, not a new test run. Hashes do not attest origin or expert approval.",
+  "expected": {
+    "case_rows": 46,
+    "passed": 45,
+    "failed": 1,
+    "http_rows": 176,
+    "http5xx": 0,
+    "screenshots": 5
+  },
+  "sources": [
+    {
+      "path": "FINAL.json",
+      "original_sha256": "929de89c2c50180df586e1956f873d7b2680d8d37f758bc711ea9705e686ea9a",
+      "published_sha256": "674bbae26b459ca99d0e04f34dce952f0a0971cf1a47e2ac6a8fbad5fdfc1afe",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "STATUS.json",
+      "original_sha256": "ac81bb235db00b64993714092d65748edf2f988b89e0714550edaf5f78c7814c",
+      "published_sha256": "b0bcfd48739be7937f378ef2a405d5c69613a21770e48fcfe81ac59ff26d6244",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "CI.json",
+      "original_sha256": "796ebd1104c72a1b4a623d2615918645fb08eedf17e2e461e0b8f98963391274",
+      "published_sha256": "796ebd1104c72a1b4a623d2615918645fb08eedf17e2e461e0b8f98963391274",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "deployment.json",
+      "original_sha256": "b7c6e0e28eb116e5d02750f8c673e74cd8dc3006db2ab4dd8f9002c9cb5f2698",
+      "published_sha256": "25a51eb1cace0482718aa3f56e22a53ae7a58c880dddfb9887c5aa227f6f9564",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "static-verified.json",
+      "original_sha256": "527cd73c4a0ec1d38c20f09292a21edefbbc173aad9ae7226c361f27b14ab86e",
+      "published_sha256": "b9d14146a090ce6f42d41febab0c9a52898a64b0022d88a7e644eed4f31994b3",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "render-errors-initial.json",
+      "original_sha256": "3991279d15dd082edb0d523cb29fb3064a0128bcdeda73dfe89980a1127f7824",
+      "published_sha256": "3991279d15dd082edb0d523cb29fb3064a0128bcdeda73dfe89980a1127f7824",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "render-errors-final.json",
+      "original_sha256": "b2c917e106c776ff6df17ef3ccb0c05e4a074a9cc6aaa86b06cb63e17ff48927",
+      "published_sha256": "b2c917e106c776ff6df17ef3ccb0c05e4a074a9cc6aaa86b06cb63e17ff48927",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "public-smoke.json",
+      "original_sha256": "d1ba092a121d344440e2e7ab8e8f32e71d92fdc01340e6528ffe3742c3dcac0a",
+      "published_sha256": "503dd8668e3e514857180daa70ccc3632ae7ca68fbde359aab6a25e2f4bb3509",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "results.json",
+      "original_sha256": "2e18af46e1bccd1d1737f949ce20952cb9cd5d5fd7cefccd09b43e1ca578e424",
+      "published_sha256": "e82b68a6049e00894a3d3d0480548585ce6e40526edc2561710f075c030c243e",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "browser-open.json",
+      "original_sha256": "387cac67911202b371d0d84c24c8bb96f5e0560da3025a1f9e3a7d3d18c07a1f",
+      "published_sha256": "c6d6cf9d5454ff35a815e47391c9685173c500d81d9d7e040e8bc9bf55d36fe5",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "cases.jsonl",
+      "original_sha256": "0a425aadb2bde7f6dba9070d1b142099b80163be81bb969e4049a7c915089b31",
+      "published_sha256": "0a425aadb2bde7f6dba9070d1b142099b80163be81bb969e4049a7c915089b31",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "http.jsonl",
+      "original_sha256": "4e480cdf8620cae67cf09f71835a5c0e56bd2c790b4eec80c3ebfaa77add4f67",
+      "published_sha256": "ca18b1fef0f031105616d5fc5198fc10a99441a0bdddffdedf753f32c11a1189",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "rag-responses.jsonl",
+      "original_sha256": "aefb9828837149e798dcec2e5b93480e1c7149b144379191687ff154272212fd",
+      "published_sha256": "aefb9828837149e798dcec2e5b93480e1c7149b144379191687ff154272212fd",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "test-data.jsonl",
+      "original_sha256": "8731e0307ab5c701a8db2eae2f91aeb41dee79f0425580af214bd0ef2e37a76d",
+      "published_sha256": "8731e0307ab5c701a8db2eae2f91aeb41dee79f0425580af214bd0ef2e37a76d",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "run.jsonl",
+      "original_sha256": "2e8f52c01508c22a402356fa3efc29c00374ee8763a5016b38dc3753f848e696",
+      "published_sha256": "2e8f52c01508c22a402356fa3efc29c00374ee8763a5016b38dc3753f848e696",
+      "transformation": "UTF-8/LF JSON normalization; documented metadata redactions only."
+    },
+    {
+      "path": "rag-printer-control.png",
+      "original_sha256": "a7688d6102f3889b7a87aafaab6e04eea9f93caab85fc0e6fd8bd118bc4a08cd",
+      "published_sha256": "a7688d6102f3889b7a87aafaab6e04eea9f93caab85fc0e6fd8bd118bc4a08cd",
+      "transformation": "Unmodified original screenshot; visually inspected synthetic RAG/UI result region."
+    },
+    {
+      "path": "rag-mixed-it-weather.png",
+      "original_sha256": "8f15f37e44d186cad13f2ca75b2decf68b793528037ae281a52285870dda13ed",
+      "published_sha256": "8f15f37e44d186cad13f2ca75b2decf68b793528037ae281a52285870dda13ed",
+      "transformation": "Unmodified original screenshot; visually inspected synthetic RAG/UI result region."
+    },
+    {
+      "path": "rag-pure-weather.png",
+      "original_sha256": "9fb925ae2c4451c67fa103ffe6fcff764311a1cacdb3580413727854ed22911b",
+      "published_sha256": "9fb925ae2c4451c67fa103ffe6fcff764311a1cacdb3580413727854ed22911b",
+      "transformation": "Unmodified original screenshot; visually inspected synthetic RAG/UI result region."
+    },
+    {
+      "path": "rag-safety-stop.png",
+      "original_sha256": "e402283a8bf95d65ec002b463c4f95ef4ed38112c0f15ef6ca4d010db803384e",
+      "published_sha256": "e402283a8bf95d65ec002b463c4f95ef4ed38112c0f15ef6ca4d010db803384e",
+      "transformation": "Unmodified original screenshot; visually inspected synthetic RAG/UI result region."
+    },
+    {
+      "path": "user-ui-handoff-created.png",
+      "original_sha256": "189a3d6300244099102a0126d2518399425e984c404614e87ecebd2c26d1d0b6",
+      "published_sha256": "189a3d6300244099102a0126d2518399425e984c404614e87ecebd2c26d1d0b6",
+      "transformation": "Unmodified original screenshot; visually inspected synthetic RAG/UI result region."
+    },
+    {
+      "path": "local-issue12/issue12-tests.xml",
+      "original_sha256": "3382ab2d973f1796f21a3b9bbb05e62e4a3ccd536ea391fc900aa54389f631eb",
+      "published_sha256": "15f7a378749644323a200b94f2254ac170c6495761e1f8b34a5cf12f2131955f",
+      "transformation": "Separate Windows/local Issue12 run on head 26a1c18; XML reserialized and host/home metadata redacted. NOT a Render execution."
+    },
+    {
+      "path": "local-issue12/CI.json",
+      "original_sha256": "5c994b81b7f26c77fad1d3277e3f4dee08a7b51b906f416ce6c81f4a850ec7ee",
+      "published_sha256": "5c994b81b7f26c77fad1d3277e3f4dee08a7b51b906f416ce6c81f4a850ec7ee",
+      "transformation": "Historical head/CI/local metadata snapshot before merge; not current PR/deployment/credential status."
+    }
+  ],
+  "redactions": [
+    {
+      "location": "deployment.json/workspaceId",
+      "reason": "Workspace identity is unnecessary for review."
+    },
+    {
+      "location": "http.jsonl/65/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/66/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/67/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/74/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/75/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/76/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/81/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/82/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    },
+    {
+      "location": "http.jsonl/83/path",
+      "reason": "Remove unrelated ticket identifiers or local home paths."
+    }
+  ],
+  "excluded": [
+    {
+      "path": "public-login-1280.png",
+      "reason": "Full login-page image omitted; retain numeric layout results in cases.jsonl and five synthetic-result screenshots."
+    },
+    {
+      "path": "public-login-375.png",
+      "reason": "Full login-page image omitted; retain numeric layout results in cases.jsonl and five synthetic-result screenshots."
+    }
+  ]
+}

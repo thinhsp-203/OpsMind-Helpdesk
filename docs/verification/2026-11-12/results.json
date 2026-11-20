@@ -1,0 +1,437 @@
+{
+  "commit": "a128aa71883531930b403fef92edf171908e7caa",
+  "base": "https://opsmind-helpdesk-a7ke.onrender.com",
+  "results": [
+    {
+      "name": "public-home",
+      "status": "PASS",
+      "detail": {
+        "path": "/",
+        "expectedStatus": 200,
+        "actualStatus": 200
+      },
+      "ms": 635
+    },
+    {
+      "name": "database-health",
+      "status": "PASS",
+      "detail": {
+        "path": "/health",
+        "expectedStatus": 200,
+        "actualStatus": 200,
+        "response": {
+          "status": "ok",
+          "service": "helpdesk-rag"
+        }
+      },
+      "ms": 2228
+    },
+    {
+      "name": "public-config",
+      "status": "PASS",
+      "detail": {
+        "path": "/config",
+        "expectedStatus": 200,
+        "actualStatus": 200,
+        "response": {
+          "demo_mode": false
+        }
+      },
+      "ms": 312
+    },
+    {
+      "name": "static-javascript",
+      "status": "PASS",
+      "detail": {
+        "path": "/static/app.js",
+        "expectedStatus": 200,
+        "actualStatus": 200,
+        "sha256": "704fe01762b1c2928dda172e4c8acb51dd2e13c4e58a1720eb33f8679f532f01"
+      },
+      "ms": 309
+    },
+    {
+      "name": "unauthenticated-ticket-protection",
+      "status": "PASS",
+      "detail": {
+        "path": "/tickets",
+        "expectedStatus": 401,
+        "actualStatus": 401
+      },
+      "ms": 807
+    },
+    {
+      "name": "unauthenticated-admin-protection",
+      "status": "PASS",
+      "detail": {
+        "path": "/admin/users",
+        "expectedStatus": 401,
+        "actualStatus": 401
+      },
+      "ms": 266
+    },
+    {
+      "name": "authenticated-session-survives-reload",
+      "status": "PASS",
+      "detail": {
+        "role": "admin",
+        "expected": "same authenticated role after reload",
+        "actual": "admin"
+      },
+      "ms": 6767
+    },
+    {
+      "name": "rag-printer-control",
+      "status": "PASS",
+      "detail": {
+        "method": "browser UI",
+        "http": 200,
+        "expectedState": "CLARIFY",
+        "actualState": "CLARIFY",
+        "questions": 3,
+        "sources": 0,
+        "matches": 0
+      },
+      "ms": 11729
+    },
+    {
+      "name": "rag-mixed-it-weather",
+      "status": "PASS",
+      "detail": {
+        "method": "browser UI",
+        "http": 200,
+        "expectedState": "CLARIFY",
+        "actualState": "CLARIFY",
+        "questions": 3,
+        "sources": 0,
+        "matches": 0
+      },
+      "ms": 11054
+    },
+    {
+      "name": "rag-pure-weather",
+      "status": "PASS",
+      "detail": {
+        "method": "browser UI",
+        "http": 200,
+        "expectedState": "OUT_OF_SCOPE",
+        "actualState": "OUT_OF_SCOPE",
+        "questions": 0,
+        "sources": 0,
+        "matches": 0
+      },
+      "ms": 10609
+    },
+    {
+      "name": "rag-safety-stop",
+      "status": "PASS",
+      "detail": {
+        "method": "browser UI",
+        "http": 200,
+        "expectedState": "HANDOFF_PREVIEW",
+        "actualState": "HANDOFF_PREVIEW",
+        "questions": 0,
+        "sources": 0,
+        "matches": 0
+      },
+      "ms": 11077
+    },
+    {
+      "name": "create-test-account-0-user",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-mwdg2q6k-0",
+        "role": "user",
+        "forcedPasswordChangeCompleted": true,
+        "emailSent": false
+      },
+      "ms": 35716
+    },
+    {
+      "name": "create-test-account-1-agent",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-mwdg2q6k-1",
+        "role": "agent",
+        "forcedPasswordChangeCompleted": true,
+        "emailSent": false
+      },
+      "ms": 36787
+    },
+    {
+      "name": "create-test-account-2-user",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-mwdg2q6k-2",
+        "role": "user",
+        "forcedPasswordChangeCompleted": true,
+        "emailSent": false
+      },
+      "ms": 35816
+    },
+    {
+      "name": "create-real-test-ticket",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "expectedState": "new",
+        "actualState": "new"
+      },
+      "ms": 6243
+    },
+    {
+      "name": "test-user-admin-permission-denied",
+      "status": "PASS",
+      "detail": {
+        "expected": 403,
+        "actual": 403
+      },
+      "ms": 2149
+    },
+    {
+      "name": "cross-user-ticket-access-denied",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "expected": 404,
+        "actual": 404
+      },
+      "ms": 4402
+    },
+    {
+      "name": "add-real-test-comment",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "status": 200
+      },
+      "ms": 7634
+    },
+    {
+      "name": "upload-and-download-test-attachment",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "attachmentId": "3b63a39ed7d144929f4eada80eea912a",
+        "sha256": "1b9d747df084cddb9599b5564c0a47e32d27694b7a04cf81f35f4f4189733256",
+        "bytes": 47
+      },
+      "ms": 13264
+    },
+    {
+      "name": "assign-test-ticket-to-test-agent",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "assignee": "uat-mwdg2q6k-1"
+      },
+      "ms": 9306
+    },
+    {
+      "name": "ticket-transition-in_progress",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "expected": "in_progress",
+        "actual": "in_progress"
+      },
+      "ms": 7169
+    },
+    {
+      "name": "ticket-transition-resolved",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "expected": "resolved",
+        "actual": "resolved"
+      },
+      "ms": 7486
+    },
+    {
+      "name": "customer-rates-resolved-test-ticket",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "status": 200,
+        "rating": 5
+      },
+      "ms": 7263
+    },
+    {
+      "name": "customer-closes-resolved-test-ticket",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "expected": "closed",
+        "actual": "closed"
+      },
+      "ms": 7265
+    },
+    {
+      "name": "closed-ticket-rejects-new-comments",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "expected": 409,
+        "actual": 409
+      },
+      "ms": 4399
+    },
+    {
+      "name": "test-ticket-history-persists",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "status": "closed",
+        "comments": 1,
+        "attachments": 1
+      },
+      "ms": 4508
+    },
+    {
+      "name": "delete-only-test-account-user-0",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-mwdg2q6k-0",
+        "oldSessionExpected": 401,
+        "oldSessionActual": 401
+      },
+      "ms": 11884
+    },
+    {
+      "name": "delete-only-test-account-agent-1",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-mwdg2q6k-1",
+        "oldSessionExpected": 401,
+        "oldSessionActual": 401
+      },
+      "ms": 11654
+    },
+    {
+      "name": "delete-only-test-account-user-2",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-mwdg2q6k-2",
+        "oldSessionExpected": 401,
+        "oldSessionActual": 401
+      },
+      "ms": 11828
+    },
+    {
+      "name": "deleted-test-requester-history-anonymized",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "requesterAnonymized": true,
+        "state": "closed"
+      },
+      "ms": 4894
+    },
+    {
+      "name": "prepare-user-ui-test-account",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-ui-mwdg8reu",
+        "role": "user",
+        "passwordChangeCompleted": true
+      },
+      "ms": 26346
+    },
+    {
+      "name": "real-user-login-ui",
+      "status": "PASS",
+      "detail": {
+        "role": "user",
+        "method": "browser UI"
+      },
+      "ms": 17880
+    },
+    {
+      "name": "user-facts-preview-confirm-ticket-entire-ui",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 7,
+        "method": "Actual user UI: question → facts → preview → explicit confirmation; GET verifies persistence",
+        "state": "HANDOFF_PREVIEW",
+        "revision": 2
+      },
+      "ms": 37683
+    },
+    {
+      "name": "ui-created-ticket-survives-browser-reload",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 7,
+        "status": "new",
+        "authenticatedAfterReload": true
+      },
+      "ms": 11866
+    },
+    {
+      "name": "real-user-logout-ui",
+      "status": "PASS",
+      "detail": {
+        "loggedOut": true
+      },
+      "ms": 320
+    },
+    {
+      "name": "delete-ui-only-test-account",
+      "status": "PASS",
+      "detail": {
+        "username": "uat-ui-mwdg8reu"
+      },
+      "ms": 9632
+    },
+    {
+      "name": "all-synthetic-accounts-removed",
+      "status": "PASS",
+      "detail": {
+        "created": 4,
+        "remaining": 0,
+        "accounts": [
+          "uat-mwdg2q6k-0",
+          "uat-mwdg2q6k-1",
+          "uat-mwdg2q6k-2",
+          "uat-ui-mwdg8reu"
+        ]
+      },
+      "ms": 4041
+    },
+    {
+      "name": "retained-test-ticket-6",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 6,
+        "state": "closed",
+        "requesterAnonymized": true,
+        "comments": 1,
+        "attachments": 1
+      },
+      "ms": 4403
+    },
+    {
+      "name": "retained-test-ticket-7",
+      "status": "PASS",
+      "detail": {
+        "ticketId": 7,
+        "state": "new",
+        "requesterAnonymized": true,
+        "comments": 0,
+        "attachments": 0
+      },
+      "ms": 4400
+    },
+    {
+      "name": "final-production-database-health",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "status": "ok",
+        "service": "helpdesk-rag"
+      },
+      "ms": 2563
+    }
+  ]
+}

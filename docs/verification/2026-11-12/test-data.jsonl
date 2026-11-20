@@ -1,0 +1,10 @@
+{"at":"2026-11-12T11:09:53.292Z","kind":"created-account","username":"uat-mwdg2q6k-0","role":"user"}
+{"at":"2026-11-12T11:10:30.080Z","kind":"created-account","username":"uat-mwdg2q6k-1","role":"agent"}
+{"at":"2026-11-12T11:11:05.897Z","kind":"created-account","username":"uat-mwdg2q6k-2","role":"user"}
+{"at":"2026-11-12T11:11:12.141Z","kind":"created-ticket","ticketId":6,"run":"uat-mwdg2q6k"}
+{"at":"2026-11-12T11:12:38.880Z","kind":"deleted-test-account","username":"uat-mwdg2q6k-0"}
+{"at":"2026-11-12T11:12:50.535Z","kind":"deleted-test-account","username":"uat-mwdg2q6k-1"}
+{"at":"2026-11-12T11:13:02.363Z","kind":"deleted-test-account","username":"uat-mwdg2q6k-2"}
+{"at":"2026-11-12T11:13:12.053Z","kind":"created-account","username":"uat-ui-mwdg8reu","role":"user"}
+{"at":"2026-11-12T11:14:25.581Z","kind":"created-ui-ticket","ticketId":7,"run":"uat-ui-mwdg8reu"}
+{"at":"2026-11-12T11:14:52.047Z","kind":"deleted-test-account","username":"uat-ui-mwdg8reu"}

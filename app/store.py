@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
-from psycopg.rows import dict_row
+
+from app import postgres
 
 from app.config import (
     ALLOW_DEMO_CREDENTIALS,
@@ -47,20 +48,15 @@ DatabaseIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError)
 
 
 class _PostgresConnection:
-    def __init__(self, connection: psycopg.Connection) -> None:
-        self._connection = connection
+    def __init__(self, lease: contextlib.AbstractContextManager[psycopg.Connection]) -> None:
+        self._lease = lease
+        self._connection = lease.__enter__()
 
     def __enter__(self) -> "_PostgresConnection":
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        try:
-            if exc_type is None:
-                self._connection.commit()
-            else:
-                self._connection.rollback()
-        finally:
-            self._connection.close()
+        self._lease.__exit__(exc_type, exc, traceback)
 
     def execute(self, query: str, parameters: tuple[Any, ...] = ()) -> psycopg.Cursor:
         return self._connection.execute(query.replace("?", "%s"), parameters)
@@ -88,7 +84,7 @@ def _connect() -> sqlite3.Connection | _PostgresConnection:
         if "neon.tech" in url and "sslmode=" not in url:
             separator = "&" if "?" in url else "?"
             url = f"{url}{separator}sslmode=require"
-        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row, prepare_threshold=None))
+        return _PostgresConnection(postgres.connection(url))
     _database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(_database_path, timeout=15)
     connection.row_factory = sqlite3.Row
@@ -99,6 +95,10 @@ def _connect() -> sqlite3.Connection | _PostgresConnection:
 def check_database() -> None:
     with _connect() as connection:
         connection.execute("SELECT 1").fetchone()
+
+
+def close_database_pool() -> None:
+    postgres.close_pool()
 
 
 def _password_hash(password: str, salt: bytes | None = None) -> str:
@@ -1001,25 +1001,19 @@ def delete_user_and_anonymize(username: str) -> bool:
         connection.execute("DELETE FROM chat_sessions WHERE user_id = ?", (username,))
 
         # Snapshots must not keep the deleted requester's identifier or be sent later.
-        try:
-            rows = connection.execute("SELECT id, payload FROM notification_outbox").fetchall()
-            for row in rows:
-                payload = json.loads(row["payload"])
-                if payload.get("requester") == username:
-                    payload["requester"] = anonymous
-                    connection.execute(
-                        "UPDATE notification_outbox SET payload = ? WHERE id = ?",
-                        (json.dumps(payload, ensure_ascii=False), row["id"]),
-                    )
-        except Exception as exc:
-            logger.warning("Could not anonymize notification outbox payload: %s", exc)
+        rows = connection.execute("SELECT id, payload FROM notification_outbox").fetchall()
+        for row in rows:
+            payload = json.loads(row["payload"])
+            if payload.get("requester") == username:
+                payload["requester"] = anonymous
+                connection.execute(
+                    "UPDATE notification_outbox SET payload = ? WHERE id = ?",
+                    (json.dumps(payload, ensure_ascii=False), row["id"]),
+                )
 
         # Revoke tokens and jobs
         connection.execute("DELETE FROM password_reset_tokens WHERE username = ?", (username,))
-        try:
-            connection.execute("DELETE FROM email_outbox WHERE username = ?", (username,))
-        except Exception as exc:
-            logger.warning("Could not delete email outbox records: %s", exc)
+        connection.execute("DELETE FROM email_deliveries WHERE username = ?", (username,))
 
         # Clear rate limiting
         connection.execute("DELETE FROM rate_limit_attempts WHERE key LIKE ?", (f"%:{username}",))
@@ -1422,11 +1416,17 @@ def add_attachment(
     uploaded_by: str,
 ) -> dict[str, Any]:
     with _connect() as connection:
+        if not _database_url:
+            connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
-            "SELECT status FROM tickets WHERE id = ? AND archived_at IS NULL", (ticket_id,)
+            "SELECT status FROM tickets WHERE id = ? AND archived_at IS NULL"  # noqa: S608 -- fixed dialect suffix
+            + (" FOR UPDATE" if _database_url else ""),
+            (ticket_id,),
         ).fetchone()
         if row is None:
             raise LookupError("Ticket not found")
+        if row["status"] == "closed":
+            raise ValueError("Ticket đã đóng, không thể thêm tệp.")
         timestamp = _now()
         connection.execute(
             "INSERT INTO ticket_attachments "
@@ -1873,7 +1873,8 @@ def create_knowledge_document(
             slug = f"{base_slug}.md"
             counter = 1
             while connection.execute("SELECT 1 FROM knowledge_documents WHERE slug = ?", (slug,)).fetchone():
-                slug = f"{base_slug}_{counter}.md"
+                suffix = f"_{counter}"
+                slug = f"{base_slug[:64 - len(suffix)]}{suffix}.md"
                 counter += 1
 
         reviewer = author if status == "published" else None

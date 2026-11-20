@@ -47,4 +47,39 @@ Nhật ký ghi các phần có hỗ trợ AI và việc nhóm cần tự rà so�
 23. Việt hóa & Chuẩn hóa 30 tài liệu kho tri thức theo 6 nhóm hạ tầng thực tế: Kho tri thức trước đây chứa nhiều nội dung tiếng Anh và không sát mô hình vận hành của cơ quan/doanh nghiệp. **Sửa:** Chuẩn hóa toàn bộ 30 Runbook trong `data/knowledge/` sang tiếng Việt chuyên nghiệp gồm 3 mục chuẩn (Triệu chứng / Dấu hiệu, Các bước tự khắc phục nhanh Self-service, Khi nào cần chuyển thẳng cho IT Escalation) theo 6 nhóm: (1) Windows, (2) Office 2016/19/21/365, (3) Teams, (4) Máy in & Photo, (5) Mạng LAN/Wi-Fi, (6) VPN & NAS (lưu ý chính sách VPN chỉ cấp cho Lễ tân và IT; truy cập và cấp quyền thư mục chia sẻ NAS); tuân thủ tuyệt đối quy tắc an toàn `test_aud18_runbook_safety.py` (không chứa lệnh nguy hiểm, giữ đúng cú pháp nslookup, netsh, guardrails OST/quota/antivirus); chuẩn hóa dataset kiểm thử và bảo toàn tính toàn vẹn benchmark cryptographic hashes.
 24. Nâng cấp giao diện & Luồng RAG phân loại tự động (Auto-Triage) theo mẫu Navi IT Helpdesk: Cải tiến trải nghiệm người dùng khi tra cứu sự cố CNTT theo mô hình tương tác thông minh. **Sửa:** Cập nhật hàm `suggest_ticket_triage()` trong `app/rag.py` tự động xác định Danh mục (6 nhóm hạ tầng), Mức độ ưu tiên (Thấp/Trung bình/Cao/Khẩn cấp), và Phân luồng xử lý (`SELF_SERVICE` vs `ESCALATE_IT` với các sự cố cần quyền Admin, cấp quyền NAS/VPN hoặc hỏng phần cứng); nâng cấp giao diện `app/static/app.js` và `app/static/styles.css`: hiển thị thẻ Auto-Triage badge trực quan; đối với sự cố `SELF_SERVICE`, hiển thị hướng dẫn tự khắc phục kèm 2 nút tương tác `[Đã khắc phục xong]` (đóng phiên hỗ trợ) và `[Vẫn chưa được - Gửi phiếu cho IT]` (điền sẵn form tạo ticket); đối với sự cố `ESCALATE_IT`, hiển thị banner cảnh báo và nút nổi bật `[Gửi thẳng yêu cầu cho IT ngay]` (1-click handoff tạo ticket tự động); bổ sung bộ kiểm thử `tests/test_navi_triage.py` bảo đảm 100% test suite Python và JavaScript đều pass.
 
+25. Khắc phục xung đột tích hợp Assistant Policy và Contextual Follow-up RAG: Sau khi gộp PR #10, nhánh main bị lỗi TypeError do lời gọi `diagnose()` truyền sai tham số `payload=payload` và xung đột trạng thái giữa bộ chẩn đoán sự cố (mạng dây, máy in Offline) và tính năng nối tiếp ngữ cảnh ("Vẫn không được"). **Sửa:** Chuẩn hóa lời gọi `diagnose()` trong `app/routers/rag.py` truyền đúng các tham số `action`, `answers`, `step_results`, `role` từ phiên người dùng; xử lý phân luồng chính xác giữa sự cố thuộc chính sách (policy) và tra cứu RAG thông thường; bảo đảm các câu hỏi ngoài phạm vi (như thời tiết) không kích hoạt điều tra sự cố; khôi phục 100% tỷ lệ PASS cho toàn bộ 98 test API trong `tests/test_api.py` và 16 test hồi quy trong `tests/test_review_regressions.py`.
+
 Các mục “sửa” ở trên là thay đổi trong hệ thống; nhóm đối chiếu lịch sử commit/PR và kiểm thử tự động trên repository trước khi bảo vệ đồ án.
+
+## Chẩn đoán độ trễ — 14/11/2026
+
+Prompt trực tiếp đầy đủ của người dùng cho lượt chẩn đoán này:
+
+```text
+[$diagnosing-bugs](<C:\Users\Nhu Y\.agents\skills\diagnosing-bugs\SKILL.md>)
+```
+
+Ngữ cảnh trước prompt: sau 45 kiểm tra trên Render ngày 12/11, một số thao tác
+ticket mất 6–13 giây; người dùng gọi `ask-matt`, sau đó chọn quy trình chẩn đoán.
+AI thực hiện đo GET công khai, trace API trên PostgreSQL local có dữ liệu giả,
+viết test hồi quy trước sửa, thêm pool kết nối và kiểm tra giao dịch/quyền.
+Audit dependency phát hiện advisory OpenTelemetry và nâng đúng patch 1.45.2.
+Chi tiết nguồn, kết quả đo và giới hạn ở `DIAGNOSE_DB_LATENCY_2026-11-14.md`.
+
+Không dùng kết quả local để tuyên bố đã sửa độ trễ Render hoặc đạt NFR p95.
+Mục này chỉ ghi prompt trực tiếp của lượt chẩn đoán; không thay thế việc tập
+hợp đầy đủ lịch sử prompt các phiên và các thành viên còn thiếu.
+
+## Sửa P2 trong test đổi URL — 16/11/2026
+
+Prompt trực tiếp đầy đủ của người dùng:
+
+```text
+[$diagnosing-bugs](<C:\Users\Nhu Y\.agents\skills\diagnosing-bugs\SKILL.md>)
+```
+
+Ngữ cảnh: code review `7acbede` phát hiện test ghép sai URL đã có query. AI tái
+hiện trên DB local, mở rộng test trước sửa, dùng API `make_conninfo()` của
+Psycopg và kiểm lại URL có/không query. Chỉ sửa test và tài liệu; không thay
+mã runtime, dependency hay triển khai. Bằng chứng ở `outputs/PERF_URL_FIX_2026-11-16`
+trong workspace; không tuyên bố đã hoàn tất nhật ký AI toàn bộ dự án.

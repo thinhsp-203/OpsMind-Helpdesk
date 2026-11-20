@@ -112,6 +112,8 @@ def delete_admin_user(request: Request, username: str, payload: UserDeletion) ->
         raise HTTPException(status_code=422, detail="Tên xác nhận phải khớp chính xác tài khoản cần xóa.")
     try:
         deleted = store.delete_user(username, actor['username'])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.") from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:

@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-12",
+  "pr": 13,
+  "head_sha": "26a1c18f1a37b6dfdc2e3e1373476222a0edb3a3",
+  "parent_sha": "e20b600da8b3232eb8db0f64921670d5588a569c",
+  "integrated_main": "d610a711fd1f467859e9dc1693b78e08aed1069c",
+  "main_is_ancestor_verified_locally": true,
+  "ci": {
+    "run_id": 43135288701,
+    "url": "https://github.com/thinhsp-203/OpsMind-Helpdesk/actions/runs/43135288701",
+    "conclusion": "success",
+    "python": {
+      "passed": 389,
+      "skipped": 52,
+      "coverage_percent": 90
+    },
+    "postgres": {
+      "passed": 63
+    },
+    "docker": "success",
+    "dependency_audits": "success Linux/Windows"
+  },
+  "focused_local": {
+    "passed": 12,
+    "deselected": 99,
+    "seconds": 20.38,
+    "environment": "Windows Python3.11.17; syntheticSQLite; LLM disabled"
+  },
+  "pr_draft": true,
+  "merged": false,
+  "production_mutation": false,
+  "credential_check": "Stopped at maintainer request; handled by group for week6 confirmation; no database SQL queries performed",
+  "selected_ci_log_lines": [
+    "2026-11-12T01:37:18.4403256Z TOTAL                         3265    334    90%",
+    "2026-11-12T01:37:18.4403924Z ============ 389 passed, 52 skipped, 1 warning in 199.45s (0:03:19) ============",
+    "2026-11-12T01:37:53.0280514Z 63 passed, 1 warning in 34.15s",
+    "2026-11-12T01:37:55.4839835Z Summary: Dev Hit@3=100.0%, Holdout Hit@1=96.7%, Holdout Hit@3=96.7%, Holdout MRR@3=0.967, Holdout Lexical Hit=100.0%, Holdout Lexical Coverage=75.6%, OOS Refusal Justification=100.0%",
+    "2026-11-12T01:38:07.7401397Z #12 exporting to image"
+  ]
+}

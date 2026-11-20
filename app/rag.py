@@ -823,7 +823,8 @@ def synthesize_answer_with_llm(
 
 def generate_answer(question: str) -> dict[str, Any]:
     if is_out_of_scope(question):
-        triage = suggest_ticket_triage(question, [])
+        # R06/D10: out-of-scope requests carry no incident priority or IT routing.
+        triage = {"category": "general", "resolution_scope": "OUT_OF_SCOPE"}
         return {
             "answer": (
                 "Yêu cầu của bạn nằm ngoài phạm vi hỗ trợ kỹ thuật CNTT của hệ thống OpsMind. "

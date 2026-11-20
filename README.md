@@ -165,6 +165,10 @@ py -m scripts.evaluate_rag
 
 ## 4. Tài liệu học thuật & Tham khảo đồ án
 
+- [Mục lục tài liệu](docs/README.md): Đặc tả, hướng dẫn, báo cáo và minh chứng theo ngày.
+- [Tiếp thu góp ý báo cáo tuần 6 — 20/11/2026](docs/reports/WEEK6_RESUBMISSION_2026-11-20.md): Phần bổ sung để ghép vào báo cáo nộp lại.
+- [Minh chứng Render — 12/11/2026](docs/verification/2026-11-12/README.md): Log, ảnh, nguồn gốc tệp và cách tự kiểm tra số liệu.
+
 - [Báo cáo bối cảnh đề tài](docs/BAO_CAO_BOI_CANH.md): Phân tích bài toán, stakeholder, đối sánh Jira / GLPI / ServiceNow.
 - [Đặc tả yêu cầu phần mềm (SRS)](docs/SRS.md): Danh mục Use Cases, Acceptance Criteria và NFR.
 - [Thiết kế kiến trúc hệ thống (SDD)](docs/SDD.md): Biểu đồ kiến trúc, CSDL (ERD), FSM chuyển trạng thái và tài liệu API.

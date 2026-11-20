@@ -64,21 +64,8 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         raise HTTPException(status_code=422, detail="Không có sự cố đang hoạt động cho thao tác này.")
 
     try:
-        if policy and not any(pattern in fold(question) for pattern in OUT_OF_SCOPE_PATTERNS):
-            result = {
-                "answer": "",
-                "sources": [],
-                "triage": {
-                    "category": {"printer": "hardware", "network": "network"}.get(
-                        policy.get("incident_topic", ""), "general"
-                    ),
-                    "priority": "medium",
-                    "priority_reason": "Mức tạm thời; cần xác nhận tác động và độ khẩn cấp.",
-                },
-            }
-        else:
-            result = generate_answer(contextual_question)
-            result["context_used"] = contextual_question != question
+        result = generate_answer(contextual_question)
+        result["context_used"] = contextual_question != question
     except KnowledgeBaseUnavailableError as exc:
         raise HTTPException(
             status_code=503,
@@ -93,9 +80,12 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             "facts": {}, "state": "CLARIFY", "steps": [], "sources": [],
         })
 
+    is_explicit_oos = any(pattern in fold(question) for pattern in OUT_OF_SCOPE_PATTERNS)
+
     # 3. Phân nhánh xử lý giữa Policy sự cố và tra cứu RAG thông thường
-    if policy and not result.get("out_of_scope"):
+    if policy and not is_explicit_oos:
         result.update({k: v for k, v in policy.items() if k != "context"})
+        result["out_of_scope"] = False
         context = policy.get("context", {})
         context["revision"] = (expected_revision or 0) + 1
         result["revision"] = context["revision"]
@@ -104,11 +94,11 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         
         # Chỉ xóa sources nếu chính sách yêu cầu ẩn RAG
         if policy.get("override_rag", True):
-            result.update(sources=[], matches=[], grounded=False, llm_generated=False)
+            result.update(sources=[], matches=[], grounded=False, has_sources=False, llm_generated=False)
         result["triage"] = incident_triage(context)
     else:
         context = existing_context
-        if result.get("out_of_scope"):
+        if result.get("out_of_scope") or is_explicit_oos:
             result.setdefault("triage", {})["resolution_scope"] = "OUT_OF_SCOPE"
 
     # 4. Lưu dữ liệu hội thoại vào store

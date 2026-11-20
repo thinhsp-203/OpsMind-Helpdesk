@@ -8,11 +8,11 @@ from app import store
 from app.assistant_policy import diagnose, fold, incident_triage, snapshot
 from app.dependencies import current_user
 from app.rag import (
+    OUT_OF_SCOPE_PATTERNS,
     KnowledgeBaseUnavailableError,
     contextualize_question,
     generate_answer,
     is_out_of_scope,
-    OUT_OF_SCOPE_PATTERNS,
 )
 from app.schemas import RAGFeedback, RAGQuestion
 
@@ -29,7 +29,6 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     `answer_verification=not_verified` makes no semantic truth/faithfulness claim.
     `context_used` is true only when a recent user description was incorporated.
     """
-    # FastAPI runs sync endpoints in its worker pool, including DB and LLM waits.
     user = current_user(request)
     messages = []
     if payload.session_id:
@@ -38,6 +37,7 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             raise HTTPException(status_code=404, detail="Không tìm thấy phiên hội thoại.")
         messages = session["messages"]
 
+    # Khôi phục bước lấy context từ store để tránh lỗi NameError
     context = (
         store.get_incident_context(user["username"], payload.session_id)
         if payload.session_id
@@ -49,7 +49,10 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         context = seed["context"] if seed else None
 
     if payload.action or payload.fact_answers or payload.step_results:
-        if context is None or payload.expected_revision != context.get("revision", 0):
+        if context is None or (
+            payload.expected_revision is not None
+            and payload.expected_revision != context.get("revision", 0)
+        ):
             raise HTTPException(
                 status_code=409,
                 detail="Sự cố đã thay đổi. Tải lại lượt hiện tại trước khi xác nhận.",
@@ -61,11 +64,11 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
     try:
         policy = diagnose(
             question,
-            context,
+            context=context,
             action=payload.action,
             answers=payload.fact_answers,
             step_results=payload.step_results,
-            role=user["role"],
+            role=user.get("role", "user"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -77,8 +80,6 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         )
 
     contextual_question = contextualize_question(question, messages)
-    # Incidental OOS phrases must respect the same strong IT terms as retrieval.
-    # Require an explicit phrase so short incident replies keep their context.
     is_explicit_oos = (
         any(pattern in fold(question) for pattern in OUT_OF_SCOPE_PATTERNS)
         and is_out_of_scope(question)
@@ -111,8 +112,6 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
             detail="Kho tri thức tạm thời không khả dụng. Vui lòng thử lại sau.",
         ) from exc
 
-    # Retrieval is not approval: a paraphrase missed by topic detection must
-    # never expose legacy procedural text outside the reviewed catalogue.
     if policy is None and result.get("matches") and not is_explicit_oos:
         policy = diagnose(
             question,
@@ -136,18 +135,23 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
 
     if policy:
         result.update({k: v for k, v in policy.items() if k != "context"})
-        context = policy["context"]
+        result["out_of_scope"] = False
+        context = policy.get("context", {})
         context["revision"] = (expected_revision or 0) + 1
         result["revision"] = context["revision"]
-        result["handoff_question"] = policy["handoff"]["description"]
-        result.update(
-            sources=[],
-            matches=[],
-            grounded=False,
-            has_sources=False,
-            llm_generated=False,
-            out_of_scope=False,
-        )
+
+        handoff = policy.get("handoff")
+        if isinstance(handoff, dict) and "description" in handoff:
+            result["handoff_question"] = handoff["description"]
+
+        if policy.get("override_rag", True):
+            result.update(
+                sources=[],
+                matches=[],
+                grounded=False,
+                has_sources=False,
+                llm_generated=False,
+            )
         result["triage"] = incident_triage(context)
 
     try:

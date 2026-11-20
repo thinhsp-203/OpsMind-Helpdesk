@@ -1,0 +1,9 @@
+{
+  "serviceId": "srv-db4a69h42hec73al2a1g",
+  "workspaceId": "<REDACTED_WORKSPACE_ID>",
+  "deployId": "dep-dbqplvbrjlhs73a3nvog",
+  "commit": "a128aa71883531930b403fef92edf171908e7caa",
+  "status": "live",
+  "finishedAt": "2026-11-12T10:55:46.378421Z",
+  "previousCommit": "d610a711fd1f467859e9dc1693b78e08aed1069c"
+}

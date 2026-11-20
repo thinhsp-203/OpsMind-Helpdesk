@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-12T11:01:55.991Z",
+  "name": "deployed-static-git-blob",
+  "status": "PASS",
+  "detail": {
+    "http": 200,
+    "expectedGitBlob": "e78ecf04ef84cdd2ffe2cf95d80438a5806e7c65",
+    "actualGitBlob": "e78ecf04ef84cdd2ffe2cf95d80438a5806e7c65",
+    "actualSha256": "704fe01762b1c2928dda172e4c8acb51dd2e13c4e58a1720eb33f8679f532f01",
+    "normalizedLocalSha256": "704fe01762b1c2928dda172e4c8acb51dd2e13c4e58a1720eb33f8679f532f01",
+    "localCRLF": 2521,
+    "explainsPrior": "Raw local byte hash differed solely due to checkout CRLF; original harness failure retained."
+  }
+}

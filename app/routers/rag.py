@@ -5,9 +5,14 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app import store
-from app.assistant_policy import diagnose, snapshot, incident_triage
+from app.assistant_policy import diagnose, fold, incident_triage, snapshot
 from app.dependencies import current_user
-from app.rag import KnowledgeBaseUnavailableError, contextualize_question, generate_answer
+from app.rag import (
+    OUT_OF_SCOPE_PATTERNS,
+    KnowledgeBaseUnavailableError,
+    contextualize_question,
+    generate_answer,
+)
 from app.schemas import RAGFeedback, RAGQuestion
 
 logger = logging.getLogger(__name__)
@@ -29,32 +34,71 @@ def ask_rag(request: Request, payload: RAGQuestion) -> dict:
         messages = session["messages"]
         existing_context = store.get_incident_context(user["username"], payload.session_id)
 
+    if existing_context is None and messages:
+        first_question = next((m["content"] for m in messages if m["role"] == "user"), "")
+        seed = diagnose(first_question)
+        existing_context = seed["context"] if seed else None
+
+    if payload.action or payload.fact_answers or payload.step_results:
+        if existing_context is None or (payload.expected_revision is not None and payload.expected_revision != existing_context.get("revision", 0)):
+            raise HTTPException(status_code=409, detail="Sự cố đã thay đổi. Tải lại lượt hiện tại trước khi xác nhận.")
+
     question = payload.question.strip()
     contextual_question = contextualize_question(question, messages)
-    expected_revision = getattr(payload, "expected_revision", None)
+    expected_revision = existing_context.get("revision", 0) if existing_context else getattr(payload, "expected_revision", None)
 
-    # 2. Thực thi chẩn đoán theo chính sách (truyền kèm existing_context và payload)
-    policy = diagnose(
-        question,
-        context=existing_context,
-        payload=payload,
-    )
+    # 2. Thực thi chẩn đoán theo chính sách
+    try:
+        policy = diagnose(
+            question,
+            context=existing_context,
+            action=payload.action,
+            answers=payload.fact_answers,
+            step_results=payload.step_results,
+            role=user.get("role", "user"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if policy is None and (payload.action or payload.fact_answers or payload.step_results):
+        raise HTTPException(status_code=422, detail="Không có sự cố đang hoạt động cho thao tác này.")
 
     try:
-        result = generate_answer(contextual_question)
-        result["context_used"] = contextual_question != question
+        if policy and not any(pattern in fold(question) for pattern in OUT_OF_SCOPE_PATTERNS):
+            result = {
+                "answer": "",
+                "sources": [],
+                "triage": {
+                    "category": {"printer": "hardware", "network": "network"}.get(
+                        policy.get("incident_topic", ""), "general"
+                    ),
+                    "priority": "medium",
+                    "priority_reason": "Mức tạm thời; cần xác nhận tác động và độ khẩn cấp.",
+                },
+            }
+        else:
+            result = generate_answer(contextual_question)
+            result["context_used"] = contextual_question != question
     except KnowledgeBaseUnavailableError as exc:
         raise HTTPException(
             status_code=503,
             detail="Kho tri thức tạm thời không khả dụng. Vui lòng thử lại sau.",
         ) from exc
 
+    # Retrieval is not approval: a paraphrase missed by topic detection must
+    # never expose legacy procedural text outside the reviewed catalogue.
+    if policy is None and result.get("matches") and not result.get("out_of_scope"):
+        policy = diagnose(question, {
+            "topic": "other_it", "initial_question": question,
+            "facts": {}, "state": "CLARIFY", "steps": [], "sources": [],
+        })
+
     # 3. Phân nhánh xử lý giữa Policy sự cố và tra cứu RAG thông thường
     if policy and not result.get("out_of_scope"):
         result.update({k: v for k, v in policy.items() if k != "context"})
         context = policy.get("context", {})
-        if "revision" in context:
-            result["revision"] = context["revision"]
+        context["revision"] = (expected_revision or 0) + 1
+        result["revision"] = context["revision"]
         if "handoff" in policy and isinstance(policy["handoff"], dict) and "description" in policy["handoff"]:
             result["handoff_question"] = policy["handoff"]["description"]
         

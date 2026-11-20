@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
-from psycopg.rows import dict_row
+
+from app import postgres
 
 from app.config import (
     ALLOW_DEMO_CREDENTIALS,
@@ -47,20 +48,15 @@ DatabaseIntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError)
 
 
 class _PostgresConnection:
-    def __init__(self, connection: psycopg.Connection) -> None:
-        self._connection = connection
+    def __init__(self, lease: contextlib.AbstractContextManager[psycopg.Connection]) -> None:
+        self._lease = lease
+        self._connection = lease.__enter__()
 
     def __enter__(self) -> "_PostgresConnection":
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        try:
-            if exc_type is None:
-                self._connection.commit()
-            else:
-                self._connection.rollback()
-        finally:
-            self._connection.close()
+        self._lease.__exit__(exc_type, exc, traceback)
 
     def execute(self, query: str, parameters: tuple[Any, ...] = ()) -> psycopg.Cursor:
         return self._connection.execute(query.replace("?", "%s"), parameters)
@@ -88,7 +84,7 @@ def _connect() -> sqlite3.Connection | _PostgresConnection:
         if "neon.tech" in url and "sslmode=" not in url:
             separator = "&" if "?" in url else "?"
             url = f"{url}{separator}sslmode=require"
-        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row, prepare_threshold=None))
+        return _PostgresConnection(postgres.connection(url))
     _database_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(_database_path, timeout=15)
     connection.row_factory = sqlite3.Row
@@ -99,6 +95,10 @@ def _connect() -> sqlite3.Connection | _PostgresConnection:
 def check_database() -> None:
     with _connect() as connection:
         connection.execute("SELECT 1").fetchone()
+
+
+def close_database_pool() -> None:
+    postgres.close_pool()
 
 
 def _password_hash(password: str, salt: bytes | None = None) -> str:

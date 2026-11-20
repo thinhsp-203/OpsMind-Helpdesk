@@ -50,3 +50,36 @@ Nhật ký ghi các phần có hỗ trợ AI và việc nhóm cần tự rà so�
 25. Khắc phục xung đột tích hợp Assistant Policy và Contextual Follow-up RAG: Sau khi gộp PR #10, nhánh main bị lỗi TypeError do lời gọi `diagnose()` truyền sai tham số `payload=payload` và xung đột trạng thái giữa bộ chẩn đoán sự cố (mạng dây, máy in Offline) và tính năng nối tiếp ngữ cảnh ("Vẫn không được"). **Sửa:** Chuẩn hóa lời gọi `diagnose()` trong `app/routers/rag.py` truyền đúng các tham số `action`, `answers`, `step_results`, `role` từ phiên người dùng; xử lý phân luồng chính xác giữa sự cố thuộc chính sách (policy) và tra cứu RAG thông thường; bảo đảm các câu hỏi ngoài phạm vi (như thời tiết) không kích hoạt điều tra sự cố; khôi phục 100% tỷ lệ PASS cho toàn bộ 98 test API trong `tests/test_api.py` và 16 test hồi quy trong `tests/test_review_regressions.py`.
 
 Các mục “sửa” ở trên là thay đổi trong hệ thống; nhóm đối chiếu lịch sử commit/PR và kiểm thử tự động trên repository trước khi bảo vệ đồ án.
+
+## Chẩn đoán độ trễ — 14/11/2026
+
+Prompt trực tiếp đầy đủ của người dùng cho lượt chẩn đoán này:
+
+```text
+[$diagnosing-bugs](<C:\Users\Nhu Y\.agents\skills\diagnosing-bugs\SKILL.md>)
+```
+
+Ngữ cảnh trước prompt: sau 45 kiểm tra trên Render ngày 12/11, một số thao tác
+ticket mất 6–13 giây; người dùng gọi `ask-matt`, sau đó chọn quy trình chẩn đoán.
+AI thực hiện đo GET công khai, trace API trên PostgreSQL local có dữ liệu giả,
+viết test hồi quy trước sửa, thêm pool kết nối và kiểm tra giao dịch/quyền.
+Audit dependency phát hiện advisory OpenTelemetry và nâng đúng patch 1.45.2.
+Chi tiết nguồn, kết quả đo và giới hạn ở `DIAGNOSE_DB_LATENCY_2026-11-14.md`.
+
+Không dùng kết quả local để tuyên bố đã sửa độ trễ Render hoặc đạt NFR p95.
+Mục này chỉ ghi prompt trực tiếp của lượt chẩn đoán; không thay thế việc tập
+hợp đầy đủ lịch sử prompt các phiên và các thành viên còn thiếu.
+
+## Sửa P2 trong test đổi URL — 16/11/2026
+
+Prompt trực tiếp đầy đủ của người dùng:
+
+```text
+[$diagnosing-bugs](<C:\Users\Nhu Y\.agents\skills\diagnosing-bugs\SKILL.md>)
+```
+
+Ngữ cảnh: code review `7acbede` phát hiện test ghép sai URL đã có query. AI tái
+hiện trên DB local, mở rộng test trước sửa, dùng API `make_conninfo()` của
+Psycopg và kiểm lại URL có/không query. Chỉ sửa test và tài liệu; không thay
+mã runtime, dependency hay triển khai. Bằng chứng ở `outputs/PERF_URL_FIX_2026-11-16`
+trong workspace; không tuyên bố đã hoàn tất nhật ký AI toàn bộ dự án.

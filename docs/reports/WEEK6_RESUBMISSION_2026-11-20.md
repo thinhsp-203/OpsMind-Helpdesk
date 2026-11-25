@@ -1,32 +1,32 @@
-# Tiếp thu góp ý của GVHD — bổ sung báo cáo tuần 6
+# Tiếp thu góp ý của GVHD — báo cáo tuần 6 nộp lại
 
-Ngày cập nhật: 20/11/2026. Mục này bổ sung cho báo cáo đã nộp, không thay đổi kết quả chạy lịch sử.
+Ngày cập nhật: 25/11/2026. Phần “Tiếp thu góp ý” chỉ giữ một bản này; các đoạn dán trùng ở đầu báo cáo đã được bỏ. Nội dung bên dưới chỉ sửa bốn điểm GVHD yêu cầu và không thay đổi kết quả chạy lịch sử.
 
 ## 1. Thống nhất thông tin xử lý hai tài khoản đã lộ
 
-Nhóm xác nhận **Thịnh đã đổi mật khẩu của hai tài khoản từng xuất hiện trong báo cáo tuần 4 và đã kiểm tra phiên cũ**, thực hiện trực tiếp trên giao diện web bằng tài khoản quản trị. Nội dung này theo xác nhận cập nhật của người phụ trách; không phải kết quả agent tự kiểm tra tài khoản.
+Hai tài khoản có mật khẩu từng xuất hiện ở cuối báo cáo tuần 4 đã được xử lý trực tiếp qua giao diện quản trị. Hồ sơ không còn giờ thao tác chính xác nên ghi **ước khoảng ngày 20/11/2026**, thay vì suy đoán một mốc giờ. Cả hai dòng dưới đây là xác nhận của người thực hiện Thịnh; không phải agent tự đăng nhập hay kiểm tra độc lập.
 
-- Người thực hiện: Thịnh.
-- Cách thực hiện: đổi mật khẩu trực tiếp trên giao diện web với quyền quản trị.
-- Kiểm tra phiên cũ: đã thực hiện, theo xác nhận của Thịnh.
-- Trạng thái thống nhất cho mục 1 và bảng mục 7: **Đã đổi mật khẩu hai tài khoản và đã kiểm tra phiên cũ — hoàn tất theo xác nhận của nhóm.**
+| Tài khoản | Thời điểm | Người và cách thực hiện | Quan sát sau xử lý |
+| --- | --- | --- | --- |
+| `user` | Ước khoảng 20/11/2026; không còn hồ sơ giờ chính xác | Thịnh đổi mật khẩu trên giao diện web bằng tài khoản quản trị. | Thịnh kiểm tra lại phiên có trước lần đổi; phiên cũ không tiếp tục dùng được và bị yêu cầu đăng nhập lại. |
+| `huy` | Ước khoảng 20/11/2026; không còn hồ sơ giờ chính xác | Thịnh đổi mật khẩu trên giao diện web bằng tài khoản quản trị. | Thịnh kiểm tra lại phiên có trước lần đổi; phiên cũ không tiếp tục dùng được và bị yêu cầu đăng nhập lại. |
 
-Xác nhận này được cập nhật ngày 20/11/2026; ngày giờ thực hiện cụ thể không được suy đoán từ ngày soạn báo cáo. Không đưa mật khẩu/token mới hoặc cũ vào báo cáo, log hay GitHub. Các log về tài khoản thử trong phần kiểm thử Render không được dùng thay bằng chứng cho hai tài khoản đã lộ.
+Trạng thái thống nhất cho mục 1 và bảng mục 7: **đã đổi mật khẩu hai tài khoản và đã kiểm tra phiên cũ — hoàn tất theo xác nhận của nhóm.** Không đưa mật khẩu, token, session ID hoặc ảnh có thông tin đăng nhập vào báo cáo hay GitHub. Log về tài khoản thử Render không được dùng thay hồ sơ trên.
 
 ## 2. Bổ sung tệp minh chứng kiểm tra Render ngày 12/11
 
-Bộ minh chứng được đính kèm tại [docs/verification/2026-11-12](../verification/2026-11-12/README.md), gồm log JSON/JSONL, định danh triển khai, bản giải thích lệch hash và năm ảnh vùng kết quả kiểm thử tổng hợp. Có thể kiểm tra trực tiếp từng tệp trên GitHub; các bản local gốc được giữ nguyên.
+Bộ minh chứng được công khai tại commit [`8ea71e2`](https://github.com/thinhsp-203/OpsMind-Helpdesk/commit/8ea71e25f49254017fd2367376503fdf36777554) ngày 20/11/2026, trong [docs/verification/2026-11-12](../verification/2026-11-12/README.md). Commit công khai này chứa log JSON/JSONL, định danh triển khai, giải thích lệch hash và năm ảnh vùng kết quả. Các bản local gốc được giữ nguyên.
 
-Đợt chạy dùng commit `a128aa71883531930b403fef92edf171908e7caa`, deploy `dep-dbqplvbrjlhs73a3nvog`. Kết quả đối chiếu từ log: **45 PASS**, một lần kiểm tra hash byte local thất bại do CRLF/LF được giữ nguyên và giải thích bằng Git blob; **176 bản ghi HTTP, không có 5xx**. Hai lần đăng nhập thủ công trả 401 cũng được giữ trong log.
+Phân biệt hai mốc: đợt kiểm tra Render ngày 12/11 dùng commit `a128aa71883531930b403fef92edf171908e7caa`, deploy `dep-dbqplvbrjlhs73a3nvog`; **thư mục minh chứng không tồn tại tại `a128aa7`**. Thư mục được công khai sau đó tại `8ea71e2`. Kết quả đối chiếu từ log: **45 PASS**, một lần kiểm tra hash byte local thất bại do CRLF/LF được giữ nguyên và giải thích bằng Git blob; **176 bản ghi HTTP, không có 5xx**. Hai lần đăng nhập thủ công trả 401 cũng được giữ trong log.
 
 Đây là các kiểm tra chức năng được chọn trên URL Render. Không suy ra đã nghiệm thu toàn bộ hệ thống, hiệu năng p95/tải, persistence qua redeploy hoặc chất lượng RAG độc lập.
 
 XML `local-issue12/issue12-tests.xml` thuộc lượt kiểm thử **Windows/local ngày 12/11 trên head `26a1c18`**, gồm 12 ca đạt; được đặt riêng và ghi rõ nguồn. Lượt Chrome/API trên Render không xuất JUnit XML. Không gọi XML local hoặc CI là XML chạy trên Render.
 
-## 3. Các góp ý tiếp tục theo dõi
+## 3. Các chỉnh sửa biên tập và việc theo kế hoạch tuần sau
 
-- MC07: chưa có bản báo cáo tuần 6 đã nộp trong repository/workspace này để sửa đúng vị trí. Khi ghép mục bổ sung vào bản gốc, sửa tiền tố `Ihttps://` thành `https://`; chưa ghi là đã sửa trong bản nộp.
+- MC07: đã bỏ ký tự `I` bị dư trước URL; liên kết trong bản nộp lại dùng tiền tố `https://`.
 - Người duyệt runbook và người chuẩn bị bộ 30 ca độc lập: chưa có tên được nhóm xác nhận để ghi vào mục này. Không suy danh tính chuyên gia từ các ID mẫu trong bộ ca.
 - [Issue #17](https://github.com/thinhsp-203/OpsMind-Helpdesk/issues/17): tiếp tục review/triển khai bản sửa rồi đo lại trên đúng SHA thực tế đang chạy. [PR #18](https://github.com/thinhsp-203/OpsMind-Helpdesk/pull/18) vẫn draft tại thời điểm đối chiếu; số đo mô phỏng local không phải kết quả sau sửa trên Render.
 
-Bổ sung này được dùng khi nộp lại báo cáo để GVHD xét duyệt. Mục 1 thống nhất theo xác nhận cập nhật của nhóm; phần công khai tệp minh chứng được kiểm tra qua liên kết mục 2 sau khi nhánh tài liệu được đưa lên GitHub.
+Bản nộp lại này dùng để GVHD xét duyệt. Các đầu việc còn lại ở hai dòng cuối được giữ theo kế hoạch tuần sau, không đổi trạng thái thành hoàn tất.
